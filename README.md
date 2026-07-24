@@ -104,6 +104,7 @@ jobpilot score                   # score unscored offers; queue those above thre
 jobpilot queue                   # list queued applications, highest score first
 jobpilot apply <id>              # approve offer, tailor docs, queue them for human review
 jobpilot skip <id>               # pass: queued -> skipped
+jobpilot dashboard --port 8787   # local review UI on 127.0.0.1
 jobpilot stats                   # snapshot: offers, companies, by-contract, applications
 jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
 
@@ -125,6 +126,29 @@ strong matches cap around 0.45–0.50. The queue threshold is therefore
 providers), mandatory opt-out line. Drafts queue in `email_queue` (email) and as
 `linkedin_draft` events; **nothing sends without a prior `human_approved` event**
 (recorded by `jobpilot apply`).
+
+## Dashboard
+
+Launch the daily review UI on macOS or Linux:
+
+```bash
+jobpilot dashboard --port 8787
+```
+
+On Windows PowerShell, the installed command is the same; without an activated
+virtual environment, run it directly:
+
+```powershell
+.venv\Scripts\jobpilot.exe dashboard --port 8787
+```
+
+Then open <http://127.0.0.1:8787>. The dashboard lists the scored review queue,
+shows offer and event details, and lets you approve or skip through the same
+state-machine paths as the CLI. Approval generates the CV, motivation letter,
+and tracker row synchronously for local review. It never sends or submits an
+application, and the server always binds to loopback only.
+
+> Screenshot placeholder: review queue and generated-document detail view.
 
 ## Background scheduling
 

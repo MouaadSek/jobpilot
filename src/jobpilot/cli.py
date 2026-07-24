@@ -6,18 +6,25 @@ from pathlib import Path
 
 import typer
 
+from jobpilot.apply_flow import (
+    ApplicationGenerationError,
+    ApplicationNotFoundError,
+    ApplicationNotQueuedError,
+    approve_application,
+)
 from jobpilot.config import MissingCredentialError, get_settings
 from jobpilot.db import connect, init_db
 from jobpilot.ingest import ingest_source
 from jobpilot.logging_conf import get_logger
 from jobpilot.profile import ProfileInput, load_variants, save_profile, sync_variants
+from jobpilot.review import status_counts
 from jobpilot.sources.registry import (
     available_sources,
     build_source,
     enabled_sources,
     is_enabled,
 )
-from jobpilot.state import current_status, log_event, transition
+from jobpilot.state import transition
 
 log = get_logger("cli")
 
@@ -125,31 +132,20 @@ def apply_cmd(application_id: int = typer.Argument(..., help="Application id."))
     """Approve an application and generate its tailored application documents."""
     conn = connect()
     try:
-        if current_status(conn, application_id) != "queued":
+        try:
+            outcome = approve_application(
+                conn,
+                application_id,
+                via="cli apply",
+                on_generating=lambda: typer.echo(
+                    f"application {application_id}: approved -> generating"
+                ),
+            )
+        except (ApplicationNotFoundError, ApplicationNotQueuedError):
             typer.secho("application is not in 'queued' state", fg=typer.colors.RED,
                         err=True)
-            raise typer.Exit(1)
-
-        row = conn.execute(
-            "SELECT kind FROM applications WHERE id = ?", (application_id,)
-        ).fetchone()
-        is_cold_application = row["kind"] == "cold"
-
-        # Keep cold outreach independent from the optional CV/LLM toolchain.
-        if not is_cold_application:
-            from jobpilot.tailoring import TailoringError, generate_application
-
-        # Constitution: nothing is sent/submitted without a recorded human approval.
-        log_event(conn, application_id, "human_approved", {"via": "cli apply"})
-        transition(conn, application_id, "generating")
-
-        typer.echo(f"application {application_id}: approved -> generating")
-        if is_cold_application:
-            return
-
-        try:
-            result = generate_application(conn, application_id)
-        except TailoringError as exc:
+            raise typer.Exit(1) from None
+        except ApplicationGenerationError as exc:
             typer.secho(
                 f"application {application_id}: generation failed; "
                 f"returned to queued: {exc}",
@@ -157,9 +153,13 @@ def apply_cmd(application_id: int = typer.Argument(..., help="Application id."))
                 err=True,
             )
             raise typer.Exit(1) from exc
+        if outcome.is_cold_application:
+            return
+        result = outcome.generation
     finally:
         conn.close()
 
+    assert result is not None
     typer.echo(f"CV variant: {result.selection.label} ({result.selection.slug})")
     typer.echo(f"Tailoring: {result.rationale}")
     typer.echo(f"CV HTML: {result.cv_html_path}")
@@ -355,6 +355,22 @@ def draft_cold_cmd(
     typer.echo(f"\nReview then approve with: jobpilot apply {draft.application_id}")
 
 
+@app.command("dashboard")
+def dashboard_cmd(
+    port: int = typer.Option(
+        8787,
+        "--port",
+        min=1,
+        max=65535,
+        help="Loopback dashboard port.",
+    ),
+) -> None:
+    """Launch the local review dashboard on 127.0.0.1."""
+    from jobpilot.dashboard import run_dashboard
+
+    run_dashboard(port)
+
+
 @app.command("stats")
 def stats_cmd() -> None:
     """Show a quick snapshot of the pipeline."""
@@ -376,10 +392,7 @@ def stats_cmd() -> None:
             for row in by_contract:
                 typer.echo(f"  {row['contract_type'] or 'unknown':12} {row['n']}")
 
-        apps = conn.execute(
-            "SELECT status, count(*) AS n FROM applications "
-            "GROUP BY status ORDER BY n DESC"
-        ).fetchall()
+        apps = status_counts(conn)
         if apps:
             typer.echo("applications:")
             for row in apps:

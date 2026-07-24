@@ -16,6 +16,9 @@ dependencies = [
     "playwright>=1.46",
     "weasyprint>=62; sys_platform != 'win32'",
     "pypdf>=4",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
     # torch caps at 2.2.2 on Intel macOS (no newer x86_64 wheels); pin the ML
     # stack to versions that are mutually compatible with it.
     "numpy<2",
@@ -36,6 +39,9 @@ jobpilot = "jobpilot.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+jobpilot = ["templates/*.html"]
 
 [tool.ruff]
 line-length = 100

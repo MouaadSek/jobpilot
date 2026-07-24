@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JobPilot review</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5e687a;
+      --line: #dce1e8;
+      --paper: #ffffff;
+      --wash: #f4f6f8;
+      --primary: #1746a2;
+      --primary-dark: #0c3078;
+      --danger: #a12424;
+      --danger-wash: #fff0f0;
+      --success: #146c43;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    a { color: var(--primary); }
+    .shell { width: min(1180px, calc(100% - 32px)); margin: 28px auto 56px; }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    h1, h2, h3 { line-height: 1.2; margin-top: 0; }
+    h1 { margin-bottom: 4px; font-size: 28px; }
+    h2 { font-size: 21px; }
+    h3 { margin: 24px 0 10px; font-size: 17px; }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgb(23 32 51 / 5%);
+      padding: 20px;
+    }
+    .counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+    .badge {
+      display: inline-flex;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      padding: 5px 10px;
+      font-size: 13px;
+    }
+    .badge strong { color: var(--primary-dark); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 11px 9px;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    td.title { min-width: 220px; white-space: normal; }
+    .score { color: var(--success); font-variant-numeric: tabular-nums; font-weight: 700; }
+    .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+    .back { text-decoration: none; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .meta div {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px 12px;
+    }
+    .meta dt { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+    .meta dd { margin: 3px 0 0; }
+    .actions { display: flex; gap: 10px; margin: 18px 0; }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 15px;
+      background: var(--primary);
+      color: white;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 650;
+    }
+    button:hover { background: var(--primary-dark); }
+    button.secondary { background: #566174; }
+    button:disabled { cursor: wait; opacity: .65; }
+    .error {
+      margin: 16px 0;
+      border: 1px solid #e6b1b1;
+      border-radius: 7px;
+      background: var(--danger-wash);
+      color: var(--danger);
+      padding: 12px 14px;
+    }
+    .description, .tracker {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfd;
+      padding: 14px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: inherit;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .score-grid div { border-left: 3px solid var(--primary); padding: 7px 10px; }
+    .artifacts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .artifact {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 12px;
+    }
+    iframe { width: 100%; height: 480px; border: 1px solid var(--line); margin-top: 10px; }
+    .events td:nth-child(3) { white-space: normal; overflow-wrap: anywhere; }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 18px, 1180px); margin-top: 14px; }
+      .panel { padding: 14px; }
+      .artifacts { grid-template-columns: 1fr; }
+      iframe { height: 380px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>JobPilot</h1>
+        <div class="muted">Local application review</div>
+      </div>
+      {% if view == "detail" %}<a class="back" href="/">← Review queue</a>{% endif %}
+    </header>
+
+    {% if view == "queue" %}
+      <div class="counts" aria-label="Application counts by status">
+        {% for item in status_counts %}
+          <span class="badge">{{ item.status }} <strong>{{ item.n }}</strong></span>
+        {% endfor %}
+      </div>
+      <section class="panel">
+        <h2>Review queue</h2>
+        {% if applications %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Score</th>
+                  <th>Title</th>
+                  <th>Company</th>
+                  <th>City</th>
+                  <th>Contract</th>
+                  <th>Source</th>
+                  <th>Posted</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for application in applications %}
+                  <tr>
+                    <td class="score">
+                      {% if application.score is not none %}
+                        {{ "%.2f"|format(application.score) }}
+                      {% else %}—{% endif %}
+                    </td>
+                    <td class="title">{{ application.title or "Untitled offer" }}</td>
+                    <td>{{ application.company or "—" }}</td>
+                    <td>{{ application.city or "—" }}</td>
+                    <td>{{ application.contract_type or "—" }}</td>
+                    <td>{{ application.source or "—" }}</td>
+                    <td>{{ application.posted_at or "—" }}</td>
+                    <td><a href="/application/{{ application.id }}">Review</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty">The review queue is empty.</div>
+        {% endif %}
+      </section>
+    {% else %}
+      <section class="panel">
+        <h2>{{ application.title or "Application" }}</h2>
+        <div class="muted">{{ application.company or "Unknown company" }}</div>
+
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+        <dl class="meta">
+          <div><dt>Status</dt><dd>{{ application.status }}</dd></div>
+          <div><dt>Score</dt><dd>{{ application.final_score if application.final_score is not none else "—" }}</dd></div>
+          <div><dt>City</dt><dd>{{ application.city or "—" }}</dd></div>
+          <div><dt>Contract</dt><dd>{{ application.contract_type or "—" }}</dd></div>
+          <div><dt>Source</dt><dd>{{ application.source or "—" }}</dd></div>
+          <div><dt>Posted</dt><dd>{{ application.posted_at or "—" }}</dd></div>
+        </dl>
+
+        {% if application.status == "queued" %}
+          <div class="actions">
+            <form method="post" action="/application/{{ application.id }}/approve" data-busy>
+              <button type="submit" data-label="Approve & generate">Approve &amp; generate</button>
+            </form>
+            <form method="post" action="/application/{{ application.id }}/skip" data-busy>
+              <button class="secondary" type="submit" data-label="Skip">Skip</button>
+            </form>
+          </div>
+        {% endif %}
+
+        <h3>Offer</h3>
+        {% if application.url %}<p><a href="{{ application.url }}" rel="noreferrer">Open source offer</a></p>{% endif %}
+        <pre class="description">{{ application.description or "No description stored." }}</pre>
+
+        <h3>Score breakdown</h3>
+        <div class="score-grid">
+          <div><strong>Semantic</strong><br>{{ application.semantic_score if application.semantic_score is not none else "—" }}</div>
+          <div><strong>Keywords</strong><br>{{ application.keyword_score if application.keyword_score is not none else "—" }}</div>
+          <div><strong>Bonus</strong><br>{{ application.bonus_score if application.bonus_score is not none else "—" }}</div>
+          <div><strong>Final</strong><br>{{ application.final_score if application.final_score is not none else "—" }}</div>
+        </div>
+
+        {% if application.status == "ready" %}
+          <h3>Generated artifacts</h3>
+          <div class="artifacts">
+            <div class="artifact">
+              <a href="/files/{{ application.id }}/cv.pdf">Open cv.pdf</a>
+              <iframe title="CV preview" src="/files/{{ application.id }}/cv.pdf"></iframe>
+            </div>
+            <div class="artifact">
+              <a href="/files/{{ application.id }}/motivation_letter.pdf">Open motivation_letter.pdf</a>
+              <iframe title="Motivation letter preview" src="/files/{{ application.id }}/motivation_letter.pdf"></iframe>
+            </div>
+          </div>
+          <h3>Tracker row</h3>
+          <pre class="tracker">{{ tracker_row or "Tracker row unavailable." }}</pre>
+        {% endif %}
+
+        <h3>Event history</h3>
+        {% if events %}
+          <div class="table-wrap">
+            <table class="events">
+              <thead><tr><th>Time</th><th>Event</th><th>Detail</th></tr></thead>
+              <tbody>
+                {% for event in events %}
+                  <tr>
+                    <td>{{ event.created_at }}</td>
+                    <td>{{ event.event }}</td>
+                    <td>{{ event.detail }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">No events recorded.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+  <script>
+    document.querySelectorAll("form[data-busy]").forEach((form) => {
+      form.addEventListener("submit", () => {
+        document.querySelectorAll("button").forEach((button) => {
+          button.disabled = true;
+        });
+        const button = form.querySelector("button");
+        button.textContent = `${button.dataset.label}…`;
+      });
+    });
+  </script>
+</body>
+</html>

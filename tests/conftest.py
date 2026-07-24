@@ -49,3 +49,17 @@ def seeded_profile(db: sqlite3.Connection) -> sqlite3.Connection:
     )
     db.commit()
     return db
+
+
+@pytest.fixture
+def dashboard_db() -> Iterator[sqlite3.Connection]:
+    """Thread-capable in-memory DB for synchronous FastAPI TestClient requests."""
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    apply_schema(conn, SCHEMA_PATH)
+    run_migrations(conn, MIGRATIONS_DIR)
+    seed_sources(conn)
+    yield conn
+    conn.close()
