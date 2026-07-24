@@ -1,0 +1,23 @@
+# Which ingestion sources `jobpilot ingest` runs.
+#
+# A source not listed here defaults to enabled. `ingest --source all` runs only
+# enabled sources; naming a disabled source explicitly is skipped with a notice.
+
+sources:
+  france_travail:
+    enabled: true
+  ats:
+    enabled: true
+  # LinkedIn/Indeed job-alert email parsing (needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD).
+  # Skipped gracefully until those are set.
+  linkedin_alert:
+    enabled: true
+  indeed_alert:
+    enabled: true
+  # Welcome to the Jungle via Algolia (needs WTTJ_API_KEY). Skipped until set.
+  wttj:
+    enabled: true
+  # LBA's legacy API is retired; the current API Apprentissage needs an account
+  # + token (LBA_API_KEY). Disabled until that is registered. See README.
+  labonnealternance:
+    enabled: false

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mouaad Sekkouri - IAM / Identity & Zero Trust, Alternance</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: 210mm 297mm; margin: 0; }
+    html, body { font-family: Arial, sans-serif; font-size: 8.7pt; line-height: 1.3; color: #1a252f; background: #fff; }
+    @media print {
+      html, body { margin: 0; padding: 0; background: #fff; box-shadow: none; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { box-shadow: none; margin: 0 auto; height: 297mm; width: 210mm; }
+      .experience-item, .project-item, li { page-break-inside: avoid; }
+      h2 { page-break-after: avoid; }
+      a { text-decoration: none; color: inherit; }
+    }
+    @media screen {
+      html { background: #c8c8c8; min-height: 100vh; }
+      body { background: transparent; width: 100%; height: auto; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 24px 0; }
+    }
+    .page { width: 210mm; height: 297mm; padding: 7mm 10mm; background: #fff; box-sizing: border-box; flex-shrink: 0; box-shadow: 0 0 25px rgba(0,0,0,0.2); display: flex; flex-direction: column; justify-content: space-between; }
+    header { display: flex; align-items: center; gap: 4mm; margin-bottom: 0; border-bottom: 2px solid #7bd3e9; padding-bottom: 1.5mm; }
+    .header-text { flex: 1; text-align: center; }
+    h1 { font-size: 19pt; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase; color: #1a252f; margin-bottom: 1mm; }
+    .job-title { font-size: 12.5pt; font-weight: bold; color: #7bd3e9; margin-bottom: 1mm; }
+    .contact-info { font-size: 8.5pt; color: #34495e; display: block; line-height: 1.6; text-align: center; }
+    .contact-info a { color: #34495e; text-decoration: none; }
+    .contact-info a:hover { color: #7bd3e9; text-decoration: underline; }
+    h2 { font-size: 11.5pt; font-weight: bold; margin: 0 0 1.2mm; padding-bottom: 0.8mm; border-bottom: 2px solid #7bd3e9; text-transform: uppercase; letter-spacing: 0.5px; color: #1a252f; }
+    .profile { font-size: 9pt; text-align: justify; margin-bottom: 0; text-wrap: pretty; }
+    ul { margin-left: 14px; }
+    li { margin-bottom: 1mm; text-align: justify; text-wrap: pretty; }
+    li, p, span { word-break: normal; overflow-wrap: break-word; hyphens: auto; max-width: 100%; }
+    .experience-item { margin-bottom: 2.5mm; }
+    .job-header { display:flex; justify-content:space-between; align-items:baseline; gap:4mm; }
+    .job-position { font-weight: bold; font-size: 9pt; color: #1a252f; }
+    .job-date { font-size: 8pt; font-style: italic; color: #666; white-space: nowrap; }
+    .experience-item ul { margin-top: 0.5mm; }
+    .company-name { font-weight: bold; color: #7bd3e9; }
+    .job-location { font-style: italic; color: #666; font-weight: normal; }
+    .edu-location { font-style: italic; color: #666; font-weight: normal; }
+    .formation-entry { margin-bottom: 1.5mm; }
+    .formation-line { display:flex; justify-content:space-between; align-items:baseline; gap:3mm; }
+    .formation-degree { font-weight: bold; font-size: 9pt; color: #1a252f; }
+    .formation-date { font-size: 8pt; font-style: italic; color: #777; white-space: nowrap; }
+    .certif-entry { margin-bottom: 1mm; font-size: 8.6pt; }
+    .certif-entry a { color: #7bd3e9; text-decoration: none; }
+    .certif-entry a:hover { text-decoration: underline; }
+    .tech-grid { font-size:9pt; }
+    .tech-row { display:table; width:100%; margin-bottom:1mm; }
+    .tech-category { display:table-cell; font-weight:bold; color:#1a252f; width:195px; vertical-align:top; padding-right:2mm; white-space:nowrap; }
+    .tech-category::after { content:" :"; }
+    .tech-list { display:table-cell; color:#34495e; vertical-align:top; }
+    .skills-container { display:flex; flex-wrap:wrap; gap:1.5mm; margin-top:1mm; }
+    .skill-tag { background: #f0f4f8; padding: 0.4mm 1.8mm; border-radius: 3px; font-size: 8pt; font-weight: bold; border: 1px solid #bdc3c7; display: inline-block; white-space: nowrap; color: #1a252f; }
+    .project-item { margin-bottom: 3mm; }
+    .project-title { font-weight: bold; font-size: 9pt; color: #1a252f; margin-bottom: 0.5mm; }
+    .project-desc { font-size: 8.8pt; text-align: justify; margin-bottom: 0.2mm; color: #1a252f; text-wrap: pretty; }
+    .project-meta { font-size: 8.4pt; color: #34495e; margin-bottom: 0.1mm; }
+    .project-meta span.label { font-weight: bold; color: #7bd3e9; }
+    section.langues { margin-top: 0mm; margin-bottom: 0mm; }
+    .langues-inline { font-size: 9pt; color: #1a252f; margin-top: 0.5mm; }
+    html, body { overflow-x: hidden; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="header-text">
+      <h1>MOUAAD SEKKOURI</h1>
+      <div class="job-title">IAM | Identity &amp; Zero Trust - Alternance M2 dès Septembre 2026</div>
+<div class="contact-info">
+        📧 <a href="mailto:mouaadsekkourii@gmail.com">mouaadsekkourii@gmail.com</a> &nbsp;|&nbsp;
+        📱 <a href="tel:+33751135425">+33 7 51 13 54 25</a> &nbsp;|&nbsp;
+        📍 Lille / Île-de-France &nbsp;|&nbsp;
+        🔗 <a href="https://www.linkedin.com/in/sekkouri/" target="_blank">linkedin.com/in/sekkouri</a>
+      </div>
+    </div>
+</header>
+
+  <section class="profile">
+    Étudiant en <strong>M1 Cybersécurité</strong> avec 2 ans en sécurité réseau et IT. Profil orienté <strong>IAM</strong> et <strong>gestion des identités</strong>. <strong>Alternance de 12 mois dès septembre 2026</strong>. Rythme : <strong>1 sem. école / 1 sem. entreprise</strong> jusqu'en février, puis <strong>temps plein en entreprise</strong>.
+  </section>
+
+  <section>
+    <h2>Compétences Techniques</h2>
+    <div class="tech-grid">
+      <div class="tech-row"><div class="tech-category">IAM &amp; Identités</div><div class="tech-list">Active Directory, Azure AD/Entra ID, RBAC, GPO, LAPS, tiering model, MFA</div></div>
+      <div class="tech-row"><div class="tech-category">Zero Trust &amp; Accès</div><div class="tech-list">Moindre privilège, conditional access, PAM, segmentation, micro-périmètre</div></div>
+      <div class="tech-row"><div class="tech-category">Audit &amp; Conformité</div><div class="tech-list">PingCastle, BloodHound, CIS Benchmarks, revue des accès, journalisation</div></div>
+      <div class="tech-row"><div class="tech-category">Systèmes &amp; Réseaux</div><div class="tech-list">Windows Server, Linux, VPN, pare-feu, Wireshark</div></div>
+      <div class="tech-row"><div class="tech-category">Scripting &amp; Automatisation</div><div class="tech-list">PowerShell, Python, Bash</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Formation</h2>
+    <div class="formation-entry">
+      <div class="formation-line">
+        <div class="formation-degree">M1 Programme Grande École - Cybersécurité, Supinfo, <span class="edu-location">Lille</span></div>
+        <div class="formation-date">2025 - présent</div>
+      </div>
+    </div>
+    <div class="formation-entry">
+      <div class="formation-line">
+        <div class="formation-degree">Bachelor Génie Informatique - Vistula University, <span class="edu-location">Varsovie</span></div>
+        <div class="formation-date">2021 - 2024</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Expérience Professionnelle</h2>
+
+        <div class="experience-item">
+      <div class="job-header">
+        <div class="job-position"><span class="company-name">Baïfall Dream</span> - Stage : Étude et Développement d'une Plateforme d'e-Facturation, <span class="job-location">Paris</span></div>
+        <div class="job-date">Juillet 2026 - Présent</div>
+      </div>
+      <ul>
+        <li>Rédaction du cahier des charges d'une plateforme de facturation électronique (<strong>réforme B2B 2026</strong>) : benchmark de <strong>3 plateformes agréées</strong>, <strong>95 exigences</strong>, architecture cible.</li>
+        <li>Conception et développement de la plateforme : génération <strong>Factur-X/UBL</strong>, modèle de données, <strong>API REST</strong>, cycle de vie des factures.</li>
+        <li>Spécification de la gestion des identités et des accès de la plateforme : authentification, rôles et permissions, traçabilité (<strong>ISO 27001</strong>, RGPD art. 32).</li>
+      </ul>
+    </div>
+
+<div class="experience-item">
+      <div class="job-header">
+        <div class="job-position"><span class="company-name">Concentrix</span> - Analyste Support Réseau &amp; Sécurité, Client Netgear, <span class="job-location">Varsovie</span></div>
+        <div class="job-date">Janvier 2024 - Décembre 2025</div>
+      </div>
+      <ul>
+        <li>Triage et résolution de <strong>1 500+ incidents</strong>, <strong>85 % de résolution au premier contact</strong>; escalade L2/L3 via Salesforce selon SLA.</li>
+        <li>Analyse de logs et identification de misconfigurations de sécurité; réduction du délai moyen de résolution de <strong>20 %</strong>.</li>
+      </ul>
+    </div>
+
+    <div class="experience-item">
+      <div class="job-header">
+        <div class="job-position"><span class="company-name">Lionbridge</span> - Spécialiste Localisation Logicielle, <span class="job-location">Varsovie</span></div>
+        <div class="job-date">Mai 2023 - Janvier 2024</div>
+      </div>
+      <ul>
+        <li>Traitement et validation de <strong>200 000+ strings</strong> localisés, taux d'erreur &lt; <strong>0,5 %</strong> sur <strong>8 mois consécutifs</strong>.</li>
+      </ul>
+    </div>
+
+    <div class="experience-item">
+      <div class="job-header">
+        <div class="job-position"><span class="company-name">Testronic</span> - Analyste QA, <span class="job-location">Varsovie</span></div>
+        <div class="job-date">Janvier 2022 - Mai 2023</div>
+      </div>
+      <ul>
+        <li>Détection de <strong>90+ anomalies critiques</strong> sur applications web et mobiles avant production via Jira, taux de reproductibilité de <strong>95 %</strong>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Projets Personnels</h2>
+
+    <div class="project-item">
+      <div class="project-title">Audit Active Directory - Sécurisation et durcissement</div>
+      <div class="project-desc">Audit complet Active Directory, correction de <strong>15 faiblesses</strong> identifiées, déploiement du modèle de tiering et restriction des accès.</div>
+      <div class="project-meta"><span class="label">Stack : </span>Windows Server, Active Directory, PingCastle, BloodHound, GPO, LAPS</div>
+    </div>
+
+    <div class="project-item">
+      <div class="project-title">Gouvernance IAM Azure - Contrôle d'accès et conformité</div>
+      <div class="project-desc">Déploiement de rôles d'accès personnalisés sur <strong>3 VMs</strong> Azure, politiques d'authentification renforcée MFA et rapport de conformité <strong>CIS</strong>.</div>
+      <div class="project-meta"><span class="label">Stack : </span>Azure AD/Entra ID, RBAC, Conditional Access, MFA, Azure Policy</div>
+    </div>
+
+    <div class="project-item">
+      <div class="project-title">Automatisation IAM - Gestion du cycle de vie des identités</div>
+      <div class="project-desc">Automatisation de <strong>50+</strong> créations de comptes, assignation automatique des rôles, détection des inactifs, gain de <strong>70 %</strong> en efficacité.</div>
+      <div class="project-meta"><span class="label">Stack : </span>PowerShell, Active Directory, CSV, GPO, Scheduled Tasks</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Certifications</h2>
+    <ul>
+      <li class="certif-entry"><a href="https://learn.microsoft.com/api/credentials/share/en-us/MouaadSekkouri-5434/D5ECAFDDA5C159D8?sharingId=31912B19EDF07374" target="_blank">Microsoft AZ-900 - Azure Fundamentals</a> - Obtenu : Mars 2026</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Compétences Transversales</h2>
+    <div class="skills-container">
+      <span class="skill-tag">Rigueur</span>
+      <span class="skill-tag">Documentation technique</span>
+      <span class="skill-tag">Vulgarisation technique</span>
+      <span class="skill-tag">Travail en équipe</span>
+      <span class="skill-tag">Autonomie</span>
+      <span class="skill-tag">Résolution de problèmes</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Centres d'Intérêt</h2>
+    <div class="skills-container">
+      <span class="skill-tag">Veille cybersécurité &amp; threat intel</span>
+      <span class="skill-tag">Homelab sécurité</span>
+      <span class="skill-tag">Géopolitique</span>
+      <span class="skill-tag">Partage de connaissances</span>
+      <span class="skill-tag">Arts martiaux</span>
+      <span class="skill-tag">Jeux vidéo</span>
+    </div>
+  </section>
+
+  <section class="langues">
+    <h2>Langues</h2>
+    <p class="langues-inline"><strong>Français</strong> - Bilingue &nbsp;|&nbsp; <strong>Anglais</strong> - C1 Courant &nbsp;|&nbsp; <strong>Arabe</strong> - Langue maternelle &nbsp;|&nbsp; <strong>Allemand</strong> - A2 Élémentaire</p>
+  </section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Hand-configured ATS company list polled by `jobpilot ingest -s ats`.
+#
+# Each target has:
+#   ats:     one of greenhouse | lever | smartrecruiters
+#   board:   the ATS board token / company identifier in the endpoint URL
+#            - greenhouse: the token in boards.greenhouse.io/<token>
+#            - lever:      the token in jobs.lever.co/<token>
+#            - smartrecruiters: the company identifier in the postings URL
+#   company: display name stored on the offer (free text)
+#
+# Add your real targets below and remove these examples. Public JSON endpoints
+# only (no login-walled boards). Start empty if you prefer; the poller no-ops.
+
+targets: []
+  # - ats: greenhouse
+  #   board: examplecorp
+  #   company: Example Corp
+  # - ats: lever
+  #   board: examplecorp
+  #   company: Example Corp
+  # - ats: smartrecruiters
+  #   board: ExampleCorp
+  #   company: Example Corp

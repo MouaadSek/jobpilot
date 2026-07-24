@@ -1,0 +1,112 @@
+# config/variants.yaml
+# Generated from the job-application skill's "Step 1 -- CV Selection" table.
+# Keywords drive matcher.pick_variant (overlap with offer text).
+# template_path points at the skill's real HTML templates (alternance default).
+# Stage variants exist only for consultant-it and cybersecurite.
+
+variants:
+  - slug: soc
+    label: SOC Analyst
+    keywords: [soc, siem, detection, incident response, blue team, sentinel, splunk, kql, edr, soar]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_SOC__Alternance.html
+
+  - slug: pentest
+    label: Pentest
+    keywords: [pentest, red team, offensive security, penetration testing, exploitation, owasp, burp, metasploit]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Pentest__Alternance.html
+
+  - slug: grc
+    label: GRC
+    keywords: [grc, risk, compliance, audit, iso 27001, ebios, conformite, gouvernance, risque]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_GRC__Alternance.html
+
+  - slug: iam
+    label: IAM
+    keywords: [iam, identity, identite, active directory, access management, gestion des acces, sso, okta, azure ad, entra]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_IAM__Alternance.html
+
+  - slug: appsec
+    label: AppSec
+    keywords: [application security, appsec, owasp, sast, dast, secure sdlc, code review, securite applicative]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_AppSec__Alternance.html
+
+  - slug: cloudsec
+    label: CloudSec
+    keywords: [cloud security, azure, aws, gcp, hardening, cis benchmark, cspm, securite cloud]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-CloudSec__Alternance.html
+
+  - slug: devsecops
+    label: DevSecOps
+    keywords: [devsecops, ci/cd security, pipeline, sast, dast, docker, kubernetes, terraform, secure pipeline]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_DevSecOps__Alternance.html
+
+  - slug: chef-de-projet-it
+    label: Chef de Projet IT
+    keywords: [chef de projet, project management, gestion de projet, pmo, coordination, planning]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html
+
+  - slug: consultant-it
+    label: Consultant IT
+    keywords: [consultant, consulting, advisory, conseil, transformation digitale, digital transformation]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Consultant_IT__Alternance.html
+
+  - slug: infra-cloud
+    label: Infrastructure Cloud
+    keywords: [infrastructure, sysadmin, systeme, network security, infra, virtualisation, vmware]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html
+
+  - slug: reseaux-telecoms
+    label: Reseaux Telecoms
+    keywords: [reseau, network, telecom, routing, switching, cisco, bgp, ospf, lan, wan]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html
+
+  - slug: backend-dev
+    label: Backend Dev
+    keywords: [backend, python, java, api, rest, microservices, sql, developpement backend]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Backend_Dev__Alternance.html
+
+  - slug: fullstack-dev
+    label: Fullstack Dev
+    keywords: [fullstack, full-stack, front, back, react, node, javascript, developpement web]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html
+
+  - slug: devops-sre
+    label: DevOps SRE
+    keywords: [devops, sre, ci/cd, reliability, docker, kubernetes, terraform, ansible, monitoring]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html
+
+  - slug: support-it
+    label: Support IT Sysadmin
+    keywords: [support, helpdesk, support informatique, sysadmin, assistance, n1, n2, ticketing]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html
+
+  - slug: data-bi
+    label: Data Engineering BI
+    keywords: [data engineering, bi, etl, data warehouse, sql, powerbi, business intelligence, pipeline data]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html
+
+  - slug: ia-ml
+    label: IA Machine Learning
+    keywords: [machine learning, ml, intelligence artificielle, ai, deep learning, data science, modele]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html
+
+  - slug: qa-testing
+    label: QA Testing
+    keywords: [qa, testing, test automation, selenium, quality assurance, recette, tests automatises]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_QA_Testing__Alternance.html
+
+  - slug: cybersecurite
+    label: Cybersecurite (general)
+    keywords: [cybersecurite, securite informatique, cybersecurity, security, ssi]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Cybersecurite__Alternance.html
+
+  # Stage-specific templates (3-6 months)
+  - slug: consultant-it-stage
+    label: Consultant IT (Stage)
+    keywords: [consultant, consulting, conseil, stage, advisory]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Consultant_IT__Stage.html
+
+  - slug: cybersecurite-stage
+    label: Cybersecurite (Stage)
+    keywords: [cybersecurite, securite, stage, security, ssi]
+    template_path: assets/cv-templates/Mouaad_Sekkouri_-_Cybersecurite__Stage.html

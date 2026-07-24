@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd user agent for the JobPilot daemon (macOS).
+
+  Install:
+    1. Edit the paths below: replace __HOME__ with your home dir
+       (e.g. /Users/you) so they point at ~/jobpilot and its .venv.
+    2. cp deploy/com.jobpilot.daemon.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.jobpilot.daemon.plist
+    4. launchctl start com.jobpilot.daemon
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.jobpilot.daemon.plist
+
+  The daemon runs its own APScheduler loop (ingest + score every 3h), so we
+  keep it alive with KeepAlive rather than StartInterval.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jobpilot.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/jobpilot/.venv/bin/jobpilot</string>
+        <string>daemon</string>
+        <string>--interval-hours</string>
+        <string>3</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/jobpilot</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/jobpilot/logs/daemon.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/jobpilot/logs/daemon.err.log</string>
+</dict>
+</plist>
