@@ -1,7 +1,7 @@
 """Background daemon: run ingest + score on a fixed interval (default 3h).
 
-macOS uses the launchd plist in deploy/ to keep this alive (see README). The
-daemon is a thin loop around one cycle; all real work lives in ingest/scoring.
+The daemon is platform-neutral. macOS launchd and Windows Task Scheduler
+helpers in ``deploy/`` keep it alive; all real work stays in ingest/scoring.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def run_daemon(interval_hours: float = 3.0) -> None:
              settings.db_path)
     scheduler = BlockingScheduler(timezone="UTC")
     scheduler.add_job(
-        run_cycle, "interval", hours=interval_hours, next_run_time=None,
+        run_cycle, "interval", hours=interval_hours,
         id="ingest_score", max_instances=1, coalesce=True,
     )
     run_cycle()  # run once immediately on startup

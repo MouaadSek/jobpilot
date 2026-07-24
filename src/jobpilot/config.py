@@ -59,6 +59,12 @@ class Settings:
     wttj_api_key: str | None
     wttj_index: str
 
+    # Phase 2 application artifacts and optional automated tailoring.
+    # Defaults keep direct Settings(...) construction in tests/backends compatible.
+    output_dir: Path = PROJECT_ROOT / "output" / "applications"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-haiku-4-5-20251001"
+
     def require_gmail_credentials(self) -> tuple[str, str]:
         if not self.gmail_address or not self.gmail_app_password:
             raise MissingCredentialError(
@@ -85,9 +91,7 @@ def get_settings() -> Settings:
         config_dir=PROJECT_ROOT / "config",
         schema_path=PROJECT_ROOT / "schema.sql",
         migrations_dir=PROJECT_ROOT / "migrations",
-        embed_model=os.getenv(
-            "JOBPILOT_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
-        ),
+        embed_model=os.getenv("JOBPILOT_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
         queue_threshold=float(os.getenv("JOBPILOT_QUEUE_THRESHOLD", "0.35")),
         ft_client_id=os.getenv("FRANCE_TRAVAIL_CLIENT_ID") or None,
         ft_client_secret=os.getenv("FRANCE_TRAVAIL_CLIENT_SECRET") or None,
@@ -113,4 +117,7 @@ def get_settings() -> Settings:
         wttj_app_id=os.getenv("WTTJ_APP_ID", "CSEKHVMS53"),
         wttj_api_key=os.getenv("WTTJ_API_KEY") or None,
         wttj_index=os.getenv("WTTJ_INDEX", "wttj_jobs_production_c3_search"),
+        output_dir=_path("JOBPILOT_OUTPUT_DIR", "output/applications"),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,
+        anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
     )

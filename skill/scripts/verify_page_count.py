@@ -8,14 +8,17 @@ Usage:
     python3 verify_page_count.py <pdf_path>
 """
 
-import sys
 import argparse
+import sys
+
+from utf8_console import configure_utf8_output
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Verify PDF page count')
-    parser.add_argument('pdf_path', help='Path to PDF file')
-    parser.add_argument('--expected', type=int, default=1, help='Expected page count (default: 1)')
+    configure_utf8_output()
+    parser = argparse.ArgumentParser(description="Verify PDF page count")
+    parser.add_argument("pdf_path", help="Path to PDF file")
+    parser.add_argument("--expected", type=int, default=1, help="Expected page count (default: 1)")
     args = parser.parse_args()
 
     try:
@@ -34,5 +37,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

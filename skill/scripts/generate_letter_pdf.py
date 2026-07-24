@@ -22,12 +22,15 @@ Example body content:
     <p>Cordialement,<br/>Mouaad Sekkouri</p>
 """
 
-import sys
-import re
 import argparse
+import html
+import re
+import sys
 from pathlib import Path
 
-ACCENT_COLOR = '#7bd3e9'
+from utf8_console import configure_utf8_output
+
+ACCENT_COLOR = "#7bd3e9"
 
 LETTER_CSS = """
 @page {{
@@ -118,7 +121,7 @@ h1 {{
 
 def extract_header(cv_html):
     """Extract the <header>...</header> block from the CV HTML."""
-    match = re.search(r'<header>(.*?)</header>', cv_html, re.DOTALL)
+    match = re.search(r"<header>(.*?)</header>", cv_html, re.DOTALL)
     if not match:
         print("ERROR: Could not find <header> block in CV HTML", file=sys.stderr)
         sys.exit(1)
@@ -127,13 +130,17 @@ def extract_header(cv_html):
 
 def detect_github(cv_html):
     """Check if GitHub is present to determine contact format."""
-    return 'github.com/MouaadSek' in cv_html
+    return "github.com/MouaadSek" in cv_html
 
 
 def build_letter_html(header_content, body_content, company, location, date_str, has_github):
     """Build complete letter HTML with isolated CSS."""
-    contact_align = 'center' if has_github else 'left'
-    contact_size = '9.2pt' if has_github else '8.5pt'
+    escaped_company = html.escape(company)
+    escaped_location = html.escape(location)
+    escaped_date = html.escape(date_str)
+
+    contact_align = "center" if has_github else "left"
+    contact_size = "9.2pt" if has_github else "8.5pt"
 
     css = LETTER_CSS.format(
         accent=ACCENT_COLOR,
@@ -142,9 +149,9 @@ def build_letter_html(header_content, body_content, company, location, date_str,
     )
 
     # Replace any remaining #2980b9 in the header content
-    header_content = header_content.replace('#2980b9', ACCENT_COLOR)
+    header_content = header_content.replace("#2980b9", ACCENT_COLOR)
 
-    html = f"""<!DOCTYPE html>
+    document_html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8"/>
@@ -157,11 +164,11 @@ def build_letter_html(header_content, body_content, company, location, date_str,
 {header_content}
     </header>
 
-    <div class="date-block">{date_str}</div>
+    <div class="date-block">{escaped_date}</div>
 
     <div class="company-block">
-        <strong>{company}</strong><br/>
-        {location}
+        <strong>{escaped_company}</strong><br/>
+        {escaped_location}
     </div>
 
     <div class="letter-body">
@@ -169,13 +176,49 @@ def build_letter_html(header_content, body_content, company, location, date_str,
     </div>
 </body>
 </html>"""
-    return html
+    return document_html
+
+
+def generate_pdf_with_playwright(html_content, output_path):
+    """Render with Chromium when WeasyPrint's native libraries are unavailable."""
+
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.set_content(html_content, wait_until="networkidle")
+        page.emulate_media(media="print")
+        page.pdf(
+            path=str(output_path),
+            format="A4",
+            print_background=True,
+            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+            prefer_css_page_size=True,
+        )
+        browser.close()
 
 
 def generate_pdf(html_content, output_path):
-    """Generate PDF using WeasyPrint."""
-    from weasyprint import HTML
-    HTML(string=html_content).write_pdf(output_path)
+    """Generate PDF with WeasyPrint, or Chromium when native libraries are absent."""
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        generate_pdf_with_playwright(html_content, output)
+        return
+
+    try:
+        from weasyprint import HTML
+    except (ImportError, OSError) as exc:
+        print(
+            f"WARNING: WeasyPrint unavailable ({exc}); using Playwright.",
+            file=sys.stderr,
+        )
+        generate_pdf_with_playwright(html_content, output)
+        return
+
+    HTML(string=html_content).write_pdf(str(output))
 
 
 def verify_pages(pdf_path, expected=1):
@@ -193,41 +236,48 @@ def verify_pages(pdf_path, expected=1):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate motivation letter PDF')
-    parser.add_argument('--cv', required=True, help='Path to tailored CV HTML')
-    parser.add_argument('--body', required=True, help='Path to letter body HTML file')
-    parser.add_argument('--output', required=True, help='Output PDF path')
-    parser.add_argument('--company', required=True, help='Company name')
-    parser.add_argument('--location', required=True, help='Company location')
-    parser.add_argument('--date', required=True, help='Date string (e.g. "10 juin 2026")')
+    configure_utf8_output()
+    parser = argparse.ArgumentParser(description="Generate motivation letter PDF")
+    parser.add_argument("--cv", required=True, help="Path to tailored CV HTML")
+    parser.add_argument("--body", required=True, help="Path to letter body HTML file")
+    parser.add_argument("--output", required=True, help="Output PDF path")
+    parser.add_argument("--company", required=True, help="Company name")
+    parser.add_argument("--location", required=True, help="Company location")
+    parser.add_argument("--date", required=True, help='Date string (e.g. "10 juin 2026")')
     args = parser.parse_args()
 
-    cv_html = Path(args.cv).read_text(encoding='utf-8')
-    body_html = Path(args.body).read_text(encoding='utf-8')
+    cv_html = Path(args.cv).read_text(encoding="utf-8")
+    body_html = Path(args.body).read_text(encoding="utf-8")
+    if "\u2014" in html.unescape(body_html):
+        print(
+            "ERROR: Motivation letter contains an em dash; use a hyphen or en dash.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     header_content = extract_header(cv_html)
     has_github = detect_github(cv_html)
 
     letter_html = build_letter_html(
-        header_content, body_html,
-        args.company, args.location, args.date,
-        has_github
+        header_content, body_html, args.company, args.location, args.date, has_github
     )
 
     # Save intermediate HTML for debugging
-    html_path = args.output.replace('.pdf', '.html')
-    Path(html_path).write_text(letter_html, encoding='utf-8')
+    html_path = output_path.with_suffix(".html")
+    html_path.write_text(letter_html, encoding="utf-8")
     print(f"Letter HTML saved: {html_path}")
 
-    generate_pdf(letter_html, args.output)
-    print(f"Letter PDF generated: {args.output}")
+    generate_pdf(letter_html, output_path)
+    print(f"Letter PDF generated: {output_path}")
 
-    if verify_pages(args.output):
+    if verify_pages(output_path):
         print("✅ Page count: 1 — OK")
     else:
         print("❌ Page count check failed")
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

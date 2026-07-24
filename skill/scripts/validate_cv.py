@@ -9,15 +9,17 @@ Usage:
     python3 validate_cv.py <path_to_tailored_cv.html> [--original <path_to_base_cv.html>]
 """
 
-import sys
-import re
 import argparse
 import html
+import re
+import sys
+
+from utf8_console import configure_utf8_output
 
 
 def strip_html_tags(text):
     """Remove HTML tags but keep text content."""
-    return re.sub(r'<[^>]+>', '', text).strip()
+    return re.sub(r"<[^>]+>", "", text).strip()
 
 
 def decode_entities(text):
@@ -26,7 +28,7 @@ def decode_entities(text):
 
 
 def read_file(path):
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -41,15 +43,25 @@ def check_profil(content, original_content=None):
     length = len(text)
 
     if original_content:
-        orig_match = re.search(r'<section class="profile">\s*(.*?)\s*</section>', original_content, re.DOTALL)
+        orig_match = re.search(
+            r'<section class="profile">\s*(.*?)\s*</section>', original_content, re.DOTALL
+        )
         if orig_match:
             orig_text = decode_entities(strip_html_tags(orig_match.group(1).strip()))
             orig_len = len(orig_text)
             diff = length - orig_len
             if diff > 15:
-                return False, f"PROFIL: {length} chars (base: {orig_len}, +{diff}) — OVER base by more than 15"
+                return (
+                    False,
+                    f"PROFIL: {length} chars (base: {orig_len}, +{diff}) "
+                    "— OVER base by more than 15",
+                )
             elif diff < -15:
-                return False, f"PROFIL: {length} chars (base: {orig_len}, {diff}) — UNDER base by more than 15"
+                return (
+                    False,
+                    f"PROFIL: {length} chars (base: {orig_len}, {diff}) "
+                    "— UNDER base by more than 15",
+                )
             return True, f"PROFIL: {length} chars (base: {orig_len}, diff: {diff:+d}) — OK"
 
     # No original to compare — fallback to soft 350 ceiling
@@ -92,21 +104,24 @@ def check_project_count(content):
 def check_projects_title(content):
     """Rule 53: Section title must be exactly 'Projets Personnels'."""
     # Handle both plain text and HTML-entity versions
-    h2_tags = re.findall(r'<h2>(.*?)</h2>', content)
+    h2_tags = re.findall(r"<h2>(.*?)</h2>", content)
     for h2 in h2_tags:
         decoded = decode_entities(h2)
-        if 'Projet' in decoded or 'projet' in decoded:
-            if decoded.strip() == 'Projets Personnels':
+        if "Projet" in decoded or "projet" in decoded:
+            if decoded.strip() == "Projets Personnels":
                 return True, "PROJECTS-TITLE: 'Projets Personnels' — OK"
             else:
-                return False, f"PROJECTS-TITLE: '{decoded.strip()}' — should be 'Projets Personnels'"
+                return (
+                    False,
+                    f"PROJECTS-TITLE: '{decoded.strip()}' — should be 'Projets Personnels'",
+                )
     return False, "PROJECTS-TITLE: No projects section title found"
 
 
 def check_accent_color(content):
     """Rules 55-59: Must be #7bd3e9, not #2980b9."""
-    old_count = content.count('#2980b9')
-    new_count = content.count('#7bd3e9')
+    old_count = content.count("#2980b9")
+    new_count = content.count("#7bd3e9")
     if old_count > 0:
         return False, f"COLOR: #2980b9 still present ({old_count} occurrences) — swap not applied"
     if new_count == 0:
@@ -116,16 +131,16 @@ def check_accent_color(content):
 
 def check_english_level(content):
     """Rules 61-62: Must be C1 Courant, never C2."""
-    if 'C2 Courant' in content or 'C2&nbsp;Courant' in content:
+    if "C2 Courant" in content or "C2&nbsp;Courant" in content:
         return False, "ENGLISH: 'C2 Courant' found — must be 'C1 Courant'"
-    if 'C1 Courant' in content or 'C1&nbsp;Courant' in content:
+    if "C1 Courant" in content or "C1&nbsp;Courant" in content:
         return True, "ENGLISH: C1 Courant — OK"
     return False, "ENGLISH: Neither C1 nor C2 found — check languages line"
 
 
 def check_languages_line(content):
     """Rule 60: Fixed language line content."""
-    expected_parts = ['Bilingue', 'C1 Courant', 'Langue maternelle', 'A2']
+    expected_parts = ["Bilingue", "C1 Courant", "Langue maternelle", "A2"]
     # Also accept HTML-entity versions
     decoded = decode_entities(content)
     all_found = all(part in decoded for part in expected_parts)
@@ -137,21 +152,21 @@ def check_languages_line(content):
 
 def check_em_dashes(content):
     """Rule 63: No em dashes."""
-    if '\u2014' in content:
-        count = content.count('\u2014')
+    if "\u2014" in content:
+        count = content.count("\u2014")
         return False, f"DASHES: {count} em dash(es) found — use '-' or '–' only"
     return True, "DASHES: No em dashes — OK"
 
 
 def check_github_removed(content):
     """Rules 64-70: GitHub removed by default (unless DevSecOps/DevOps)."""
-    has_github = 'github.com/MouaadSek' in content
+    has_github = "github.com/MouaadSek" in content
     # Check if this looks like a DevSecOps/DevOps CV
     title_match = re.search(r'<div class="job-title">(.*?)</div>', content)
     is_devops = False
     if title_match:
         title = decode_entities(strip_html_tags(title_match.group(1))).lower()
-        is_devops = 'devsecops' in title or 'devops' in title
+        is_devops = "devsecops" in title or "devops" in title
     if has_github and not is_devops:
         return False, "GITHUB: Still present — should be removed (not DevSecOps/DevOps)"
     if has_github and is_devops:
@@ -163,19 +178,19 @@ def check_github_removed(content):
 
 def check_contact_format(content):
     """Rules 68-69: Contact block format depends on GitHub presence."""
-    has_github = 'github.com/MouaadSek' in content
+    has_github = "github.com/MouaadSek" in content
     if has_github:
         # Should be 9.2pt, centered, two lines
-        if '9.2pt' not in content:
+        if "9.2pt" not in content:
             return False, "CONTACT: GitHub present but font-size not 9.2pt"
         return True, "CONTACT: GitHub present, 9.2pt — OK"
     else:
         # Should be 8.5pt, contact left-aligned, but header-text stays centered
-        if '8.5pt' not in content:
+        if "8.5pt" not in content:
             return False, "CONTACT: GitHub removed but font-size not 8.5pt"
         # Verify header-text is still centered (not changed to left)
-        header_match = re.search(r'\.header-text\s*\{[^}]*text-align:\s*(\w+)', content)
-        if header_match and header_match.group(1) == 'left':
+        header_match = re.search(r"\.header-text\s*\{[^}]*text-align:\s*(\w+)", content)
+        if header_match and header_match.group(1) == "left":
             return False, "CONTACT: .header-text was changed to left — must stay center"
         return True, "CONTACT: GitHub removed, 8.5pt, header centered — OK"
 
@@ -186,9 +201,8 @@ def check_stage_subtitle(content):
     is_stage = False
     if title_match:
         title = decode_entities(strip_html_tags(title_match.group(1))).lower()
-        is_stage = 'stage' in title
-    has_subtitle = ('marrage anticip' in content or 
-                    'marrage anticip' in decode_entities(content))
+        is_stage = "stage" in title
+    has_subtitle = "marrage anticip" in content or "marrage anticip" in decode_entities(content)
     if is_stage and has_subtitle:
         return False, "STAGE-SUBTITLE: 'Démarrage anticipé' still present on stage CV"
     if not is_stage and has_subtitle:
@@ -200,9 +214,9 @@ def check_stage_subtitle(content):
 
 def check_line_count(content, original_content=None):
     """Rule 78: Line count should match original."""
-    lines = content.count('\n') + 1
+    lines = content.count("\n") + 1
     if original_content:
-        orig_lines = original_content.count('\n') + 1
+        orig_lines = original_content.count("\n") + 1
         if lines != orig_lines:
             return False, f"LINE-COUNT: {lines} lines (original: {orig_lines}) — MISMATCH"
         return True, f"LINE-COUNT: {lines} lines — matches original"
@@ -217,16 +231,17 @@ def check_localisation(content):
         return True, "LOCALISATION: Contact block not found — skipping"
     text = decode_entities(contact.group(1))
     # Common city+region patterns to flag
-    if re.search(r'Lille\s*/\s*Île-de-France', text):
+    if re.search(r"Lille\s*/\s*Île-de-France", text):
         return True, "LOCALISATION: OK (multi-region)"
     # This is informational — hard to validate automatically
     return True, "LOCALISATION: Present — manual review recommended"
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Validate tailored CV HTML')
-    parser.add_argument('cv_path', help='Path to tailored CV HTML')
-    parser.add_argument('--original', help='Path to original base CV for line count comparison')
+    configure_utf8_output()
+    parser = argparse.ArgumentParser(description="Validate tailored CV HTML")
+    parser.add_argument("cv_path", help="Path to tailored CV HTML")
+    parser.add_argument("--original", help="Path to original base CV for line count comparison")
     args = parser.parse_args()
 
     content = read_file(args.cv_path)
@@ -269,5 +284,5 @@ def main():
     sys.exit(0 if failed == 0 else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

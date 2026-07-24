@@ -122,19 +122,54 @@ def queue_cmd(
 
 @app.command("apply")
 def apply_cmd(application_id: int = typer.Argument(..., help="Application id.")) -> None:
-    """Approve an application: record human approval, move queued -> generating."""
+    """Approve an application and generate its tailored application documents."""
     conn = connect()
     try:
         if current_status(conn, application_id) != "queued":
             typer.secho("application is not in 'queued' state", fg=typer.colors.RED,
                         err=True)
             raise typer.Exit(1)
+
+        row = conn.execute(
+            "SELECT kind FROM applications WHERE id = ?", (application_id,)
+        ).fetchone()
+        is_cold_application = row["kind"] == "cold"
+
+        # Keep cold outreach independent from the optional CV/LLM toolchain.
+        if not is_cold_application:
+            from jobpilot.tailoring import TailoringError, generate_application
+
         # Constitution: nothing is sent/submitted without a recorded human approval.
         log_event(conn, application_id, "human_approved", {"via": "cli apply"})
         transition(conn, application_id, "generating")
+
+        typer.echo(f"application {application_id}: approved -> generating")
+        if is_cold_application:
+            return
+
+        try:
+            result = generate_application(conn, application_id)
+        except TailoringError as exc:
+            typer.secho(
+                f"application {application_id}: generation failed; "
+                f"returned to queued: {exc}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(1) from exc
     finally:
         conn.close()
-    typer.echo(f"application {application_id}: approved -> generating")
+
+    typer.echo(f"CV variant: {result.selection.label} ({result.selection.slug})")
+    typer.echo(f"Tailoring: {result.rationale}")
+    typer.echo(f"CV HTML: {result.cv_html_path}")
+    typer.echo(f"CV PDF: {result.cv_pdf_path}")
+    typer.echo(f"Motivation letter HTML: {result.letter_body_path}")
+    typer.echo(f"Motivation letter PDF: {result.letter_pdf_path}")
+    typer.echo(f"Tracker: {result.tracker_path}")
+    typer.echo("Tracker row:")
+    typer.echo(result.tracker_row)
+    typer.echo(f"application {application_id}: ready for human review")
 
 
 @app.command("skip")

@@ -296,9 +296,7 @@ def test_tailoring_preserves_entity_encoding() -> None:
 
 
 def test_tailoring_rejects_profile_phrase_outside_three_to_five_words() -> None:
-    original = (TEMPLATES / "Mouaad_Sekkouri_-_SOC__Alternance.html").read_text(
-        encoding="utf-8"
-    )
+    original = (TEMPLATES / "Mouaad_Sekkouri_-_SOC__Alternance.html").read_text(encoding="utf-8")
     plan = _plan_for(original, profile_domain_phrase="SOC")
     selection = pick_variant("SIEM", title="Analyste SOC")
 
@@ -345,8 +343,9 @@ class _Toolchain:
         assert original_path.exists()
         assert compare_original is True
 
-    def check_orphan_lines(self, tailored_path: Path) -> None:
+    def check_orphan_lines(self, tailored_path: Path, original_path: Path) -> None:
         self.calls.append("orphans")
+        assert original_path.exists()
         if self.fail_orphans:
             raise TailoringError("orphan quality gate failed")
 
@@ -382,9 +381,7 @@ class _Toolchain:
 
 
 def _application(db: sqlite3.Connection) -> int:
-    source_id = db.execute(
-        "SELECT id FROM sources WHERE name='france_travail'"
-    ).fetchone()["id"]
+    source_id = db.execute("SELECT id FROM sources WHERE name='france_travail'").fetchone()["id"]
     company_id = db.execute("INSERT INTO companies (name) VALUES ('Acme')").lastrowid
     description = "Analyser les alertes SIEM et répondre aux incidents."
     digest = hashlib.sha256(b"tailoring-test").hexdigest()
@@ -456,9 +453,17 @@ def test_generation_failure_returns_application_to_queue(
         )
 
     assert current_status(db, application_id) == "queued"
+    application_dir = tmp_path / str(application_id)
+    assert application_dir.exists()
+    assert list(application_dir.iterdir()) == []
+    stored = db.execute(
+        "SELECT cv_pdf_path, letter_pdf_path FROM applications WHERE id=?",
+        (application_id,),
+    ).fetchone()
+    assert stored["cv_pdf_path"] is None
+    assert stored["letter_pdf_path"] is None
     event = db.execute(
-        "SELECT event, detail FROM events WHERE application_id=? "
-        "ORDER BY id DESC LIMIT 1",
+        "SELECT event, detail FROM events WHERE application_id=? ORDER BY id DESC LIMIT 1",
         (application_id,),
     ).fetchone()
     assert event["event"] == "generation_failed"
