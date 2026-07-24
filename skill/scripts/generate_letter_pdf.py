@@ -139,6 +139,9 @@ def build_letter_html(header_content, body_content, company, location, date_str,
     escaped_location = html.escape(location)
     escaped_date = html.escape(date_str)
 
+    # Unknown company: omit the addressee line entirely, keep the city if known.
+    company_line = f"<strong>{escaped_company}</strong><br/>\n        " if company.strip() else ""
+
     contact_align = "center" if has_github else "left"
     contact_size = "9.2pt" if has_github else "8.5pt"
 
@@ -167,8 +170,7 @@ def build_letter_html(header_content, body_content, company, location, date_str,
     <div class="date-block">{escaped_date}</div>
 
     <div class="company-block">
-        <strong>{escaped_company}</strong><br/>
-        {escaped_location}
+        {company_line}{escaped_location}
     </div>
 
     <div class="letter-body">

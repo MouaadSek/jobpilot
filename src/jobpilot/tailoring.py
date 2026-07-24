@@ -69,6 +69,9 @@ class OfferContext:
     city: str
     url: str
     source: str
+    # False when the offer has no named company; the letter then addresses
+    # « votre entreprise » and the letter header omits the company line.
+    company_known: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -626,6 +629,27 @@ def _contains_any(normalized_text: str, signals: Sequence[str]) -> bool:
     return any(_contains(normalized_text, signal) for signal in signals)
 
 
+# French elision: « de » contracts to « d' » before a vowel or mute h. Job titles
+# almost never start with an aspirated h, so we elide on any leading h.
+_ELISION_VOWELS = frozenset("aeiouyh")
+
+
+def french_de_elision(noun: str) -> str:
+    """Return « de <noun> » or « d'<noun> », applying French elision.
+
+    Elides before a vowel or mute h (Expert -> d'Expert, Ingénieur -> d'Ingénieur),
+    including accented capitals (École -> d'École); keeps « de » before a consonant
+    (Consultant -> de Consultant). Pure and reusable by defaults and validation.
+    """
+    stripped = noun.strip()
+    if not stripped:
+        return "de"
+    first = unicodedata.normalize("NFKD", stripped[0])[0].lower()
+    if first in _ELISION_VOWELS:
+        return f"d'{stripped}"
+    return f"de {stripped}"
+
+
 def _route_slug(missions: str, title: str) -> str:
     mission_text = _normalize(missions)
     title_text = _normalize(title)
@@ -796,6 +820,18 @@ def _replace_required(
 def _validate_letter_body(body: str) -> None:
     if "—" in body:
         raise TailoringError("motivation letter must not contain em dashes")
+    if re.search(r"\bEntreprise\b", body):
+        raise TailoringError(
+            "letter body must not contain the placeholder 'Entreprise'; "
+            "address an unknown company as « votre entreprise »"
+        )
+    poste_de = re.search(r"poste\s+de\s+([A-Za-zÀ-ÿ])", body, re.IGNORECASE)
+    if poste_de:
+        first = unicodedata.normalize("NFKD", poste_de.group(1))[0].lower()
+        if first in _ELISION_VOWELS:
+            raise TailoringError(
+                "letter must elide « le poste d'... » before a vowel or mute h"
+            )
     if re.search(r"<\s*(?:html|head|body|script|style)\b", body, re.IGNORECASE):
         raise TailoringError("letter body must contain paragraphs only, not an HTML wrapper")
     tags = re.findall(r"<[^>]+>", body)
@@ -1203,6 +1239,10 @@ Rules:
 - Include 1 or 2 relevant projects, AZ-900, M1 Cybersécurité at Supinfo.
 - Match stated duration exactly. Never name Baifall Dream's end client.
 - Never write "en cours" for certifications and never use an em dash.
+- If the company is "votre entreprise" (unknown), address it as « votre entreprise »
+  or « votre structure »; never write the placeholder word "Entreprise".
+- Apply French elision: write « le poste d'X » (not « le poste de X ») when the role
+  starts with a vowel or mute h (d'Expert, d'Ingénieur, d'Analyste).
 - End with <p>Cordialement,<br/>Mouaad Sekkouri</p>.
 """.strip()
 
@@ -1326,10 +1366,12 @@ def _offer_start(description: str) -> str:
 
 
 def _default_letter(offer: OfferContext) -> str:
+    destinataire = html.escape(offer.company) if offer.company_known else "votre entreprise"
+    poste = html.escape(f"le poste {french_de_elision(offer.title)}", quote=False)
     return (
         "<p>Madame, Monsieur,</p>"
-        f"<p>Je souhaite rejoindre {html.escape(offer.company)} pour le poste de "
-        f"{html.escape(offer.title)}, dont les missions correspondent directement à "
+        f"<p>Je souhaite rejoindre {destinataire} pour {poste}, "
+        "dont les missions correspondent directement à "
         "mon projet professionnel.</p>"
         "<p>Mon stage actuel chez Baifall Dream me permet de cadrer et développer une "
         "plateforme d'e-facturation, avec une attention concrète aux exigences de "
@@ -1590,9 +1632,11 @@ def _load_offer(db: sqlite3.Connection, application_id: int) -> OfferContext:
         raise TailoringError(f"no application with id={application_id}")
     if row["kind"] != "offer" or not row["title"]:
         raise TailoringError("CV generation is only available for offer applications")
+    company_name = row["company"]
     return OfferContext(
         title=row["title"],
-        company=row["company"] or "Entreprise",
+        company=company_name or "votre entreprise",
+        company_known=bool(company_name),
         description=row["description"] or "",
         contract_type=row["contract_type"] or "alternance",
         duration_months=row["duration_months"],
@@ -1710,7 +1754,8 @@ def generate_application(
             cv_html_path,
             letter_body_path,
             letter_pdf_path,
-            company=offer.company,
+            # Unknown company: pass empty so the letter header omits the line.
+            company=offer.company if offer.company_known else "",
             location=offer.city,
             date=_french_date(),
         )
