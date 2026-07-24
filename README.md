@@ -65,11 +65,31 @@ All secrets live in `.env` (gitignored); `.env.example` documents every key.
 | `JOBPILOT_LOG_DIR` | Override the log directory (default `logs/`) |
 | `JOBPILOT_EMBED_MODEL` | Override the embedding model |
 | `JOBPILOT_OUTPUT_DIR` | Tailored HTML/PDF/tracker output (default `output/applications`) |
-| `ANTHROPIC_API_KEY` | Enables automatic CV tailoring; absent means interactive mode |
+| `TAILORING_PROVIDER` | `auto` (default), `anthropic`, `openai`, or `interactive` |
+| `ANTHROPIC_API_KEY` | Anthropic tailoring credential |
 | `ANTHROPIC_MODEL` | Override the pinned Claude Haiku 4.5 model |
+| `OPENAI_API_KEY` | OpenAI or OpenAI-compatible tailoring credential |
+| `OPENAI_MODEL` | Model name (default `gpt-5.4-mini`) |
+| `OPENAI_BASE_URL` | Chat Completions API base (default `https://api.openai.com/v1`) |
 
 Which sources run is controlled by `config/sources.yaml`; ATS targets by
 `config/targets.yaml`; CV variants by `config/variants.yaml`.
+
+## LLM providers
+
+CV tailoring supports three modes through `TAILORING_PROVIDER`:
+
+- `anthropic` uses `ANTHROPIC_API_KEY`.
+- `openai` uses `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL`.
+- `interactive` prompts in the terminal and ignores configured API keys.
+
+The default `auto` mode tries Anthropic first, then OpenAI, then interactive
+prompts. Choosing `anthropic` or `openai` explicitly without its API key fails
+with a clear configuration error instead of silently falling back.
+
+`OPENAI_BASE_URL` may point to any compatible hosted or local Chat Completions
+endpoint, including Ollama or LM Studio. Every provider feeds the same guarded
+tailoring and document-validation pipeline; nothing is auto-sent or submitted.
 
 ## Pending setup
 

@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 
 # Project root = two levels up from this file (src/jobpilot/config.py -> project root).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 # Load .env from the project root once, without overriding real environment vars.
 load_dotenv(PROJECT_ROOT / ".env", override=False)
@@ -62,8 +64,12 @@ class Settings:
     # Phase 2 application artifacts and optional automated tailoring.
     # Defaults keep direct Settings(...) construction in tests/backends compatible.
     output_dir: Path = PROJECT_ROOT / "output" / "applications"
+    tailoring_provider: str = "auto"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5-20251001"
+    openai_api_key: str | None = None
+    openai_model: str = DEFAULT_OPENAI_MODEL
+    openai_base_url: str = DEFAULT_OPENAI_BASE_URL
 
     def require_gmail_credentials(self) -> tuple[str, str]:
         if not self.gmail_address or not self.gmail_app_password:
@@ -118,6 +124,10 @@ def get_settings() -> Settings:
         wttj_api_key=os.getenv("WTTJ_API_KEY") or None,
         wttj_index=os.getenv("WTTJ_INDEX", "wttj_jobs_production_c3_search"),
         output_dir=_path("JOBPILOT_OUTPUT_DIR", "output/applications"),
+        tailoring_provider=os.getenv("TAILORING_PROVIDER", "auto"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+        openai_api_key=os.getenv("OPENAI_API_KEY") or None,
+        openai_model=os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        openai_base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
     )

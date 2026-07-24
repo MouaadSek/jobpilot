@@ -23,7 +23,12 @@ from typing import Any, Protocol
 
 import httpx
 
-from jobpilot.config import PROJECT_ROOT, get_settings
+from jobpilot.config import (
+    DEFAULT_OPENAI_BASE_URL,
+    DEFAULT_OPENAI_MODEL,
+    PROJECT_ROOT,
+    get_settings,
+)
 from jobpilot.logging_conf import get_logger
 from jobpilot.state import current_status, log_event, transition
 
@@ -32,6 +37,26 @@ log = get_logger("tailoring")
 
 class TailoringError(RuntimeError):
     """Raised when a plan, quality gate, or document generation step fails."""
+
+
+class TailoringConfigurationError(TailoringError):
+    """Raised when the selected tailoring provider is not configured."""
+
+
+class TailoringProviderError(TailoringError):
+    """Raised when an external tailoring provider request fails."""
+
+
+class TailoringAuthenticationError(TailoringProviderError):
+    """Raised when a tailoring provider rejects its API credentials."""
+
+
+class TailoringRateLimitError(TailoringProviderError):
+    """Raised when a tailoring provider rate-limits a request."""
+
+
+class TailoringResponseError(TailoringProviderError):
+    """Raised when a provider returns an unusable response."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1146,9 +1171,9 @@ def _json_object(raw: str) -> Mapping[str, Any]:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise TailoringError(f"Anthropic returned invalid JSON: {exc}") from exc
+        raise TailoringResponseError(f"tailoring adviser returned invalid JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise TailoringError("Anthropic tailoring response must be a JSON object")
+        raise TailoringResponseError("tailoring adviser response must be a JSON object")
     return data
 
 
@@ -1205,6 +1230,16 @@ Rules:
 - Never write "en cours" for certifications and never use an em dash.
 - End with <p>Cordialement,<br/>Mouaad Sekkouri</p>.
 """.strip()
+
+
+def _redact_secrets(detail: str, *secrets: str | None) -> str:
+    """Remove configured API credentials from a user-visible error."""
+
+    redacted = detail
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
 
 
 class AnthropicTailoringAdvisor:
@@ -1280,6 +1315,102 @@ class AnthropicTailoringAdvisor:
         return TailoringPlan.from_mapping(_json_object("\n".join(text_blocks)))
 
 
+class OpenAITailoringAdvisor:
+    """OpenAI-compatible Chat Completions adviser."""
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = DEFAULT_OPENAI_MODEL,
+        base_url: str = DEFAULT_OPENAI_BASE_URL,
+        timeout: float = 90.0,
+        client: httpx.Client | None = None,
+    ) -> None:
+        if not api_key:
+            raise ValueError("OpenAI API key is required")
+        if not model.strip():
+            raise ValueError("OpenAI model is required")
+        normalized_base_url = base_url.strip().rstrip("/")
+        if not normalized_base_url:
+            raise ValueError("OpenAI base URL is required")
+        self.api_key = api_key
+        self.model = model
+        self.api_url = f"{normalized_base_url}/chat/completions"
+        self.timeout = timeout
+        self.client = client
+
+    def advise(
+        self,
+        offer: OfferContext,
+        selection: VariantSelection,
+        template: TemplateContext,
+    ) -> TailoringPlan:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _advisor_prompt(offer, selection, template),
+                }
+            ],
+            "response_format": {"type": "json_object"},
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "content-type": "application/json",
+        }
+        try:
+            if self.client is not None:
+                response = self.client.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            else:
+                response = httpx.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout,
+                )
+        except httpx.HTTPError as exc:
+            detail = _redact_secrets(str(exc), self.api_key)
+            raise TailoringProviderError(
+                f"OpenAI tailoring request failed: {detail}"
+            ) from exc
+
+        if response.status_code == 401:
+            raise TailoringAuthenticationError("OpenAI authentication failed (401)")
+        if response.status_code == 429:
+            raise TailoringRateLimitError("OpenAI rate limit exceeded (429)")
+        try:
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            detail = _redact_secrets(str(exc), self.api_key)
+            raise TailoringProviderError(
+                f"OpenAI tailoring request failed: {detail}"
+            ) from exc
+        try:
+            body = response.json()
+        except ValueError as exc:
+            detail = _redact_secrets(str(exc), self.api_key)
+            raise TailoringResponseError(
+                f"OpenAI returned malformed response JSON: {detail}"
+            ) from exc
+
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise TailoringResponseError("OpenAI tailoring response contained no choices")
+        first_choice = choices[0]
+        message = first_choice.get("message") if isinstance(first_choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise TailoringResponseError("OpenAI tailoring response contained no text")
+        return TailoringPlan.from_mapping(_json_object(content))
+
+
 def _infer_region(city: str) -> str:
     normalized = _normalize(city)
     ile_de_france = (
@@ -1348,7 +1479,7 @@ def _default_letter(offer: OfferContext) -> str:
 
 
 class InteractiveTailoringAdvisor:
-    """Terminal prompts used when no Anthropic key is configured."""
+    """Terminal prompts used when interactive tailoring is selected."""
 
     def __init__(
         self,
@@ -1369,7 +1500,7 @@ class InteractiveTailoringAdvisor:
         selection: VariantSelection,
         template: TemplateContext,
     ) -> TailoringPlan:
-        self.echo("No ANTHROPIC_API_KEY found; entering interactive tailoring mode.")
+        self.echo("Entering interactive tailoring mode.")
         start = _offer_start(offer.description)
         if selection.contract_type == "stage":
             duration = str(offer.duration_months or "3 à 6")
@@ -1436,15 +1567,51 @@ class InteractiveTailoringAdvisor:
 
 
 def build_advisor() -> TailoringAdvisor:
-    """Select Anthropic auto mode or interactive mode from settings."""
+    """Select the configured provider without silently bypassing missing keys."""
 
     settings = get_settings()
-    if settings.anthropic_api_key:
+    provider = settings.tailoring_provider.strip().casefold()
+    allowed = {"auto", "anthropic", "openai", "interactive"}
+    if provider not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise TailoringConfigurationError(
+            f"TAILORING_PROVIDER must be one of: {choices}"
+        )
+
+    if provider == "auto":
+        if settings.anthropic_api_key:
+            provider = "anthropic"
+        elif settings.openai_api_key:
+            provider = "openai"
+        else:
+            provider = "interactive"
+
+    if provider == "interactive":
+        return InteractiveTailoringAdvisor()
+
+    if provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise TailoringConfigurationError(
+                "TAILORING_PROVIDER=anthropic requires ANTHROPIC_API_KEY"
+            )
         return AnthropicTailoringAdvisor(
             settings.anthropic_api_key,
             model=settings.anthropic_model,
         )
-    return InteractiveTailoringAdvisor()
+
+    if not settings.openai_api_key:
+        raise TailoringConfigurationError(
+            "TAILORING_PROVIDER=openai requires OPENAI_API_KEY"
+        )
+    if not settings.openai_model.strip():
+        raise TailoringConfigurationError("OPENAI_MODEL must not be empty")
+    if not settings.openai_base_url.strip():
+        raise TailoringConfigurationError("OPENAI_BASE_URL must not be empty")
+    return OpenAITailoringAdvisor(
+        settings.openai_api_key,
+        model=settings.openai_model,
+        base_url=settings.openai_base_url,
+    )
 
 
 class ScriptToolchain:
@@ -1647,7 +1814,6 @@ def generate_application(
 
     if current_status(db, application_id) != "generating":
         raise TailoringError("application must be in 'generating' state")
-    chosen_advisor = advisor or build_advisor()
     chosen_toolchain = toolchain or ScriptToolchain()
     settings = get_settings()
     root = Path(output_root or settings.output_dir)
@@ -1668,6 +1834,7 @@ def generate_application(
         tracker_path,
     )
     try:
+        chosen_advisor = advisor or build_advisor()
         application_dir.mkdir(parents=True, exist_ok=True)
         for artifact_path in artifact_paths:
             try:
@@ -1768,9 +1935,11 @@ def generate_application(
                 artifact_path.unlink(missing_ok=True)
             except OSError:
                 log.warning("could not remove failed artifact %s", artifact_path)
-        error_detail = str(exc)
-        if settings.anthropic_api_key:
-            error_detail = error_detail.replace(settings.anthropic_api_key, "[REDACTED]")
+        error_detail = _redact_secrets(
+            str(exc),
+            settings.anthropic_api_key,
+            settings.openai_api_key,
+        )
         if current_status(db, application_id) == "generating":
             db.execute(
                 "UPDATE applications SET cv_pdf_path=NULL, letter_pdf_path=NULL WHERE id=?",
