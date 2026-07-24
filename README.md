@@ -168,3 +168,10 @@ then remove only that scheduled task with:
 pytest        # in-memory SQLite for all DB tests
 ruff check .
 ```
+
+### CI
+
+GitHub Actions runs the lightweight test suite and Ruff on Python 3.11 for
+Ubuntu and Windows. CI installs only the explicit non-ML dependencies, guards
+the frozen matcher on pull requests, and runs an advisory dependency audit on
+Ubuntu.
