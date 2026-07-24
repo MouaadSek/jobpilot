@@ -283,6 +283,68 @@ def test_file_endpoint_rejects_traversal_absolute_and_unknown_names(
     assert rejected.status_code in {400, 404}
 
 
+def test_status_tabs_filter_the_table_by_status(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    with APPLICATION_LOCK:
+        queued_id = _offer_application(
+            dashboard_db, title="Poste en file", score=0.80, suffix="tab-queued"
+        )
+        applied_id = _offer_application(
+            dashboard_db,
+            title="Poste envoyé",
+            score=0.90,
+            status="applied",
+            suffix="tab-applied",
+        )
+
+    with _client(dashboard_db, tmp_path) as client:
+        default_view = client.get("/")
+        applied_view = client.get("/?status=applied")
+        unknown_tab = client.get("/?status=bogus")
+
+    # Default view is the queue: only the queued application is listed.
+    assert "Poste en file" in default_view.text
+    assert "Poste envoyé" not in default_view.text
+    assert f"/application/{queued_id}" in default_view.text
+
+    # The applied tab shows only sent applications.
+    assert "Poste envoyé" in applied_view.text
+    assert "Poste en file" not in applied_view.text
+    assert f"/application/{applied_id}" in applied_view.text
+    assert 'href="/?status=applied"' in applied_view.text
+
+    assert unknown_tab.status_code == 404
+
+
+def test_detail_hides_approve_for_non_queued_application(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    with APPLICATION_LOCK:
+        queued_id = _offer_application(
+            dashboard_db, title="En file", score=0.70, suffix="approve-shown"
+        )
+        applied_id = _offer_application(
+            dashboard_db,
+            title="Déjà envoyé",
+            score=0.70,
+            status="applied",
+            suffix="approve-hidden",
+        )
+
+    with _client(dashboard_db, tmp_path) as client:
+        queued_detail = client.get(f"/application/{queued_id}")
+        applied_detail = client.get(f"/application/{applied_id}")
+
+    assert f"/application/{queued_id}/approve" in queued_detail.text
+    assert f"/application/{queued_id}/skip" in queued_detail.text
+    # Non-queued: no approve button and no skip (illegal from applied).
+    assert f"/application/{applied_id}/approve" not in applied_detail.text
+    assert f"/application/{applied_id}/skip" not in applied_detail.text
+
+
 def test_approve_wrong_state_returns_clean_conflict(
     dashboard_db: sqlite3.Connection,
     tmp_path: Path,

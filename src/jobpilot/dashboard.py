@@ -22,10 +22,11 @@ from jobpilot.apply_flow import (
 from jobpilot.config import get_settings
 from jobpilot.db import connect
 from jobpilot.review import (
+    TAB_STATUSES,
     application_detail,
+    applications_by_status,
     event_history,
-    queued_applications,
-    status_counts,
+    status_tabs,
 )
 from jobpilot.state import IllegalTransition, transition
 
@@ -40,6 +41,17 @@ ALLOWED_ARTIFACTS = frozenset(
         "tracker.tsv",
     }
 )
+
+
+def _ymd(value: Any) -> str:
+    """Render an ISO timestamp as YYYY-MM-DD; pass other values through as text."""
+
+    if value is None:
+        return ""
+    text = str(value)
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    return text
 
 
 def database_connection() -> Iterator[sqlite3.Connection]:
@@ -90,6 +102,7 @@ def create_app(
 
     app = FastAPI(title="JobPilot Review Dashboard", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)
 
     def detail_response(
@@ -126,14 +139,21 @@ def create_app(
         )
 
     @app.get("/", response_class=HTMLResponse)
-    def queue_page(request: Request, db: Database) -> HTMLResponse:
+    def queue_page(
+        request: Request,
+        db: Database,
+        status: str = "queued",
+    ) -> HTMLResponse:
+        if status not in TAB_STATUSES:
+            raise HTTPException(status_code=404, detail="unknown status tab")
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
             context={
                 "view": "queue",
-                "applications": queued_applications(db),
-                "status_counts": status_counts(db),
+                "status": status,
+                "applications": applications_by_status(db, status),
+                "tabs": status_tabs(db, status),
                 "error": None,
             },
         )
