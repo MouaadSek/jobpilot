@@ -65,6 +65,34 @@ class Settings:
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
+    # SMTP for sending an application by email (Gmail app password recommended).
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_name: str = "Mouaad Sekkouri"
+
+    def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
+        if not self.smtp_username or not self.smtp_password:
+            raise MissingCredentialError(
+                "SMTP credentials missing. Set SMTP_USERNAME and SMTP_PASSWORD in "
+                ".env (for Gmail, create an App Password; requires 2FA). See "
+                ".env.example."
+            )
+        return (
+            self.smtp_host,
+            self.smtp_port,
+            self.smtp_username,
+            self.smtp_password,
+            self.smtp_from_name,
+        )
+
+    def redact(self, text: str) -> str:
+        """Remove the SMTP password from error/log text, like the API keys."""
+        if self.smtp_password:
+            text = text.replace(self.smtp_password, "[REDACTED]")
+        return text
+
     def require_gmail_credentials(self) -> tuple[str, str]:
         if not self.gmail_address or not self.gmail_app_password:
             raise MissingCredentialError(
@@ -120,4 +148,9 @@ def get_settings() -> Settings:
         output_dir=_path("JOBPILOT_OUTPUT_DIR", "output/applications"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        smtp_username=os.getenv("SMTP_USERNAME") or None,
+        smtp_password=os.getenv("SMTP_PASSWORD") or None,
+        smtp_from_name=os.getenv("SMTP_FROM_NAME", "Mouaad Sekkouri"),
     )

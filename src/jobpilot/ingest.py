@@ -72,13 +72,15 @@ def _insert_offer(
         "INSERT OR IGNORE INTO offers "
         "(source_id, company_id, external_id, url, title, description, "
         " contract_type, duration_months, city, remote_policy, salary_min, "
-        " salary_max, stack_tags, posted_at, scraped_at, content_hash) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " salary_max, stack_tags, posted_at, scraped_at, content_hash, "
+        " contact_email) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             sid, company_id, offer.external_id, offer.url, offer.title,
             offer.description, offer.contract_type, offer.duration_months,
             offer.city, offer.remote_policy, offer.salary_min, offer.salary_max,
             offer.stack_tags_json, offer.posted_at, _utc_now(), offer.hash,
+            offer.contact_email,
         ),
     )
     return cur.rowcount > 0

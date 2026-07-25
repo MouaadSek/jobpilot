@@ -83,6 +83,7 @@ def application_detail(
         "SELECT a.id, a.kind, a.status, a.cv_pdf_path, a.letter_pdf_path, "
         "       a.last_event_at, o.title, o.description, o.city, "
         "       o.contract_type, o.url, o.posted_at, o.remote_policy, "
+        "       o.contact_email, "
         "       c.name AS company, s.name AS source, "
         "       m.hard_filter_pass, m.hard_filter_reason, "
         "       m.semantic_score, m.keyword_score, m.bonus_score, "

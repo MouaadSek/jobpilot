@@ -104,6 +104,8 @@ jobpilot score                   # score unscored offers; queue those above thre
 jobpilot queue                   # list queued applications, highest score first
 jobpilot apply <id>              # approve offer, tailor docs, queue them for human review
 jobpilot skip <id>               # pass: queued -> skipped
+jobpilot send <id>               # show the email for a ready app, confirm (y/N), send
+jobpilot mark-sent <id>          # record an externally-submitted app as sent (ready -> applied)
 jobpilot dashboard --port 8787   # local review UI on 127.0.0.1
 jobpilot stats                   # snapshot: offers, companies, by-contract, applications
 jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
@@ -142,11 +144,29 @@ virtual environment, run it directly:
 .venv\Scripts\jobpilot.exe dashboard --port 8787
 ```
 
-Then open <http://127.0.0.1:8787>. The dashboard lists the scored review queue,
-shows offer and event details, and lets you approve or skip through the same
-state-machine paths as the CLI. Approval generates the CV, motivation letter,
-and tracker row synchronously for local review. It never sends or submits an
-application, and the server always binds to loopback only.
+Then open <http://127.0.0.1:8787>. The status chips at the top are clickable
+tabs (queued / generating / ready / applied / skipped) that filter the table to
+each status; the queue is the default view. The dashboard shows offer and event
+details and lets you approve or skip through the same state-machine paths as the
+CLI. Approval generates the CV, motivation letter, and tracker row synchronously
+for local review. The server always binds to loopback only.
+
+### Sending an application by email
+
+A `ready` application whose offer carries a contact email can be sent from the
+dashboard in two explicit steps: **Préparer l'envoi par email** opens a
+confirmation page showing the recipient, subject, the two PDF attachments, and an
+editable message body; **Confirmer et envoyer** performs the SMTP send (STARTTLS,
+`cv.pdf` + `motivation_letter.pdf` attached), transitions `ready -> applied`, and
+logs an `application_sent` event. The CLI equivalent is `jobpilot send <id>`.
+
+Sending shares the cold-mail rails: the global ≤25 sends/day counter
+(applications + cold mail combined) and the suppression list are checked first,
+and a blocked send is refused with an explanation while the application stays
+`ready`. For offers without a contact email, **Marquer comme envoyée**
+(`jobpilot mark-sent <id>`) records an externally-submitted application in the
+same funnel. Configure SMTP via `SMTP_USERNAME` / `SMTP_PASSWORD` (Gmail app
+password); the password is redacted from all logs and errors.
 
 > Screenshot placeholder: review queue and generated-document detail view.
 

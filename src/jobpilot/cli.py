@@ -183,6 +183,79 @@ def skip_cmd(application_id: int = typer.Argument(..., help="Application id.")) 
     typer.echo(f"application {application_id}: skipped")
 
 
+@app.command("send")
+def send_cmd(
+    application_id: int = typer.Argument(..., help="Ready application id."),
+) -> None:
+    """Show the email that would be sent for a ready application, then confirm (y/N)."""
+    from jobpilot.mailer import (
+        MailerError,
+        SendBlocked,
+        prepare_application_email,
+        send_application_email,
+    )
+    from jobpilot.state import current_status
+
+    conn = connect()
+    try:
+        try:
+            status = current_status(conn, application_id)
+        except ValueError:
+            typer.secho(f"no application with id={application_id}",
+                        fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from None
+        if status != "ready":
+            typer.secho(f"application {application_id} is not in 'ready' state "
+                        f"(status={status})", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        try:
+            prep = prepare_application_email(conn, application_id)
+        except MailerError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+
+        typer.echo(f"To:      {prep.recipient or '(none)'}")
+        typer.echo(f"Subject: {prep.subject}")
+        typer.echo("Attach:  " + ", ".join(p.name for p in prep.attachments))
+        typer.echo("\n" + prep.body + "\n")
+        if prep.blocked_reason:
+            typer.secho(f"blocked: {prep.blocked_reason}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        if not typer.confirm("Send this email?", default=False):
+            typer.echo("aborted")
+            return
+        try:
+            message_id = send_application_email(conn, application_id)
+        except SendBlocked as exc:
+            typer.secho(f"blocked: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+        except MailerError as exc:
+            typer.secho(f"send failed: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+    finally:
+        conn.close()
+    typer.echo(f"application {application_id}: sent ({message_id})")
+
+
+@app.command("mark-sent")
+def mark_sent_cmd(
+    application_id: int = typer.Argument(..., help="Ready application id."),
+) -> None:
+    """Record an externally-submitted application as sent (ready -> applied)."""
+    from jobpilot.mailer import MailerError, mark_application_sent
+
+    conn = connect()
+    try:
+        try:
+            mark_application_sent(conn, application_id)
+        except (ValueError, MailerError) as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+    finally:
+        conn.close()
+    typer.echo(f"application {application_id}: marked sent")
+
+
 @app.command("init-profile")
 def init_profile_cmd(
     variants_file: str = typer.Option(

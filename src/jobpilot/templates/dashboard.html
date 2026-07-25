@@ -123,7 +123,27 @@
     }
     button:hover { background: var(--primary-dark); }
     button.secondary { background: #566174; }
-    button:disabled { cursor: wait; opacity: .65; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .btn {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 10px 15px;
+      background: var(--primary);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 650;
+    }
+    .btn:hover { background: var(--primary-dark); }
+    .btn.secondary { background: #566174; }
+    .body-edit {
+      width: 100%;
+      font: inherit;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      margin-bottom: 8px;
+      resize: vertical;
+    }
     .error {
       margin: 16px 0;
       border: 1px solid #e6b1b1;
@@ -224,6 +244,34 @@
           <div class="empty">No applications with status “{{ status }}”.</div>
         {% endif %}
       </section>
+    {% elif view == "email" %}
+      <section class="panel">
+        <a class="back" href="/application/{{ application.id }}">← Application</a>
+        <h2>Confirmer l'envoi par email</h2>
+        <div class="muted">{{ application.title or "Application" }} — {{ application.company or "Unknown company" }}</div>
+
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+        <dl class="meta">
+          <div><dt>Destinataire</dt><dd>{{ prep.recipient or "—" }}</dd></div>
+          <div><dt>Objet</dt><dd>{{ prep.subject }}</dd></div>
+        </dl>
+
+        <h3>Pièces jointes</h3>
+        <ul>
+          {% for name in prep.attachments %}<li>{{ name }}</li>{% endfor %}
+        </ul>
+
+        <form method="post" action="/application/{{ application.id }}/email/send" data-busy>
+          <h3>Message</h3>
+          <textarea name="body" rows="14" class="body-edit">{{ prep.body }}</textarea>
+          <div class="actions">
+            <button type="submit" data-label="Confirmer et envoyer"{% if not can_send %} disabled{% endif %}>Confirmer et envoyer</button>
+            <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+          </div>
+          {% if not can_send %}<p class="muted">L'envoi est bloqué : {{ error }}.</p>{% endif %}
+        </form>
+      </section>
     {% else %}
       <section class="panel">
         <h2>{{ application.title or "Application" }}</h2>
@@ -247,6 +295,15 @@
             </form>
             <form method="post" action="/application/{{ application.id }}/skip" data-busy>
               <button class="secondary" type="submit" data-label="Skip">Skip</button>
+            </form>
+          </div>
+        {% elif application.status == "ready" %}
+          <div class="actions">
+            {% if application.contact_email %}
+              <a class="btn" href="/application/{{ application.id }}/email">Préparer l'envoi par email</a>
+            {% endif %}
+            <form method="post" action="/application/{{ application.id }}/mark-sent" data-busy>
+              <button class="secondary" type="submit" data-label="Marquer comme envoyée">Marquer comme envoyée</button>
             </form>
           </div>
         {% endif %}

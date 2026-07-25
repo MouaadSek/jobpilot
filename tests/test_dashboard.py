@@ -70,11 +70,13 @@ def _client(
     output_root: Path,
     *,
     toolchain: _Toolchain | None = None,
+    sender: object | None = None,
 ) -> Iterator[TestClient]:
     app = create_app(
         advisor=_Advisor(),
         toolchain=toolchain or _Toolchain(),
         output_root=output_root,
+        sender=sender,
     )
 
     def in_memory_connection() -> Iterator[sqlite3.Connection]:
@@ -343,6 +345,142 @@ def test_detail_hides_approve_for_non_queued_application(
     # Non-queued: no approve button and no skip (illegal from applied).
     assert f"/application/{applied_id}/approve" not in applied_detail.text
     assert f"/application/{applied_id}/skip" not in applied_detail.text
+
+
+def _ready_email_app(
+    db: sqlite3.Connection,
+    output_root: Path,
+    *,
+    suffix: str,
+    contact_email: str | None = "recrutement@acme.example",
+) -> int:
+    source_id = db.execute(
+        "SELECT id FROM sources WHERE name = 'france_travail'"
+    ).fetchone()["id"]
+    company_id = db.execute(
+        "INSERT INTO companies (name, city) VALUES ('Acme', 'Paris')"
+    ).lastrowid
+    digest = hashlib.sha256(f"email-{suffix}".encode()).hexdigest()
+    offer_id = db.execute(
+        "INSERT INTO offers (source_id, company_id, external_id, url, title, "
+        "description, contract_type, city, content_hash, contact_email) "
+        "VALUES (?, ?, ?, ?, 'Analyste SOC', 'desc', 'alternance', 'Paris', ?, ?)",
+        (source_id, company_id, f"e-{suffix}",
+         f"https://example.test/{suffix}", digest, contact_email),
+    ).lastrowid
+    application_id = int(
+        db.execute(
+            "INSERT INTO applications (offer_id, company_id, kind, status) "
+            "VALUES (?, ?, 'offer', 'ready')",
+            (offer_id, company_id),
+        ).lastrowid
+    )
+    db.commit()
+    app_dir = output_root / str(application_id)
+    app_dir.mkdir(parents=True, exist_ok=True)
+    (app_dir / "cv.pdf").write_bytes(b"%PDF-cv")
+    (app_dir / "motivation_letter.pdf").write_bytes(b"%PDF-letter")
+    return application_id
+
+
+class _RecordingSender:
+    def __init__(self) -> None:
+        self.sent = None
+
+    def send(self, message: object) -> str:
+        self.sent = message
+        return "<dash-msg@test>"
+
+
+def test_email_confirmation_page_shows_recipient_subject_and_attachments(
+    dashboard_db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    app_id = _ready_email_app(dashboard_db, tmp_path, suffix="confirm")
+    with _client(dashboard_db, tmp_path) as client:
+        page = client.get(f"/application/{app_id}/email")
+
+    assert page.status_code == 200
+    assert "recrutement@acme.example" in page.text
+    assert "Candidature" in page.text
+    assert "cv.pdf" in page.text and "motivation_letter.pdf" in page.text
+    assert 'name="body"' in page.text  # editable textarea
+
+
+def test_ready_detail_hides_email_button_without_contact(
+    dashboard_db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    with_contact = _ready_email_app(dashboard_db, tmp_path, suffix="with")
+    without_contact = _ready_email_app(
+        dashboard_db, tmp_path, suffix="without", contact_email=None
+    )
+    with _client(dashboard_db, tmp_path) as client:
+        shown = client.get(f"/application/{with_contact}")
+        hidden = client.get(f"/application/{without_contact}")
+
+    assert f"/application/{with_contact}/email" in shown.text
+    assert f"/application/{without_contact}/email" not in hidden.text
+    # Manual mark-sent stays available on every ready application.
+    assert f"/application/{without_contact}/mark-sent" in hidden.text
+
+
+def test_dashboard_send_success_transitions_and_records_event(
+    dashboard_db: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jobpilot import config
+
+    monkeypatch.setenv("SMTP_USERNAME", "me@sender.example")
+    monkeypatch.setenv("SMTP_PASSWORD", "secret-pw")
+    config.get_settings.cache_clear()
+    app_id = _ready_email_app(dashboard_db, tmp_path, suffix="send-ok")
+    sender = _RecordingSender()
+    try:
+        with _client(dashboard_db, tmp_path, sender=sender) as client:
+            response = client.post(
+                f"/application/{app_id}/email/send",
+                data={"body": "Bonjour, voici ma candidature."},
+                follow_redirects=False,
+            )
+    finally:
+        config.get_settings.cache_clear()
+
+    assert response.status_code == 303
+    assert current_status(dashboard_db, app_id) == "applied"
+    assert "application_sent" in {row["event"] for row in _events(dashboard_db, app_id)}
+    assert sender.sent is not None
+
+
+def test_dashboard_send_blocked_by_suppression_stays_ready(
+    dashboard_db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    from jobpilot.contacts import suppress_email
+
+    app_id = _ready_email_app(dashboard_db, tmp_path, suffix="suppressed")
+    suppress_email(dashboard_db, "recrutement@acme.example", "opted out")
+    with _client(dashboard_db, tmp_path) as client:
+        response = client.post(
+            f"/application/{app_id}/email/send",
+            data={"body": "Bonjour"},
+        )
+
+    assert response.status_code == 409
+    assert current_status(dashboard_db, app_id) == "ready"
+
+
+def test_dashboard_mark_sent_transitions_ready_to_applied(
+    dashboard_db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    app_id = _ready_email_app(
+        dashboard_db, tmp_path, suffix="manual", contact_email=None
+    )
+    with _client(dashboard_db, tmp_path) as client:
+        response = client.post(
+            f"/application/{app_id}/mark-sent", follow_redirects=False
+        )
+
+    assert response.status_code == 303
+    assert current_status(dashboard_db, app_id) == "applied"
+    detail = json.loads(_events(dashboard_db, app_id)[-1]["detail"])
+    assert detail == {"via": "manual"}
 
 
 def test_approve_wrong_state_returns_clean_conflict(
