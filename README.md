@@ -101,6 +101,14 @@ it at any time with `jobpilot facts`; entries marked `needs_review` stay visible
 instead of being guessed. Posting titles are normalized before rendering so
 gender markers, reference codes, locations, and marketing noise do not reach the CV.
 
+All three advisor modes now use the same sourced-content JSON contract. The
+advisor may rewrite and reorder experience/project content and lead with the
+most relevant verified skills, but every generated bullet and letter paragraph
+cites stable fact ids. The shared validator rejects unknown/review-pending ids,
+unverified skills, unsupported numbers, and unsupported proper nouns before any
+PDF is generated. Identity, contact details, employers, dates, diplomas, and
+certification names remain renderer-owned and cannot be supplied by the model.
+
 ## Sources
 
 Each source below is fully coded and unit-tested; it just needs a credential and
