@@ -24,7 +24,32 @@ from jobpilot.sources.base import Source
 
 log = get_logger("wttj")
 
-KEYWORDS = ["cybersécurité", "SOC", "sécurité cloud", "DevSecOps", "pentest"]
+# ---- Tunable search-volume block -------------------------------------------
+# Keep these together: changing the job families or target regions should not
+# require touching pagination, HTTP, mapping, or persistence code.
+SEARCH_QUERIES = (
+    "cybersécurité",
+    "SOC",
+    "sécurité cloud",
+    "DevSecOps",
+    "infrastructure IT",
+)
+ALGOLIA_FACET_FILTERS = (
+    (
+        "contract_type:APPRENTICESHIP",
+        "contract_type:INTERNSHIP",
+    ),
+    (
+        "offices.state:Hauts-de-France",
+        "offices.state:Île-de-France",
+        "remote:partial",
+        "remote:fulltime",
+    ),
+)
+_HITS_PER_PAGE = 50
+
+# Backward-compatible public name used by older callers.
+KEYWORDS = list(SEARCH_QUERIES)
 
 # WTTJ Algolia contract codes -> our schema's contract_type enum.
 _CONTRACT_MAP = {
@@ -38,8 +63,15 @@ _CONTRACT_MAP = {
     "VIE": "cdd",
 }
 
-_HITS_PER_PAGE = 50
-_MAX_PAGES = 3  # per keyword safety ceiling
+_REMOTE_MAP = {
+    "full_remote": "full_remote",
+    "fulltime": "full_remote",
+    "fully_remote": "full_remote",
+    "hybrid": "hybrid",
+    "partial": "hybrid",
+    "onsite": "onsite",
+    "none": "onsite",
+}
 
 
 class WelcomeToTheJungleSource(Source):
@@ -55,6 +87,7 @@ class WelcomeToTheJungleSource(Source):
         index: str | None = None,
         client: httpx.Client | None = None,
         rate_limiter: RateLimiter | None = None,
+        max_pages: int | None = None,
     ) -> None:
         key = api_key or settings.wttj_api_key
         if not key:
@@ -66,10 +99,12 @@ class WelcomeToTheJungleSource(Source):
         self._app_id = app_id or settings.wttj_app_id
         self._api_key = key
         self._index = index or settings.wttj_index
-        self._keywords = keywords if keywords is not None else KEYWORDS
-        self._url = (
-            f"https://{self._app_id}-dsn.algolia.net/1/indexes/{self._index}/query"
-        )
+        self._keywords = keywords if keywords is not None else list(SEARCH_QUERIES)
+        self._max_pages = settings.wttj_max_pages if max_pages is None else max_pages
+        if self._max_pages < 1:
+            raise ValueError("WTTJ_MAX_PAGES must be at least 1")
+        self._settings = settings
+        self._url = f"https://{self._app_id}-dsn.algolia.net/1/indexes/{self._index}/query"
         self._client = client or httpx.Client(
             timeout=30.0,
             headers={
@@ -84,7 +119,7 @@ class WelcomeToTheJungleSource(Source):
     def fetch_offers(self) -> Iterator[OfferRecord]:
         seen: set[str] = set()
         for keyword in self._keywords:
-            for page in range(_MAX_PAGES):
+            for page in range(self._max_pages):
                 body = self._search(keyword, page)
                 hits = body.get("hits", []) or []
                 for hit in hits:
@@ -100,7 +135,12 @@ class WelcomeToTheJungleSource(Source):
                     break
 
     def _search(self, query: str, page: int) -> dict[str, Any]:
-        payload = {"query": query, "hitsPerPage": _HITS_PER_PAGE, "page": page}
+        payload = {
+            "query": query,
+            "hitsPerPage": _HITS_PER_PAGE,
+            "page": page,
+            "facetFilters": [list(group) for group in ALGOLIA_FACET_FILTERS],
+        }
 
         def _do() -> httpx.Response:
             resp = self._client.post(self._url, json=payload)
@@ -108,10 +148,15 @@ class WelcomeToTheJungleSource(Source):
             return resp
 
         self._rl.wait("algolia.net")
-        return with_backoff(_do).json()
+        try:
+            return with_backoff(_do).json()
+        except Exception as exc:
+            detail = self._settings.redact(str(exc))
+            raise RuntimeError(f"WTTJ Algolia request failed: {detail}") from None
 
 
 # ----- mapping (pure, fixture-tested) -----
+
 
 def _first(*vals: Any) -> str | None:
     for v in vals:
@@ -137,14 +182,37 @@ def _url(hit: dict[str, Any]) -> str | None:
     slug = hit.get("slug")
     org_slug = _org(hit).get("slug") or hit.get("organization_slug")
     if slug and org_slug:
-        return (f"https://www.welcometothejungle.com/fr/companies/"
-                f"{org_slug}/jobs/{slug}")
+        return f"https://www.welcometothejungle.com/fr/companies/{org_slug}/jobs/{slug}"
     return _first(hit.get("url"), hit.get("reference"))
 
 
 def _contract(hit: dict[str, Any]) -> str:
-    raw = (hit.get("contract_type") or hit.get("contractType") or "")
+    raw = hit.get("contract_type") or hit.get("contractType") or ""
     return _CONTRACT_MAP.get(str(raw).upper(), "unknown")
+
+
+def _remote_policy(hit: dict[str, Any]) -> str:
+    raw = _first(
+        hit.get("remote_policy"),
+        hit.get("remote"),
+        hit.get("remote_mode"),
+    )
+    if raw is None:
+        return "unknown"
+    return _REMOTE_MAP.get(raw.casefold().replace("-", "_"), "unknown")
+
+
+def _contact_email(hit: dict[str, Any]) -> str | None:
+    direct = _first(hit.get("contact_email"), hit.get("application_email"))
+    if direct:
+        return direct
+    for key in ("contact", "recruiter"):
+        contact = hit.get(key)
+        if isinstance(contact, dict):
+            found = _first(contact.get("email"), contact.get("contact_email"))
+            if found:
+                return found
+    return None
 
 
 def map_hit(hit: dict[str, Any]) -> OfferRecord | None:
@@ -158,8 +226,14 @@ def map_hit(hit: dict[str, Any]) -> OfferRecord | None:
     profession = hit.get("profession")
     tags = []
     if isinstance(profession, dict):
-        tags = [v for v in (profession.get("category_name"),
-                            profession.get("sub_category_name")) if v]
+        tags = [
+            value
+            for value in (
+                profession.get("category_name"),
+                profession.get("sub_category_name"),
+            )
+            if value
+        ]
 
     return OfferRecord(
         external_id=_first(hit.get("objectID")),
@@ -169,6 +243,8 @@ def map_hit(hit: dict[str, Any]) -> OfferRecord | None:
         description=_first(hit.get("description")),
         contract_type=_contract(hit),
         city=_city(hit),
+        remote_policy=_remote_policy(hit),
         posted_at=_first(hit.get("published_at"), hit.get("published_at_date")),
+        contact_email=_contact_email(hit),
         stack_tags=tags,
     ).normalized()

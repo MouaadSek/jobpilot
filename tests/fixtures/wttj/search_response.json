@@ -1,0 +1,59 @@
+{
+  "hits": [
+    {
+      "objectID": "wttj-42",
+      "name": "Alternance Analyste SOC",
+      "organization": {
+        "name": "ACME Cyber",
+        "slug": "acme-cyber"
+      },
+      "slug": "alternance-analyste-soc-wttj-42",
+      "offices": [
+        {
+          "city": "Lille",
+          "state": "Hauts-de-France",
+          "country_code": "FR"
+        }
+      ],
+      "contract_type": "APPRENTICESHIP",
+      "description": "Superviser les alertes SIEM et participer à la réponse aux incidents.",
+      "published_at": "2026-07-24T07:30:00Z",
+      "remote": "partial",
+      "contact": {
+        "email": "recrutement@acme.example"
+      },
+      "profession": {
+        "category_name": "Tech",
+        "sub_category_name": "Cybersecurity"
+      }
+    },
+    {
+      "objectID": "wttj-43",
+      "name": "Stage Cloud Security",
+      "organization": {
+        "name": "CloudCorp",
+        "slug": "cloudcorp"
+      },
+      "slug": "stage-cloud-security-wttj-43",
+      "offices": [
+        {
+          "city": "Paris",
+          "state": "Île-de-France",
+          "country_code": "FR"
+        }
+      ],
+      "contract_type": "INTERNSHIP",
+      "description": "Contribuer au durcissement Azure et aux contrôles CIS.",
+      "published_at_date": "2026-07-23",
+      "remote_policy": "full_remote",
+      "profession": {
+        "category_name": "Tech",
+        "sub_category_name": "Cloud"
+      }
+    }
+  ],
+  "nbHits": 2,
+  "page": 0,
+  "nbPages": 1,
+  "hitsPerPage": 50
+}

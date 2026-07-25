@@ -110,8 +110,12 @@ then works via `jobpilot ingest`. Until then it is skipped with a clear message.
   LinkedIn or Indeed pages.
 - **Welcome to the Jungle** — set `WTTJ_API_KEY` (the public Algolia search key;
   open WTTJ job search with devtools Network open and copy the `X-Algolia-API-Key`
-  header from the `*-dsn.algolia.net` request). App id/index default but are
-  overridable via `WTTJ_APP_ID` / `WTTJ_INDEX`.
+  header from the `*-dsn.algolia.net` request), then run
+  `jobpilot ingest -s wttj`. App id/index keep their existing
+  `WTTJ_APP_ID` / `WTTJ_INDEX` overrides. `WTTJ_MAX_PAGES` defaults to five
+  pages per query. The tunable query block targets alternance and stage roles
+  across cyber, cloud, DevSecOps, and IT infrastructure in Hauts-de-France,
+  Île-de-France, or remote.
 - **La Bonne Alternance** — the legacy public API (caller-email auth) was
   decommissioned; the current **API Apprentissage** requires an account plus a
   token. Register and generate a key at

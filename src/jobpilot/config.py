@@ -103,6 +103,9 @@ class Settings:
     imap_port: int = 993
     imap_folder: str = "INBOX"
 
+    # WTTJ request ceiling per search query.
+    wttj_max_pages: int = 5
+
     def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
         if not self.smtp_username or not self.smtp_password:
             raise MissingCredentialError(
@@ -207,4 +210,5 @@ def get_settings() -> Settings:
         imap_host=os.getenv("IMAP_HOST", "imap.gmail.com"),
         imap_port=int(os.getenv("IMAP_PORT", "993")),
         imap_folder=os.getenv("IMAP_FOLDER", "INBOX"),
+        wttj_max_pages=int(os.getenv("WTTJ_MAX_PAGES", "5")),
     )
