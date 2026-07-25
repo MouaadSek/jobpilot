@@ -79,9 +79,37 @@ machine: MacBook Intel, native macOS    # NOT WSL2
 - Blend: 0.50·semantic + 0.35·keyword + 0.15·bonus (in matcher.py, DO NOT CHANGE)
 - Result: semantic scores 0.70–0.89 on real cyber offers, 4 offers queued
 
+### Phases 2–9 — COMPLETE (main is at Task 9; 179 tests, ruff clean)
+
+Everything in the original Phase 2–6 roadmap shipped, plus Tasks 7–9. Highlights:
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| CV tailoring pipeline | ✅ | `tailoring.py` — variant picker + 5+1 zones, CV/letter PDFs, tracker row |
+| Gmail alert ingestion | ✅ | `sources/email_alerts.py` (LinkedIn/Indeed job-alert emails) |
+| WTTJ (Algolia) source | ✅ | `sources/wttj.py` |
+| Contact discovery + cold-mail drafting | ✅ | `contacts.py` — draft/queue only, no send yet; rails enforced at draft time |
+| Local review dashboard | ✅ | FastAPI thin client on 127.0.0.1: status tabs, inline PDF preview, approve/skip/send — commit `ba62fb9` |
+| CI pipeline | ✅ | GitHub Actions (ubuntu + windows), ruff + pytest, pip-audit advisory, frozen-matcher PR guard — commit `a2deff0` |
+| OpenAI-compatible tailoring advisor | ✅ | providers `auto` / `anthropic` / `openai` / `interactive`; httpx, no SDK; `OPENAI_BASE_URL` enables local Ollama/LM Studio — commit `36e5b22` |
+| Letter quality fixes | ✅ | « votre entreprise » fallback, French `de`→`d'` elision, placeholder-rejection validator — Task 9 |
+| Email application sending | ✅ | two-step human confirm → SMTP+STARTTLS → `ready`→`applied` + `application_sent` event; shared ≤25/day cap + suppression rails re-checked at send time; `jobpilot send` / `mark-sent` — Task 9 |
+
+### KEY DESIGN DECISIONS (do not undo)
+
+1. **"sent" maps to the existing `applied` status.** No new status was added,
+   per the constitution's reuse-the-transition-table rule. A successful send
+   logs an `application_sent` event; a failed send stays `ready` and logs
+   `send_failed`.
+2. **The dashboard is a thin client.** There is no `UPDATE applications SET
+   status` in `dashboard.py`, `review.py`, `apply_flow.py`, or `mailer.py`; all
+   status changes go through `state.transition()`. `mailer.py` does update the
+   `applied_at` timestamp column directly, which is allowed (it is not a status
+   write).
+
 ### What is NOT built yet (your job)
 
-Everything in Phases 2–6 below.
+**Task 10 — ATS application assist** and Tasks 11–14. See §15 / NEXT ACTION.
 
 ---
 
@@ -91,23 +119,35 @@ Everything in Phases 2–6 below.
 jobpilot/
 ├── src/jobpilot/
 │   ├── __init__.py
-│   ├── cli.py                    # Typer CLI entry point
+│   ├── cli.py                    # Typer CLI (incl. send / mark-sent)
+│   ├── config.py                 # Settings + get_settings() (env-driven)
 │   ├── db.py                     # SQLite layer, migrations runner
 │   ├── state.py                  # State machine + transition() + events
 │   ├── matcher.py                # ⛔ DO NOT MODIFY LOGIC
 │   ├── scoring.py                # build_profile_text(), score_new_offers()
+│   ├── tailoring.py              # ✅ variant picker + 5+1 zones + advisors
+│   ├── contacts.py               # ✅ contacts + cold-mail drafting + rails
+│   ├── mailer.py                 # ✅ two-step email send + shared rails
+│   ├── apply_flow.py             # ✅ shared CLI/dashboard approval+generation
+│   ├── review.py                 # ✅ read-only queue/status queries
+│   ├── dashboard.py              # ✅ FastAPI review dashboard (127.0.0.1)
+│   ├── templates/
+│   │   └── dashboard.html        # ✅ single server-rendered page
 │   └── sources/
-│       ├── france_travail.py     # ✅ working, live
+│       ├── france_travail.py     # ✅ live; also captures offers.contact_email
 │       ├── oauth.py              # FT OAuth client_credentials
-│       ├── lba.py                # ⏸️ parked (needs API key)
-│       ├── ats_pollers.py        # Lever/Greenhouse/SmartRecruiters
-│       ├── email_alerts.py       # 🔨 TO BUILD (Phase 3)
-│       ├── wttj.py               # 🔨 TO BUILD (Phase 4)
-│       ├── linkedin.py           # 🔨 TO BUILD (Phase 5)
-│       └── indeed.py             # 🔨 TO BUILD (Phase 5)
+│       ├── labonnealternance.py  # ⏸️ parked (needs LBA_API_KEY)
+│       ├── ats.py                # Lever/Greenhouse/SmartRecruiters pollers
+│       ├── email_alerts.py       # ✅ Gmail LinkedIn/Indeed alert ingestion
+│       ├── wttj.py               # ✅ Welcome to the Jungle (Algolia)
+│       └── registry.py           # source registry / enable flags
 ├── schema.sql
 ├── migrations/
-│   └── 001_add_profile_headline.sql
+│   ├── 001_add_profile_headline.sql
+│   ├── 002_contacts_suppression.sql
+│   └── 003_offers_contact_email.sql   # offers.contact_email
+├── .github/workflows/
+│   └── ci.yml                    # ✅ CI (ubuntu + windows)
 ├── config/
 │   ├── sources.yaml
 │   ├── targets.yaml              # ATS employer URLs
@@ -125,7 +165,8 @@ jobpilot/
 │       ├── check_orphan_lines.py
 │       ├── format_tracker_row.py
 │       └── validate_cv.py        # 13-check validator
-├── tests/
+├── tests/                        # incl. test_dashboard.py, test_mailer.py,
+│                                 #   test_letter_quality.py, test_tailoring_openai.py
 ├── deploy/
 │   └── com.jobpilot.scheduler.plist  # macOS launchd
 ├── data/                         # .gitignore'd — SQLite DB lives here
@@ -523,16 +564,26 @@ JOBPILOT_QUEUE_THRESHOLD=0.35
 # GMAIL_USER=mouaadsekkourii@gmail.com
 # GMAIL_APP_PASSWORD=...
 
-# Anthropic API (Phase 2 — for automated CV tailoring, optional)
+# CV tailoring advisor (optional). Provider selects the advice source.
+# TAILORING_PROVIDER=auto        # auto | anthropic | openai | interactive
 # ANTHROPIC_API_KEY=...
 # ANTHROPIC_MODEL=claude-haiku-4-5   # cheapest option: $1/$5 per MTok
+# OpenAI-compatible provider (also drives local Ollama / LM Studio via base URL)
+# OPENAI_API_KEY=...
+# OPENAI_MODEL=...
+# OPENAI_BASE_URL=https://api.openai.com/v1   # point at a local server if desired
 
-# SMTP (Phase 6 — for cold mail sending)
+# SMTP — sending an application by email (jobpilot send / dashboard confirm)
 # SMTP_HOST=smtp.gmail.com
 # SMTP_PORT=587
-# SMTP_USER=mouaadsekkourii@gmail.com
-# SMTP_PASSWORD=...
+# SMTP_USERNAME=mouaadsekkourii@gmail.com
+# SMTP_PASSWORD=...              # redacted from all logs/errors, like API keys
+# SMTP_FROM_NAME=Mouaad Sekkouri
 ```
+
+**Note:** the France Travail client now captures `offers.contact_email` from the
+offer's `contact.courriel` field (migration `003`), which is what the email-send
+flow uses as the recipient.
 
 ---
 
@@ -575,7 +626,26 @@ Then point Codex at the repo.
 
 ## 15. CODEX TASK BREAKDOWN (suggested order)
 
-### Task 1: CV pipeline integration (Phase 2)
+> **NEXT ACTION → Task 10 — ATS application assist (prefill, human submits).**
+> The full prompt lives in the roadmap the user holds. Immediate scope:
+> non-headless Playwright prefill of Lever / Greenhouse / SmartRecruiters apply
+> forms from the profile config, upload `cv.pdf`, then **STOP** — never
+> auto-submit, never solve CAPTCHAs, never create accounts. Add a dashboard
+> "Ouvrir et pré-remplir" button and a `prefill_launched` event; the fallback
+> simply opens the offer URL in the default browser. Tasks 11–14 follow:
+> **11** cold-send (actual dispatch of the queued cold emails, staggered, rails
+> enforced), **12** reply triage, **13** La Bonne Alternance (gated on
+> `LBA_API_KEY`), **14** desktop wrapper.
+>
+> **PROCESS NOTE — always cut task branches from current `origin/main`.** Do not
+> branch from an older commit. Task 9 was branched before Task 8 merged, which
+> caused a `config.py` merge conflict (trivially resolved by keeping both the
+> `openai_*` and `smtp_*` settings blocks, but entirely avoidable).
+
+**Tasks 1–6 below are DONE** (see §3). Kept for historical context; Tasks 7–9
+(dashboard, CI, OpenAI advisor, letter fixes, email send) also shipped.
+
+### Task 1: CV pipeline integration (Phase 2) — ✅ DONE
 ```
 Build the CV tailoring pipeline into JobPilot:
 - Add a `tailoring.py` module that implements the variant picker (routing
@@ -593,7 +663,7 @@ Build the CV tailoring pipeline into JobPilot:
 - Read skill/SKILL.md for the complete ruleset. It is the law.
 ```
 
-### Task 2: Gmail alert ingestion (Phase 3)
+### Task 2: Gmail alert ingestion (Phase 3) — ✅ DONE
 ```
 Build sources/email_alerts.py:
 - Gmail IMAP or API connection (configurable via GMAIL_USER + GMAIL_APP_PASSWORD).
@@ -605,7 +675,7 @@ Build sources/email_alerts.py:
 - Add tests with sample alert email fixtures.
 ```
 
-### Task 3: WTTJ source (Phase 4)
+### Task 3: WTTJ source (Phase 4) — ✅ DONE
 ```
 Build sources/wttj.py:
 - Discover WTTJ's Algolia endpoint (inspect XHR on their job search page).
@@ -615,7 +685,7 @@ Build sources/wttj.py:
 - Add tests.
 ```
 
-### Task 4: LinkedIn + Indeed scraping (Phase 5)
+### Task 4: LinkedIn + Indeed scraping (Phase 5) — ⏸️ email-alert path shipped; scrapers deferred
 ```
 Build sources/linkedin.py and sources/indeed.py:
 - Playwright headless Chromium with stealth settings.
@@ -630,7 +700,7 @@ Build sources/linkedin.py and sources/indeed.py:
 reliable fallback. Both should be active simultaneously.
 ```
 
-### Task 5: Contact discovery + cold mail (Phase 6)
+### Task 5: Contact discovery + cold mail (Phase 6) — ✅ DONE (drafting; actual send is Task 11)
 ```
 Build contacts.py:
 - Contact SQLite table + CRUD.
@@ -644,7 +714,7 @@ Build contacts.py:
 - Add tests.
 ```
 
-### Task 6: CI + hardening
+### Task 6: CI + hardening — ✅ DONE
 ```
 - GitHub Actions CI: pytest + ruff on every PR.
 - Error handling: retry with backoff on API failures.
