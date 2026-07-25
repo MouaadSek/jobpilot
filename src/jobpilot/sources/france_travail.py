@@ -173,6 +173,21 @@ def _map_duration_months(raw: dict[str, Any]) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def _map_contact_email(raw: dict[str, Any]) -> str | None:
+    """Extract the offer contact email from FT's `contact.courriel`, defensively."""
+    contact = raw.get("contact")
+    if not isinstance(contact, dict):
+        return None
+    email = contact.get("courriel")
+    if not isinstance(email, str):
+        return None
+    email = email.strip()
+    # Minimal sanity check; the mailer applies suppression/cap rails before sending.
+    if email.count("@") != 1 or "." not in email.partition("@")[2]:
+        return None
+    return email.lower()
+
+
 def map_offer(raw: dict[str, Any]) -> OfferRecord | None:
     """Map one FT offre JSON object to an OfferRecord, or None if unusable."""
     title = raw.get("intitule")
@@ -207,5 +222,6 @@ def map_offer(raw: dict[str, Any]) -> OfferRecord | None:
         city=_first_nonempty(lieu.get("libelle")),
         posted_at=_first_nonempty(raw.get("dateCreation")),
         stack_tags=stack_tags,
+        contact_email=_map_contact_email(raw),
     )
     return rec.normalized()

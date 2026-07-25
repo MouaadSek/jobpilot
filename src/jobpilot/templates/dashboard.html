@@ -57,6 +57,27 @@
       font-size: 13px;
     }
     .badge strong { color: var(--primary-dark); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+    .tab {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      padding: 6px 13px;
+      font-size: 13px;
+      text-decoration: none;
+      color: var(--ink);
+    }
+    .tab:hover { border-color: var(--primary); }
+    .tab .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .tab.active .n { color: rgb(255 255 255 / 80%); }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
     th, td {
@@ -102,7 +123,27 @@
     }
     button:hover { background: var(--primary-dark); }
     button.secondary { background: #566174; }
-    button:disabled { cursor: wait; opacity: .65; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .btn {
+      display: inline-block;
+      border-radius: 6px;
+      padding: 10px 15px;
+      background: var(--primary);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 650;
+    }
+    .btn:hover { background: var(--primary-dark); }
+    .btn.secondary { background: #566174; }
+    .body-edit {
+      width: 100%;
+      font: inherit;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      margin-bottom: 8px;
+      resize: vertical;
+    }
     .error {
       margin: 16px 0;
       border: 1px solid #e6b1b1;
@@ -153,13 +194,17 @@
     </header>
 
     {% if view == "queue" %}
-      <div class="counts" aria-label="Application counts by status">
-        {% for item in status_counts %}
-          <span class="badge">{{ item.status }} <strong>{{ item.n }}</strong></span>
+      <nav class="tabs" aria-label="Applications by status">
+        {% for tab in tabs %}
+          <a class="tab{% if tab.active %} active{% endif %}"
+             href="/?status={{ tab.status }}"
+             {% if tab.active %}aria-current="page"{% endif %}>
+            {{ tab.status }} <span class="n">{{ tab.count }}</span>
+          </a>
         {% endfor %}
-      </div>
+      </nav>
       <section class="panel">
-        <h2>Review queue</h2>
+        <h2>{% if status == "queued" %}Review queue{% else %}{{ status }}{% endif %}</h2>
         {% if applications %}
           <div class="table-wrap">
             <table>
@@ -188,7 +233,7 @@
                     <td>{{ application.city or "—" }}</td>
                     <td>{{ application.contract_type or "—" }}</td>
                     <td>{{ application.source or "—" }}</td>
-                    <td>{{ application.posted_at or "—" }}</td>
+                    <td {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</td>
                     <td><a href="/application/{{ application.id }}">Review</a></td>
                   </tr>
                 {% endfor %}
@@ -196,8 +241,36 @@
             </table>
           </div>
         {% else %}
-          <div class="empty">The review queue is empty.</div>
+          <div class="empty">No applications with status “{{ status }}”.</div>
         {% endif %}
+      </section>
+    {% elif view == "email" %}
+      <section class="panel">
+        <a class="back" href="/application/{{ application.id }}">← Application</a>
+        <h2>Confirmer l'envoi par email</h2>
+        <div class="muted">{{ application.title or "Application" }} — {{ application.company or "Unknown company" }}</div>
+
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+        <dl class="meta">
+          <div><dt>Destinataire</dt><dd>{{ prep.recipient or "—" }}</dd></div>
+          <div><dt>Objet</dt><dd>{{ prep.subject }}</dd></div>
+        </dl>
+
+        <h3>Pièces jointes</h3>
+        <ul>
+          {% for name in prep.attachments %}<li>{{ name }}</li>{% endfor %}
+        </ul>
+
+        <form method="post" action="/application/{{ application.id }}/email/send" data-busy>
+          <h3>Message</h3>
+          <textarea name="body" rows="14" class="body-edit">{{ prep.body }}</textarea>
+          <div class="actions">
+            <button type="submit" data-label="Confirmer et envoyer"{% if not can_send %} disabled{% endif %}>Confirmer et envoyer</button>
+            <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+          </div>
+          {% if not can_send %}<p class="muted">L'envoi est bloqué : {{ error }}.</p>{% endif %}
+        </form>
       </section>
     {% else %}
       <section class="panel">
@@ -208,11 +281,11 @@
 
         <dl class="meta">
           <div><dt>Status</dt><dd>{{ application.status }}</dd></div>
-          <div><dt>Score</dt><dd>{{ application.final_score if application.final_score is not none else "—" }}</dd></div>
+          <div><dt>Score</dt><dd>{% if application.final_score is not none %}{{ "%.2f"|format(application.final_score) }}{% else %}—{% endif %}</dd></div>
           <div><dt>City</dt><dd>{{ application.city or "—" }}</dd></div>
           <div><dt>Contract</dt><dd>{{ application.contract_type or "—" }}</dd></div>
           <div><dt>Source</dt><dd>{{ application.source or "—" }}</dd></div>
-          <div><dt>Posted</dt><dd>{{ application.posted_at or "—" }}</dd></div>
+          <div><dt>Posted</dt><dd {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</dd></div>
         </dl>
 
         {% if application.status == "queued" %}
@@ -224,6 +297,15 @@
               <button class="secondary" type="submit" data-label="Skip">Skip</button>
             </form>
           </div>
+        {% elif application.status == "ready" %}
+          <div class="actions">
+            {% if application.contact_email %}
+              <a class="btn" href="/application/{{ application.id }}/email">Préparer l'envoi par email</a>
+            {% endif %}
+            <form method="post" action="/application/{{ application.id }}/mark-sent" data-busy>
+              <button class="secondary" type="submit" data-label="Marquer comme envoyée">Marquer comme envoyée</button>
+            </form>
+          </div>
         {% endif %}
 
         <h3>Offer</h3>
@@ -232,10 +314,10 @@
 
         <h3>Score breakdown</h3>
         <div class="score-grid">
-          <div><strong>Semantic</strong><br>{{ application.semantic_score if application.semantic_score is not none else "—" }}</div>
-          <div><strong>Keywords</strong><br>{{ application.keyword_score if application.keyword_score is not none else "—" }}</div>
-          <div><strong>Bonus</strong><br>{{ application.bonus_score if application.bonus_score is not none else "—" }}</div>
-          <div><strong>Final</strong><br>{{ application.final_score if application.final_score is not none else "—" }}</div>
+          <div><strong>Semantic</strong><br>{% if application.semantic_score is not none %}{{ "%.3f"|format(application.semantic_score) }}{% else %}—{% endif %}</div>
+          <div><strong>Keywords</strong><br>{% if application.keyword_score is not none %}{{ "%.3f"|format(application.keyword_score) }}{% else %}—{% endif %}</div>
+          <div><strong>Bonus</strong><br>{% if application.bonus_score is not none %}{{ "%.3f"|format(application.bonus_score) }}{% else %}—{% endif %}</div>
+          <div><strong>Final</strong><br>{% if application.final_score is not none %}{{ "%.2f"|format(application.final_score) }}{% else %}—{% endif %}</div>
         </div>
 
         {% if application.status == "ready" %}

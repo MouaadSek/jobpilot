@@ -7,6 +7,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -21,11 +22,19 @@ from jobpilot.apply_flow import (
 )
 from jobpilot.config import get_settings
 from jobpilot.db import connect
+from jobpilot.mailer import (
+    MailerError,
+    SendBlocked,
+    mark_application_sent,
+    prepare_application_email,
+    send_application_email,
+)
 from jobpilot.review import (
+    TAB_STATUSES,
     application_detail,
+    applications_by_status,
     event_history,
-    queued_applications,
-    status_counts,
+    status_tabs,
 )
 from jobpilot.state import IllegalTransition, transition
 
@@ -42,6 +51,17 @@ ALLOWED_ARTIFACTS = frozenset(
 )
 
 
+def _ymd(value: Any) -> str:
+    """Render an ISO timestamp as YYYY-MM-DD; pass other values through as text."""
+
+    if value is None:
+        return ""
+    text = str(value)
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    return text
+
+
 def database_connection() -> Iterator[sqlite3.Connection]:
     """Yield one production database connection per request."""
 
@@ -53,6 +73,17 @@ def database_connection() -> Iterator[sqlite3.Connection]:
 
 
 Database = Annotated[sqlite3.Connection, Depends(database_connection)]
+
+
+async def _posted_body(request: Request) -> str:
+    """Read the ``body`` field from a urlencoded POST without python-multipart.
+
+    Runs as an async dependency (event loop) so the endpoint can stay synchronous
+    and share the request thread with the connection dependency's APPLICATION_LOCK.
+    """
+
+    raw = (await request.body()).decode("utf-8")
+    return parse_qs(raw, keep_blank_values=True).get("body", [""])[0]
 
 
 def _safe_artifact_path(
@@ -85,11 +116,13 @@ def create_app(
     advisor: Any | None = None,
     toolchain: Any | None = None,
     output_root: Path | None = None,
+    sender: Any | None = None,
 ) -> FastAPI:
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
     app = FastAPI(title="JobPilot Review Dashboard", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)
 
     def detail_response(
@@ -125,15 +158,63 @@ def create_app(
             status_code=status_code,
         )
 
+    def email_confirm_response(
+        request: Request,
+        db: sqlite3.Connection,
+        application_id: int,
+        *,
+        body: str | None = None,
+        error: str | None = None,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        detail = application_detail(db, application_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="application not found")
+        if detail["status"] != "ready" or not detail["contact_email"]:
+            return detail_response(
+                request,
+                db,
+                application_id,
+                error="Email is only available for a ready application with a contact.",
+                status_code=409,
+            )
+        prep = prepare_application_email(
+            db, application_id, output_root=artifacts_root
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "email",
+                "application": detail,
+                "prep": {
+                    "recipient": prep.recipient,
+                    "subject": prep.subject,
+                    "body": prep.body if body is None else body,
+                    "attachments": [path.name for path in prep.attachments],
+                },
+                "error": error or prep.blocked_reason,
+                "can_send": prep.blocked_reason is None,
+            },
+            status_code=status_code,
+        )
+
     @app.get("/", response_class=HTMLResponse)
-    def queue_page(request: Request, db: Database) -> HTMLResponse:
+    def queue_page(
+        request: Request,
+        db: Database,
+        status: str = "queued",
+    ) -> HTMLResponse:
+        if status not in TAB_STATUSES:
+            raise HTTPException(status_code=404, detail="unknown status tab")
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
             context={
                 "view": "queue",
-                "applications": queued_applications(db),
-                "status_counts": status_counts(db),
+                "status": status,
+                "applications": applications_by_status(db, status),
+                "tabs": status_tabs(db, status),
                 "error": None,
             },
         )
@@ -200,6 +281,56 @@ def create_app(
             except IllegalTransition as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(url="/", status_code=303)
+
+    @app.get("/application/{application_id}/email", response_class=HTMLResponse)
+    def email_confirm(
+        request: Request,
+        application_id: int,
+        db: Database,
+    ) -> HTMLResponse:
+        return email_confirm_response(request, db, application_id)
+
+    @app.post("/application/{application_id}/email/send")
+    def email_send(
+        request: Request,
+        application_id: int,
+        db: Database,
+        body: str = Depends(_posted_body),
+    ) -> Response:
+        with APPLICATION_LOCK:
+            try:
+                send_application_email(
+                    db, application_id, body=body, sender=sender,
+                    output_root=artifacts_root,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except SendBlocked as exc:
+                return email_confirm_response(
+                    request, db, application_id, body=body,
+                    error=str(exc), status_code=409,
+                )
+            except MailerError as exc:
+                return email_confirm_response(
+                    request, db, application_id, body=body,
+                    error=str(exc), status_code=422,
+                )
+        return RedirectResponse(
+            url=f"/application/{application_id}", status_code=303
+        )
+
+    @app.post("/application/{application_id}/mark-sent")
+    def mark_sent(application_id: int, db: Database) -> Response:
+        with APPLICATION_LOCK:
+            try:
+                mark_application_sent(db, application_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except MailerError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            url=f"/application/{application_id}", status_code=303
+        )
 
     @app.get("/files/{application_id}/{name}", response_class=FileResponse)
     def artifact(application_id: int, name: str, db: Database) -> FileResponse:

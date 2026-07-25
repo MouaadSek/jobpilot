@@ -80,6 +80,32 @@ def test_map_offer_without_title_is_dropped() -> None:
     assert map_offer({"id": "9", "origineOffre": {}}) is None
 
 
+def test_map_offer_parses_contact_email() -> None:
+    raw = {
+        "id": "51",
+        "intitule": "Alternance Analyste SOC",
+        "typeContrat": "CDD",
+        "origineOffre": {},
+        "contact": {"nom": "Service RH", "courriel": "Recrutement@ACME.fr"},
+    }
+    rec = map_offer(raw)
+    assert rec is not None
+    assert rec.contact_email == "recrutement@acme.fr"
+
+
+def test_map_offer_ignores_malformed_contact_email() -> None:
+    for contact in ({}, {"courriel": "not-an-email"}, {"courriel": 123}, "oops"):
+        raw = {
+            "id": "52",
+            "intitule": "Alternance SecOps",
+            "typeContrat": "CDD",
+            "origineOffre": {},
+            "contact": contact,
+        }
+        rec = map_offer(raw)
+        assert rec is not None and rec.contact_email is None
+
+
 # ----- HTTP flow -----
 
 @respx.mock
