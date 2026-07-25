@@ -1,0 +1,1690 @@
+version: 1
+source_documents:
+- skill/SKILL.md
+- skill/assets/stage-baifall-dream.md
+source_templates:
+- Mouaad_Sekkouri_-_AppSec__Alternance.html
+- Mouaad_Sekkouri_-_Backend_Dev__Alternance.html
+- Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html
+- Mouaad_Sekkouri_-_Consultant_IT__Alternance.html
+- Mouaad_Sekkouri_-_Consultant_IT__Stage.html
+- Mouaad_Sekkouri_-_Cybersecurite__Alternance.html
+- Mouaad_Sekkouri_-_Cybersecurite__Stage.html
+- Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html
+- Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html
+- Mouaad_Sekkouri_-_DevSecOps__Alternance.html
+- Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html
+- Mouaad_Sekkouri_-_GRC__Alternance.html
+- Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html
+- Mouaad_Sekkouri_-_IAM__Alternance.html
+- Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html
+- Mouaad_Sekkouri_-_Pentest__Alternance.html
+- Mouaad_Sekkouri_-_QA_Testing__Alternance.html
+- Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html
+- Mouaad_Sekkouri_-_SOC__Alternance.html
+- Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html
+- Mouaad_Sekkouri_-CloudSec__Alternance.html
+experience:
+- id: experience.baifall_dream
+  employer: Baïfall Dream
+  role: 'Stage : Étude et Développement d''une Plateforme d''e-Facturation'
+  dates: Juillet 2026 - Présent
+  location: Paris
+  facts:
+  - id: experience.baifall.redaction.du.cahier.des.charges.d.une
+    text: 'Rédaction du cahier des charges d''une plateforme de facturation électronique (réforme B2B 2026) : benchmark de 3 plateformes agréées, 95 exigences, architecture cible.'
+  - id: experience.baifall.conception.et.developpement.de.la.plateforme
+    text: 'Conception et développement de la plateforme : génération Factur-X/UBL, modèle de données, API REST, cycle de vie des factures.'
+  - id: experience.baifall.definition.des.exigences.de.securite.applicative
+    text: 'Définition des exigences de sécurité applicative : authentification, gestion des accès, chiffrement, RGPD art. 32, formats normalisés Factur-X/UBL.'
+  - id: experience.baifall.cadrage.complet.du.projet.benchmark
+    text: 'Cadrage complet du projet : benchmark, périmètre MVP vs V2, plan en deux volets (développement et immatriculation DGFiP), présentation aux parties prenantes.'
+  - id: experience.baifall.etude.comparative.de.3.solutions.du
+    text: 'Étude comparative de 3 solutions du marché et recommandation d''architecture : build interne connecté à une plateforme agréée via API, feuille de route réglementaire.'
+  - id: experience.baifall.definition.des.exigences.reglementaires.et.securite
+    text: 'Définition des exigences réglementaires et sécurité : immatriculation DGFiP, ISO 27001, authentification, chiffrement, RGPD art. 32.'
+  - id: experience.baifall.specification.d.une.architecture.secure.by.design
+    text: 'Spécification d''une architecture secure by design : authentification, chiffrement, journalisation, intégration API de plateformes agréées (Factur-X/UBL).'
+  - id: experience.baifall.cadrage.reglementaire.immatriculation.dgfip.certification
+    text: 'Cadrage réglementaire : immatriculation DGFiP, certification ISO 27001 (périmètre SMSI), conformité RGPD art. 32.'
+  - id: experience.baifall.specification.de.la.gestion.des.identites
+    text: 'Spécification de la gestion des identités et des accès de la plateforme : authentification, rôles et permissions, traçabilité (ISO 27001, RGPD art. 32).'
+  - id: experience.baifall.specification.des.exigences.de.journalisation.et
+    text: Spécification des exigences de journalisation et de traçabilité de la plateforme (ISO 27001, RGPD art. 32) en vue de sa supervision sécurité.
+  - id: experience.baifall.analyse.des.exigences.d.hebergement.localisation.ue
+    text: Analyse des exigences d'hébergement (localisation UE, référentiel SecNumCloud) et spécifications sécurité de l'infrastructure cible (ISO 27001).
+- id: experience.concentrix
+  employer: Concentrix
+  role: Analyste Support Réseau & Sécurité, Client Netgear
+  dates: Janvier 2024 - Décembre 2025
+  location: Varsovie
+  facts:
+  - id: experience.concentrix.incidents
+    text: Triage et résolution de 1 500+ incidents, 85 % de résolution au premier contact; escalade L2/L3 via Salesforce selon SLA.
+  - id: experience.concentrix.resolution_time
+    text: Analyse de logs et identification de misconfigurations de sécurité; réduction du délai moyen de résolution de 20 %.
+  - id: experience.concentrix.incidents.2
+    text: Accompagnement de 1 500+ utilisateurs dans la résolution d'incidents réseau et sécurité, 85 % de résolution au premier contact.
+  - id: experience.concentrix.resolution_time.2
+    text: 'Optimisation processus support : 40+ procédures, réduction du délai moyen de résolution de 20 %.'
+  - id: experience.concentrix.resolution_time.3
+    text: 'Cartographie et optimisation des processus de support : rédaction de 40+ procédures, réduction du délai moyen de résolution de 20 %.'
+- id: experience.lionbridge
+  employer: Lionbridge
+  role: Spécialiste Localisation Logicielle
+  dates: Mai 2023 - Janvier 2024
+  location: Varsovie
+  facts:
+  - id: experience.lionbridge.traitement.et.validation.de.200
+    text: Traitement et validation de 200 000+ strings localisés, taux d'erreur inf?rieur ? 0,5 % sur 8 mois consécutifs.
+  - id: experience.lionbridge.traitement.et.validation.de.200.2
+    text: Traitement et validation de 200 000+ éléments localisés pour un produit SI international, taux d'erreur inf?rieur ? 0,5 % sur 8 mois.
+- id: experience.testronic
+  employer: Testronic
+  role: Analyste QA
+  dates: Janvier 2022 - Mai 2023
+  location: Varsovie
+  facts:
+  - id: experience.testronic.detection.de.90.anomalies.critiques
+    text: Détection de 90+ anomalies critiques sur applications web et mobiles avant production via Jira, taux de reproductibilité de 95 %.
+  - id: experience.testronic.detection.de.90.anomalies.critiques.2
+    text: Détection de 90+ anomalies critiques sur applications web et mobiles avant production, taux de reproductibilité de 95 %.
+  - id: experience.testronic.recette.fonctionnelle.sur.applications.web
+    text: 'Recette fonctionnelle sur applications web et mobiles : détection de 90+ anomalies critiques avant mise en production, taux de reproductibilité de 95 %.'
+projects:
+- id: project.appsec.alternance.1
+  title: Audit de Sécurité Web - Détection et correction de vulnérabilités
+  stack:
+  - Burp Suite
+  - SQLmap
+  - OWASP Juice Shop
+  - curl
+  - DevTools
+  facts:
+  - id: project.appsec.alternance.1.outcome
+    text: Audit couvrant 8 types de vulnérabilités web avec scoring CVSS v3, rapport de remédiation priorisé par criticité et plan d'action.
+  source_templates:
+  - Mouaad_Sekkouri_-_AppSec__Alternance.html
+- id: project.appsec.alternance.2
+  title: Pipeline CI/CD Sécurisé - Contrôles de sécurité automatisés
+  stack:
+  - GitLab CI/CD
+  - Semgrep
+  - Bandit
+  - OWASP ZAP
+  - Trivy
+  - Docker
+  - Python
+  - Flask
+  facts:
+  - id: project.appsec.alternance.2.outcome
+    text: Contrôles de sécurité automatisés dans le pipeline CI/CD avec 4 outils d'analyse, seuils de blocage configurés et rapports consolidés.
+  source_templates:
+  - Mouaad_Sekkouri_-_AppSec__Alternance.html
+- id: project.appsec.alternance.3
+  title: Modélisation de Menaces - Analyse des risques applicatifs
+  stack:
+  - STRIDE
+  - DFD
+  - revue de code manuelle
+  - Flask
+  - API REST
+  facts:
+  - id: project.appsec.alternance.3.outcome
+    text: Identification de 9 surfaces d'attaque, revue manuelle du code source, recommandations de refactoring sécurisé et plan de remédiation.
+  source_templates:
+  - Mouaad_Sekkouri_-_AppSec__Alternance.html
+- id: project.backend.dev.alternance.1
+  title: API REST E-Commerce - Application complète multi-modules
+  stack:
+  - Python
+  - Flask
+  - PostgreSQL
+  - JWT
+  - Swagger
+  - Pytest
+  facts:
+  - id: project.backend.dev.alternance.1.outcome
+    text: 'Application e-commerce complète : authentification sécurisée, gestion des produits/commandes, recherche avancée et tests automatisés.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Backend_Dev__Alternance.html
+- id: project.backend.dev.alternance.2
+  title: Plateforme de Gestion de Tickets - Backend temps réel
+  stack:
+  - Node.js
+  - Express.js
+  - MongoDB
+  - Redis
+  - WebSocket
+  facts:
+  - id: project.backend.dev.alternance.2.outcome
+    text: Plateforme tickets avec gestion de rôles multi-niveaux, notifications en temps réel et traitement asynchrone des demandes via Redis.
+  source_templates:
+  - Mouaad_Sekkouri_-_Backend_Dev__Alternance.html
+- id: project.backend.dev.alternance.3
+  title: Architecture Microservices - Collecte et consultation de données
+  stack:
+  - Python
+  - RabbitMQ
+  - Docker
+  - PostgreSQL
+  - REST API
+  facts:
+  - id: project.backend.dev.alternance.3.outcome
+    text: Système de collecte et consultation de données via 3 microservices communicants, file de messages RabbitMQ et conteneurisation Docker.
+  source_templates:
+  - Mouaad_Sekkouri_-_Backend_Dev__Alternance.html
+- id: project.chef.de.projet.it.alternance.1
+  title: Pilotage Projet Cloud - Déploiement et coordination d'équipe
+  stack:
+  - JIRA
+  - Confluence
+  - Gantt
+  - Azure
+  - Slack
+  facts:
+  - id: project.chef.de.projet.it.alternance.1.outcome
+    text: 'Pilotage déploiement cloud : cahier des charges, découpage en 12 sprints, coordination de 3 contributeurs et reporting hebdomadaire.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html
+- id: project.chef.de.projet.it.alternance.2
+  title: Conduite du Changement - Migration système de monitoring
+  stack:
+  - Notion
+  - RACI
+  - matrice de risques
+  - PowerPoint
+  facts:
+  - id: project.chef.de.projet.it.alternance.2.outcome
+    text: 'Pilotage migration monitoring : matrice RACI, analyse des risques, 12 scénarios identifiés, 18 mesures de mitigation et formation.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html
+- id: project.chef.de.projet.it.alternance.3
+  title: Standardisation des Processus Support IT
+  stack:
+  - Confluence
+  - Salesforce
+  - Excel
+  - ITIL
+  facts:
+  - id: project.chef.de.projet.it.alternance.3.outcome
+    text: 'Optimisation processus support : 40+ procédures standardisées, mise en place de KPIs de performance, réduction des délais de 20 %.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html
+- id: project.consultant.it.alternance.1
+  title: Cadrage et Pilotage - Déploiement Cloud Azure
+  stack:
+  - JIRA
+  - Confluence
+  - Gantt
+  - Azure
+  - Slack
+  facts:
+  - id: project.consultant.it.alternance.1.outcome
+    text: 'Cadrage et pilotage transformation cloud : cahier des charges, 12 sprints, coordination de 3 contributeurs et reporting hebdomadaire.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Alternance.html
+- id: project.consultant.it.alternance.2
+  title: Conduite du Changement - Migration système de monitoring
+  stack:
+  - Notion
+  - RACI
+  - matrice de risques
+  - PowerPoint
+  facts:
+  - id: project.consultant.it.alternance.2.outcome
+    text: Diagnostic existant et modèle cible, matrice RACI, 12 scénarios identifiés, 18 mesures de mitigation et accompagnement utilisateurs.
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Alternance.html
+- id: project.consultant.it.alternance.3
+  title: Audit de Conformité ISO 27001 et Feuille de Route NIS2
+  stack:
+  - ISO 27001:2022
+  - ISO 27002
+  - NIS2
+  - CIS Benchmarks
+  facts:
+  - id: project.consultant.it.alternance.3.outcome
+    text: Autoévaluation 93 mesures ISO 27001:2022, rapport d'écarts scoring par domaine, recommandations priorisées, feuille de route NIS2.
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Alternance.html
+- id: project.consultant.it.stage.1
+  title: Cadrage et Pilotage - Déploiement Cloud Azure
+  stack:
+  - JIRA
+  - Confluence
+  - Gantt
+  - Azure
+  - Slack
+  facts:
+  - id: project.consultant.it.stage.1.outcome
+    text: 'Cadrage et pilotage transformation cloud : cahier des charges, 12 sprints, coordination de 3 contributeurs et reporting hebdomadaire.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Stage.html
+- id: project.consultant.it.stage.2
+  title: Conduite du Changement - Migration système de monitoring
+  stack:
+  - Notion
+  - RACI
+  - matrice de risques
+  - PowerPoint
+  facts:
+  - id: project.consultant.it.stage.2.outcome
+    text: Diagnostic existant et modèle cible, matrice RACI, 12 scénarios identifiés, 18 mesures de mitigation et accompagnement utilisateurs.
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Stage.html
+- id: project.consultant.it.stage.3
+  title: Audit de Conformité ISO 27001 et Feuille de Route NIS2
+  stack:
+  - ISO 27001:2022
+  - ISO 27002
+  - NIS2
+  - CIS Benchmarks
+  facts:
+  - id: project.consultant.it.stage.3.outcome
+    text: Autoévaluation 93 mesures ISO 27001:2022, rapport d'écarts scoring par domaine, recommandations priorisées, feuille de route NIS2.
+  source_templates:
+  - Mouaad_Sekkouri_-_Consultant_IT__Stage.html
+- id: project.cybersecurite.alternance.1
+  title: SOC Lab - Détection d'intrusions et réponse aux incidents
+  stack:
+  - ELK
+  - Filebeat
+  - Wazuh
+  - Sigma
+  - Linux/Windows event logs
+  facts:
+  - id: project.cybersecurite.alternance.1.outcome
+    text: Détection automatique de 3 types de cyberattaques via 10 règles d'alerte personnalisées, tableaux de bord et 3 procédures de réponse.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Alternance.html
+- id: project.cybersecurite.alternance.2
+  title: Analyse de Risques - Conformité ISO 27001 et NIS2
+  stack:
+  - EBIOS RM
+  - ISO 27001:2022
+  - NIS2
+  - CIS Benchmarks
+  - matrices de risques
+  facts:
+  - id: project.cybersecurite.alternance.2.outcome
+    text: Analyse de risques sur infrastructure simulée, 12 scénarios identifiés, 18 mesures priorisées, autoévaluation sur 93 mesures Annexe A.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Alternance.html
+- id: project.cybersecurite.alternance.3
+  title: Sécurité Cloud Azure - Surveillance et conformité
+  stack:
+  - Azure Sentinel
+  - KQL
+  - IAM
+  - NSG
+  - Defender for Cloud
+  facts:
+  - id: project.cybersecurite.alternance.3.outcome
+    text: Sécurisation de 3 VMs selon CIS Benchmarks, Sentinel connecté à 3 sources avec 8 règles KQL de détection et des alertes automatisées.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Alternance.html
+- id: project.cybersecurite.stage.1
+  title: SOC Lab - Détection d'intrusions et réponse aux incidents
+  stack:
+  - ELK
+  - Filebeat
+  - Wazuh
+  - Sigma
+  - Linux/Windows event logs
+  facts:
+  - id: project.cybersecurite.stage.1.outcome
+    text: Détection automatique de 3 types de cyberattaques via 10 règles d'alerte personnalisées, tableaux de bord et 3 procédures de réponse.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Stage.html
+- id: project.cybersecurite.stage.2
+  title: Analyse de Risques - Conformité ISO 27001 et NIS2
+  stack:
+  - EBIOS RM
+  - ISO 27001:2022
+  - NIS2
+  - CIS Benchmarks
+  - matrices de risques
+  facts:
+  - id: project.cybersecurite.stage.2.outcome
+    text: Analyse de risques sur infrastructure simulée, 12 scénarios identifiés, 18 mesures priorisées, autoévaluation sur 93 mesures Annexe A.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Stage.html
+- id: project.cybersecurite.stage.3
+  title: Sécurité Cloud Azure - Surveillance et conformité
+  stack:
+  - Azure Sentinel
+  - KQL
+  - IAM
+  - NSG
+  - Defender for Cloud
+  facts:
+  - id: project.cybersecurite.stage.3.outcome
+    text: Sécurisation de 3 VMs selon CIS Benchmarks, Sentinel connecté à 3 sources avec 8 règles KQL de détection et des alertes automatisées.
+  source_templates:
+  - Mouaad_Sekkouri_-_Cybersecurite__Stage.html
+- id: project.data.engineering.bi.alternance.1
+  title: Pipeline de Données - Collecte et analyse automatisée de logs
+  stack:
+  - Python
+  - Airflow
+  - PostgreSQL
+  - Grafana
+  - Pandas
+  facts:
+  - id: project.data.engineering.bi.alternance.1.outcome
+    text: Collecte et transformation de 4 sources de logs en flux structurés, pipeline automatisé avec dashboards de monitoring en temps réel.
+  source_templates:
+  - Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html
+- id: project.data.engineering.bi.alternance.2
+  title: Tableau de Bord BI - Analyse des incidents et performances
+  stack:
+  - Power BI
+  - SQL
+  - Excel
+  - DAX
+  - ETL Python
+  facts:
+  - id: project.data.engineering.bi.alternance.2.outcome
+    text: 'Tableau de bord d''analyse de 1 500+ incidents : KPIs de résolution, tendances mensuelles, répartition par catégorie et suivi des SLA.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html
+- id: project.data.engineering.bi.alternance.3
+  title: Data Lake - Traitement de données à grande échelle
+  stack:
+  - Azure Data Factory
+  - PySpark
+  - BigQuery
+  - Python
+  - Docker
+  facts:
+  - id: project.data.engineering.bi.alternance.3.outcome
+    text: Data lake Azure avec ingestion multi-sources, transformation des données via PySpark et requêtes analytiques avec refresh automatisé.
+  source_templates:
+  - Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html
+- id: project.devops.sre.alternance.1
+  title: Pipeline CI/CD - Déploiement automatisé multi-environnements
+  stack:
+  - GitLab CI
+  - Docker
+  - SonarQube
+  - Ansible
+  - Slack Webhooks
+  facts:
+  - id: project.devops.sre.alternance.1.outcome
+    text: Déploiement automatisé sur 3 environnements dev/staging/prod avec tests, analyse de code et notifications, pipeline GitLab CI complet.
+  source_templates:
+  - Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html
+- id: project.devops.sre.alternance.2
+  title: Infrastructure as Code - Provisioning automatisé cloud
+  stack:
+  - Terraform
+  - Ansible
+  - Azure
+  - Git
+  - Key Vault
+  facts:
+  - id: project.devops.sre.alternance.2.outcome
+    text: Provisioning automatisé de 5 VMs Azure via Terraform, configuration Ansible et gestion des secrets, infrastructure versionnée sur Git.
+  source_templates:
+  - Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html
+- id: project.devops.sre.alternance.3
+  title: Monitoring et Alerting - Surveillance et fiabilité des services
+  stack:
+  - ELK
+  - Prometheus
+  - Grafana
+  - Filebeat
+  - Docker
+  facts:
+  - id: project.devops.sre.alternance.3.outcome
+    text: Surveillance centralisée de 3 services avec dashboards, alertes et SLA 99.9 %, runbooks d'incident pour réponse rapide aux anomalies.
+  source_templates:
+  - Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html
+- id: project.devsecops.alternance.1
+  title: Pipeline CI/CD Sécurisé - Déploiement automatisé et sécurisé
+  stack:
+  - GitLab CI/CD
+  - Kaniko
+  - Scaleway Container Registry
+  - Kubernetes
+  - Docker
+  - Flask
+  facts:
+  - id: project.devsecops.alternance.1.outcome
+    text: 'Automatisation du déploiement sécurisé d''applications : build, push registre privé et déploiement Kubernetes avec gestion de secrets.'
+  source_templates:
+  - Mouaad_Sekkouri_-_DevSecOps__Alternance.html
+- id: project.devsecops.alternance.2
+  title: Déploiement Microservices - Haute disponibilité et résilience
+  stack:
+  - Kubernetes
+  - Kind
+  - Docker
+  - ActiveMQ
+  - MongoDB
+  - YAML
+  - kubectl
+  facts:
+  - id: project.devsecops.alternance.2.outcome
+    text: Orchestration de 6 microservices en haute disponibilité, stockage persistant et tests de tolérance aux pannes sur cluster Kubernetes.
+  source_templates:
+  - Mouaad_Sekkouri_-_DevSecOps__Alternance.html
+- id: project.devsecops.alternance.3
+  title: Sécurité Supply Chain - Contrôle qualité du code et des images
+  stack:
+  - Trivy
+  - OPA Gatekeeper
+  - GitLab CI/CD
+  - Docker
+  - Kubernetes
+  - Safety
+  facts:
+  - id: project.devsecops.alternance.3.outcome
+    text: Contrôle automatisé de la sécurité des images dans le pipeline CI/CD, blocage des composants non conformes avant mise en production.
+  source_templates:
+  - Mouaad_Sekkouri_-_DevSecOps__Alternance.html
+- id: project.fullstack.dev.alternance.1
+  title: Application Web de Suivi de Candidatures
+  stack:
+  - React
+  - Flask
+  - PostgreSQL
+  - JWT
+  - Docker
+  - Tailwind
+  facts:
+  - id: project.fullstack.dev.alternance.1.outcome
+    text: Tableau de bord interactif avec filtres dynamiques et drag-and-drop, API REST avec authentification sécurisée et déploiement Docker.
+  source_templates:
+  - Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html
+- id: project.fullstack.dev.alternance.2
+  title: Plateforme Collaborative de Notes
+  stack:
+  - Vue.js
+  - Express.js
+  - MongoDB
+  - WebSocket
+  - Tailwind
+  facts:
+  - id: project.fullstack.dev.alternance.2.outcome
+    text: Application collaborative avec édition temps réel, système de tags et recherche full-text, backend Express.js et stockage MongoDB.
+  source_templates:
+  - Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html
+- id: project.fullstack.dev.alternance.3
+  title: Portfolio & Blog Dynamique
+  stack:
+  - Next.js
+  - PostgreSQL
+  - Vercel
+  - Tailwind
+  - REST API
+  facts:
+  - id: project.fullstack.dev.alternance.3.outcome
+    text: Site web personnel avec CMS headless, rendu côté serveur, commentaires et analytics intégrés, optimisation SEO, score Lighthouse 95+.
+  source_templates:
+  - Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html
+- id: project.grc.alternance.1
+  title: Analyse de Risques - Identification et traitement des menaces
+  stack:
+  - EBIOS RM
+  - cartographie des actifs
+  - matrices de risques
+  - plan de traitement
+  facts:
+  - id: project.grc.alternance.1.outcome
+    text: 'Analyse complète des risques EBIOS RM : 12 scénarios identifiés, 18 mesures de sécurité priorisées par criticité et plan d''action.'
+  source_templates:
+  - Mouaad_Sekkouri_-_GRC__Alternance.html
+- id: project.grc.alternance.2
+  title: Conformité ISO 27001 - Évaluation et feuille de route NIS2
+  stack:
+  - ISO 27001:2022
+  - ISO 27002
+  - NIS2
+  - CIS Benchmarks
+  facts:
+  - id: project.grc.alternance.2.outcome
+    text: Évaluation 93 mesures ISO 27001:2022, rapport d'écarts avec scoring par domaine, recommandations priorisées et feuille de route NIS2.
+  source_templates:
+  - Mouaad_Sekkouri_-_GRC__Alternance.html
+- id: project.grc.alternance.3
+  title: Sécurité Cloud - Conformité et durcissement Azure
+  stack:
+  - Azure IAM
+  - NSG
+  - Defender for Cloud
+  - VM
+  - VNet
+  facts:
+  - id: project.grc.alternance.3.outcome
+    text: Sécurisation de 3 VMs Azure selon principes de moindre privilège, checklist de conformité CIS Benchmarks Azure avec écarts documentés.
+  source_templates:
+  - Mouaad_Sekkouri_-_GRC__Alternance.html
+- id: project.ia.machine.learning.alternance.1
+  title: Classification Automatique d'Incidents IT
+  stack:
+  - Python
+  - scikit-learn
+  - Pandas
+  - NLTK
+  - Jupyter
+  facts:
+  - id: project.ia.machine.learning.alternance.1.outcome
+    text: Modèle de classification sur 1 500+ tickets d'incidents, comparaison de 4 algorithmes de machine learning, précision finale de 87 %.
+  source_templates:
+  - Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html
+- id: project.ia.machine.learning.alternance.2
+  title: Détection d'Anomalies Réseau - Apprentissage profond
+  stack:
+  - TensorFlow
+  - Keras
+  - Pandas
+  - Matplotlib
+  - Google Colab
+  facts:
+  - id: project.ia.machine.learning.alternance.2.outcome
+    text: Modèle de détection de comportements anormaux sur 50 000+ entrées réseau, seuil de détection optimisé et taux de faux positifs < 5 %.
+  source_templates:
+  - Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html
+- id: project.ia.machine.learning.alternance.3
+  title: Chatbot Support Technique - Traitement du langage naturel
+  stack:
+  - Python
+  - spaCy
+  - Flask
+  - SQLite
+  - Hugging Face
+  facts:
+  - id: project.ia.machine.learning.alternance.3.outcome
+    text: Chatbot de support technique avec reconnaissance d'intentions, base de connaissances de 80+ questions et intégration web via API REST.
+  source_templates:
+  - Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html
+- id: project.iam.alternance.1
+  title: Audit Active Directory - Sécurisation et durcissement
+  stack:
+  - Windows Server
+  - Active Directory
+  - PingCastle
+  - BloodHound
+  - GPO
+  - LAPS
+  facts:
+  - id: project.iam.alternance.1.outcome
+    text: Audit complet Active Directory, correction de 15 faiblesses identifiées, déploiement du modèle de tiering et restriction des accès.
+  source_templates:
+  - Mouaad_Sekkouri_-_IAM__Alternance.html
+- id: project.iam.alternance.2
+  title: Gouvernance IAM Azure - Contrôle d'accès et conformité
+  stack:
+  - Azure AD/Entra ID
+  - RBAC
+  - Conditional Access
+  - MFA
+  - Azure Policy
+  facts:
+  - id: project.iam.alternance.2.outcome
+    text: Déploiement de rôles d'accès personnalisés sur 3 VMs Azure, politiques d'authentification renforcée MFA et rapport de conformité CIS.
+  source_templates:
+  - Mouaad_Sekkouri_-_IAM__Alternance.html
+- id: project.iam.alternance.3
+  title: Automatisation IAM - Gestion du cycle de vie des identités
+  stack:
+  - PowerShell
+  - Active Directory
+  - CSV
+  - GPO
+  - Scheduled Tasks
+  facts:
+  - id: project.iam.alternance.3.outcome
+    text: Automatisation de 50+ créations de comptes, assignation automatique des rôles, détection des inactifs, gain de 70 % en efficacité.
+  source_templates:
+  - Mouaad_Sekkouri_-_IAM__Alternance.html
+- id: project.infrastructure.cloud.alternance.1
+  title: Infrastructure Cloud Azure - Déploiement sécurisé multi-tiers
+  stack:
+  - Azure
+  - Terraform
+  - PowerShell
+  - NSG
+  - IAM
+  - Azure Monitor
+  facts:
+  - id: project.infrastructure.cloud.alternance.1.outcome
+    text: Déploiement sécurisé de 5 VMs sur Azure avec configuration IAM/RBAC, NSG, Azure Backup et automatisation via Terraform et PowerShell.
+  source_templates:
+  - Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html
+- id: project.infrastructure.cloud.alternance.2
+  title: Virtualisation et Administration - Environnement multi-serveurs
+  stack:
+  - Proxmox
+  - Windows Server
+  - Active Directory
+  - pfSense
+  - Zabbix
+  facts:
+  - id: project.infrastructure.cloud.alternance.2.outcome
+    text: 'Environnement Proxmox avec 4 VMs : serveur AD/DNS/DHCP, Linux, firewall pfSense, gestion centralisée via GPO et monitoring Zabbix.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html
+- id: project.infrastructure.cloud.alternance.3
+  title: Conteneurisation - Orchestration et déploiement automatisé
+  stack:
+  - Docker
+  - Kubernetes
+  - GitLab CI
+  - Nginx
+  - PostgreSQL
+  facts:
+  - id: project.infrastructure.cloud.alternance.3.outcome
+    text: Application 3 tiers conteneurisée avec Docker Compose, orchestration Kubernetes sur 3 pods et pipeline CI/CD avec déploiement auto.
+  source_templates:
+  - Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html
+- id: project.pentest.alternance.1
+  title: Test d'intrusion Active Directory - Audit et recommandations
+  stack:
+  - Windows Server
+  - BloodHound
+  - PingCastle
+  - Mimikatz
+  - Rubeus
+  - PowerView
+  facts:
+  - id: project.pentest.alternance.1.outcome
+    text: 'Test d''intrusion sur Active Directory : compromission via Kerberoasting et Pass-the-Hash, élévation de privilèges et recommandations.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Pentest__Alternance.html
+- id: project.pentest.alternance.2
+  title: Audit de Sécurité Web - Détection de vulnérabilités
+  stack:
+  - Burp Suite
+  - SQLmap
+  - DVWA
+  - OWASP Juice Shop
+  - curl
+  - DevTools
+  facts:
+  - id: project.pentest.alternance.2.outcome
+    text: Audit de sécurité couvrant 8 types de vulnérabilités web avec scoring CVSS v3, rapport d'audit et remédiation priorisée par criticité.
+  source_templates:
+  - Mouaad_Sekkouri_-_Pentest__Alternance.html
+- id: project.pentest.alternance.3
+  title: Simulation de Cyberattaques - Test des défenses et remédiation
+  stack:
+  - Kali Linux
+  - Nmap
+  - Metasploit
+  - Hydra
+  - OpenVAS
+  - VirtualBox
+  facts:
+  - id: project.pentest.alternance.3.outcome
+    text: Exploitation de 5 vulnérabilités sur 5 machines, élévation de privilèges et rapports structurés avec recommandations de durcissement.
+  source_templates:
+  - Mouaad_Sekkouri_-_Pentest__Alternance.html
+- id: project.qa.testing.alternance.1
+  title: Framework de Test Automation E2E
+  stack:
+  - Python
+  - Selenium
+  - Pytest
+  - GitHub Actions
+  - Docker
+  facts:
+  - id: project.qa.testing.alternance.1.outcome
+    text: Framework de tests automatisés avec 50+ scénarios end-to-end sur application web, exécution en parallèle et rapports HTML détaillés.
+  source_templates:
+  - Mouaad_Sekkouri_-_QA_Testing__Alternance.html
+- id: project.qa.testing.alternance.2
+  title: Audit Qualité - Tests de sécurité et reporting de vulnérabilités
+  stack:
+  - Burp Suite
+  - OWASP ZAP
+  - DVWA
+  - Juice Shop
+  - Markdown
+  facts:
+  - id: project.qa.testing.alternance.2.outcome
+    text: 'Campagne de tests selon Top 10 OWASP : rédaction de 20+ rapports de vulnérabilités avec sévérité, reproductibilité et recommandations.'
+  source_templates:
+  - Mouaad_Sekkouri_-_QA_Testing__Alternance.html
+- id: project.qa.testing.alternance.3
+  title: Tests d'APIs - Automatisation et intégration continue
+  stack:
+  - Postman
+  - Newman
+  - GitHub Actions
+  - REST API
+  - JSON Schema
+  facts:
+  - id: project.qa.testing.alternance.3.outcome
+    text: 30+ collections de tests fonctionnels et de régression d'APIs, intégration dans pipeline CI avec alertes sur échecs et reporting auto.
+  source_templates:
+  - Mouaad_Sekkouri_-_QA_Testing__Alternance.html
+- id: project.reseaux.telecoms.alternance.1
+  title: Lab Réseau Multi-Sites - Routage et interconnexion sécurisée
+  stack:
+  - GNS3
+  - Cisco IOS
+  - OSPF
+  - BGP
+  - VLANs
+  - VPN IPsec
+  facts:
+  - id: project.reseaux.telecoms.alternance.1.outcome
+    text: Topologie 3 sites interconnectés via OSPF et BGP, VLANs, routage inter-VLAN, VPN site-to-site et simulation de pannes avec bascule.
+  source_templates:
+  - Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html
+- id: project.reseaux.telecoms.alternance.2
+  title: Infrastructure AD & Services Réseau
+  stack:
+  - Windows Server
+  - Active Directory
+  - DNS
+  - DHCP
+  - pfSense
+  facts:
+  - id: project.reseaux.telecoms.alternance.2.outcome
+    text: Active Directory avec DNS, DHCP et GPO sur Windows Server, gestion de 50+ objets, politiques de sécurité et segmentation du réseau.
+  source_templates:
+  - Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html
+- id: project.reseaux.telecoms.alternance.3
+  title: Monitoring Réseau - Surveillance et alertes automatisées
+  stack:
+  - Zabbix
+  - SNMP
+  - Grafana
+  - Linux
+  - Python
+  facts:
+  - id: project.reseaux.telecoms.alternance.3.outcome
+    text: Supervision de 15+ équipements via SNMP et Zabbix, dashboards de métriques réseau, alertes automatisées et rapports hebdomadaires.
+  source_templates:
+  - Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html
+- id: project.soc.alternance.1
+  title: SOC Lab - Détection d'intrusions et réponse aux incidents
+  stack:
+  - ELK
+  - Filebeat
+  - Wazuh
+  - Sigma
+  - Linux/Windows event logs
+  facts:
+  - id: project.soc.alternance.1.outcome
+    text: Détection automatique de 3 types de cyberattaques via 10 règles d'alerte personnalisées, tableaux de bord et 3 procédures de réponse.
+  source_templates:
+  - Mouaad_Sekkouri_-_SOC__Alternance.html
+- id: project.soc.alternance.2
+  title: Surveillance Endpoint - Détection de compromissions et alertes
+  stack:
+  - Wazuh
+  - Elasticsearch
+  - Kibana
+  - OSSEC rules
+  - Linux
+  - Windows
+  facts:
+  - id: project.soc.alternance.2.outcome
+    text: Surveillance en temps réel de 3 serveurs, détection de 5 scénarios de compromission, alertes automatiques et 3 procédures de réponse.
+  source_templates:
+  - Mouaad_Sekkouri_-_SOC__Alternance.html
+- id: project.soc.alternance.3
+  title: Simulation de Cyberattaques - Test et validation des défenses
+  stack:
+  - Kali Linux
+  - Nmap
+  - Metasploit
+  - Hydra
+  - OpenVAS
+  - VirtualBox
+  facts:
+  - id: project.soc.alternance.3.outcome
+    text: Simulation de 5 cyberattaques réelles sur 5 machines, test et validation des défenses de détection, réduction des fausses alertes.
+  source_templates:
+  - Mouaad_Sekkouri_-_SOC__Alternance.html
+- id: project.support.it.sysadmin.alternance.1
+  title: Automatisation Gestion de Parc IT
+  stack:
+  - PowerShell
+  - Active Directory
+  - GPO
+  - Intune
+  - Windows Server
+  facts:
+  - id: project.support.it.sysadmin.alternance.1.outcome
+    text: '10+ scripts PowerShell d''automatisation : inventaire, déploiement et rotation de mots de passe, réduction du provisioning de 60 %.'
+  source_templates:
+  - Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html
+- id: project.support.it.sysadmin.alternance.2
+  title: Infrastructure AD & Services Réseau Centralisés
+  stack:
+  - Windows Server
+  - Active Directory
+  - DNS
+  - DHCP
+  - pfSense
+  facts:
+  - id: project.support.it.sysadmin.alternance.2.outcome
+    text: Active Directory avec DNS, DHCP et GPO sur Windows Server, gestion de 50+ objets, politiques de sécurité et segmentation du réseau.
+  source_templates:
+  - Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html
+- id: project.support.it.sysadmin.alternance.3
+  title: Base de Connaissances & Procédures IT
+  stack:
+  - Confluence
+  - Markdown
+  - ITIL
+  - Salesforce Knowledge
+  facts:
+  - id: project.support.it.sysadmin.alternance.3.outcome
+    text: 40+ procédures standardisées pour incidents, onboarding et troubleshooting, wiki interne avec recherche indexée et catégorisation.
+  source_templates:
+  - Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html
+- id: project.cloudsec.alternance.1
+  title: Sécurisation Cloud Azure - Conformité et durcissement
+  stack:
+  - Microsoft Azure
+  - IAM
+  - NSG
+  - Defender for Cloud
+  - VM
+  - VNet
+  facts:
+  - id: project.cloudsec.alternance.1.outcome
+    text: 'Sécurisation d''une infrastructure Azure : 3 VMs, NSG, revue IAM, Defender for Cloud, checklist CIS Benchmarks avec scoring global.'
+  source_templates:
+  - Mouaad_Sekkouri_-CloudSec__Alternance.html
+- id: project.cloudsec.alternance.2
+  title: Détection Cloud - Surveillance et alertes en temps réel
+  stack:
+  - Azure Sentinel
+  - KQL
+  - Log Analytics
+  - Azure AD
+  - NSG Flow Logs
+  facts:
+  - id: project.cloudsec.alternance.2.outcome
+    text: Déploiement Sentinel connecté à 3 sources de logs, 8 règles analytiques KQL, workbooks de monitoring, playbook de réponse automatisé.
+  source_templates:
+  - Mouaad_Sekkouri_-CloudSec__Alternance.html
+- id: project.cloudsec.alternance.3
+  title: Sécurité Kubernetes - Protection des conteneurs et conformité
+  stack:
+  - Kubernetes
+  - Kind
+  - NetworkPolicies
+  - Pod Security Standards
+  - Trivy
+  - YAML
+  facts:
+  - id: project.cloudsec.alternance.3.outcome
+    text: 'Implémentation de contrôles sur cluster Kind : NetworkPolicies, Pod Security Standards, scan Trivy, audit RBAC et baseline CIS K8s.'
+  source_templates:
+  - Mouaad_Sekkouri_-CloudSec__Alternance.html
+education:
+- id: education.supinfo.m1_cybersecurity
+  diploma: M1 Programme Grande École - Cybersécurité
+  institution: Supinfo
+  dates: 2025 - présent
+  location: Lille
+- id: education.vistula.bachelor_computer_engineering
+  diploma: Bachelor Génie Informatique
+  institution: Vistula University
+  dates: 2021 - 2024
+  location: Varsovie
+certifications:
+- id: certification.microsoft.az900
+  name: Microsoft AZ-900 - Azure Fundamentals
+  obtained: Mars 2026
+languages:
+- id: language.french
+  name: Français
+  level: Bilingue
+- id: language.english
+  name: Anglais
+  level: C1 Courant
+- id: language.arabic
+  name: Arabe
+  level: Langue maternelle
+- id: language.german
+  name: Allemand
+  level: A2 Élémentaire
+skills:
+- id: skill.802.1x
+  name: 802.1X
+  verified: true
+- id: skill.acl
+  name: ACL
+  verified: true
+- id: skill.active.directory
+  name: Active Directory
+  verified: true
+- id: skill.agile
+  name: Agile
+  verified: true
+- id: skill.agile.scrum
+  name: Agile/Scrum
+  verified: true
+- id: skill.amass
+  name: Amass
+  verified: true
+- id: skill.analyse.de.trafic
+  name: analyse de trafic
+  verified: true
+- id: skill.analyse.de.vulnerabilites
+  name: analyse de vulnérabilités
+  verified: true
+- id: skill.ansible
+  name: Ansible
+  verified: true
+- id: skill.apache.airflow
+  name: Apache Airflow
+  verified: true
+- id: skill.architecture.microservices
+  name: architecture microservices
+  verified: true
+- id: skill.as.rep.roasting
+  name: AS-REP Roasting
+  verified: true
+- id: skill.audit.interne
+  name: audit interne
+  verified: true
+- id: skill.aws
+  name: AWS
+  verified: true
+- id: skill.azure
+  name: Azure
+  verified: true
+- id: skill.azure.ad.entra.id
+  name: Azure AD/Entra ID
+  verified: true
+- id: skill.azure.data.factory
+  name: Azure Data Factory
+  verified: true
+- id: skill.azure.iam
+  name: Azure IAM
+  verified: true
+- id: skill.azure.sentinel
+  name: Azure Sentinel
+  verified: true
+- id: skill.bandit
+  name: Bandit
+  verified: true
+- id: skill.bash
+  name: Bash
+  verified: true
+- id: skill.bdd
+  name: BDD
+  verified: true
+- id: skill.bgp
+  name: BGP
+  verified: true
+- id: skill.bigquery
+  name: BigQuery
+  verified: true
+- id: skill.bloodhound
+  name: BloodHound
+  verified: true
+- id: skill.burp.suite
+  name: Burp Suite
+  verified: true
+- id: skill.cadrage.de.projets
+  name: Cadrage de projets
+  verified: true
+- id: skill.cahier.des.charges
+  name: Cahier des charges
+  verified: true
+- id: skill.cartographie.des.processus
+  name: Cartographie des processus
+  verified: true
+- id: skill.cartographie.si
+  name: Cartographie SI
+  verified: true
+- id: skill.cas.de.test
+  name: cas de test
+  verified: true
+- id: skill.cis.benchmarks
+  name: CIS Benchmarks
+  verified: true
+- id: skill.cis.benchmarks.azure.k8s
+  name: CIS Benchmarks Azure/K8s
+  verified: true
+- id: skill.cisco
+  name: Cisco
+  verified: true
+- id: skill.classification.des.actifs
+  name: classification des actifs
+  verified: true
+- id: skill.conditional.access
+  name: conditional access
+  verified: true
+- id: skill.conduite.du.changement
+  name: conduite du changement
+  verified: true
+- id: skill.confluence
+  name: Confluence
+  verified: true
+- id: skill.cron
+  name: Cron
+  verified: true
+- id: skill.css3
+  name: CSS3
+  verified: true
+- id: skill.cvss.v3
+  name: CVSS v3
+  verified: true
+- id: skill.cycle.en.v
+  name: cycle en V
+  verified: true
+- id: skill.cypress
+  name: Cypress
+  verified: true
+- id: skill.dbt
+  name: dbt
+  verified: true
+- id: skill.defender.for.cloud
+  name: Defender for Cloud
+  verified: true
+- id: skill.dependency.check
+  name: Dependency-Check
+  verified: true
+- id: skill.dhcp
+  name: DHCP
+  verified: true
+- id: skill.diagnostic.organisationnel
+  name: diagnostic organisationnel
+  verified: true
+- id: skill.diagrammes.de.gantt
+  name: diagrammes de Gantt
+  verified: true
+- id: skill.django
+  name: Django
+  verified: true
+- id: skill.dns
+  name: DNS
+  verified: true
+- id: skill.docker
+  name: Docker
+  verified: true
+- id: skill.docker.compose
+  name: Docker Compose
+  verified: true
+- id: skill.dora
+  name: DORA
+  verified: true
+- id: skill.durcissement.systeme
+  name: durcissement système
+  verified: true
+- id: skill.ebios.rm
+  name: EBIOS RM
+  verified: true
+- id: skill.elk.stack
+  name: ELK Stack
+  verified: true
+- id: skill.excel
+  name: Excel
+  verified: true
+- id: skill.express.js
+  name: Express.js
+  verified: true
+- id: skill.expression.de.besoins
+  name: expression de besoins
+  verified: true
+- id: skill.filebeat
+  name: Filebeat
+  verified: true
+- id: skill.firebase
+  name: Firebase
+  verified: true
+- id: skill.flask
+  name: Flask
+  verified: true
+- id: skill.fortinet
+  name: Fortinet
+  verified: true
+- id: skill.gestion.de.secrets
+  name: gestion de secrets
+  verified: true
+- id: skill.gestion.des.acces
+  name: gestion des accès
+  verified: true
+- id: skill.git
+  name: Git
+  verified: true
+- id: skill.git.gitlab
+  name: Git/GitLab
+  verified: true
+- id: skill.github.actions
+  name: GitHub Actions
+  verified: true
+- id: skill.gitlab.ci
+  name: GitLab CI
+  verified: true
+- id: skill.gitlab.ci.cd
+  name: GitLab CI/CD
+  verified: true
+- id: skill.gobuster
+  name: Gobuster
+  verified: true
+- id: skill.google.colab
+  name: Google Colab
+  verified: true
+- id: skill.gpo
+  name: GPO
+  verified: true
+- id: skill.grafana
+  name: Grafana
+  verified: true
+- id: skill.graphql
+  name: GraphQL
+  verified: true
+- id: skill.hashcat
+  name: Hashcat
+  verified: true
+- id: skill.helm
+  name: Helm
+  verified: true
+- id: skill.html.js
+  name: HTML/JS
+  verified: true
+- id: skill.html5
+  name: HTML5
+  verified: true
+- id: skill.hugging.face
+  name: Hugging Face
+  verified: true
+- id: skill.hydra
+  name: Hydra
+  verified: true
+- id: skill.hyper.v
+  name: Hyper-V
+  verified: true
+- id: skill.iam
+  name: IAM
+  verified: true
+- id: skill.ids.ips
+  name: IDS/IPS
+  verified: true
+- id: skill.intune
+  name: Intune
+  verified: true
+- id: skill.iso.27001
+  name: ISO 27001
+  verified: true
+- id: skill.iso.27001.27002
+  name: ISO 27001/27002
+  verified: true
+- id: skill.itil
+  name: ITIL
+  verified: true
+- id: skill.itil.v4
+  name: ITIL v4
+  verified: true
+- id: skill.java
+  name: Java
+  verified: true
+- id: skill.javascript
+  name: JavaScript
+  verified: true
+- id: skill.jenkins
+  name: Jenkins
+  verified: true
+- id: skill.jira
+  name: JIRA
+  verified: true
+- id: skill.john.the.ripper
+  name: John the Ripper
+  verified: true
+- id: skill.journalisation
+  name: journalisation
+  verified: true
+- id: skill.juniper
+  name: Juniper
+  verified: true
+- id: skill.junit
+  name: JUnit
+  verified: true
+- id: skill.jupyter
+  name: Jupyter
+  verified: true
+- id: skill.kali.linux
+  name: Kali Linux
+  verified: true
+- id: skill.kanban
+  name: Kanban
+  verified: true
+- id: skill.kaniko
+  name: Kaniko
+  verified: true
+- id: skill.keras
+  name: Keras
+  verified: true
+- id: skill.kerberoasting
+  name: Kerberoasting
+  verified: true
+- id: skill.kill.chain
+  name: kill chain
+  verified: true
+- id: skill.kind
+  name: Kind
+  verified: true
+- id: skill.kpis
+  name: KPIs
+  verified: true
+- id: skill.kql
+  name: KQL
+  verified: true
+- id: skill.kubernetes
+  name: Kubernetes
+  verified: true
+- id: skill.laps
+  name: LAPS
+  verified: true
+- id: skill.linux
+  name: Linux
+  verified: true
+- id: skill.macos
+  name: macOS
+  verified: true
+- id: skill.masscan
+  name: Masscan
+  verified: true
+- id: skill.matplotlib
+  name: Matplotlib
+  verified: true
+- id: skill.matrices.de.risques
+  name: matrices de risques
+  verified: true
+- id: skill.metasploit
+  name: Metasploit
+  verified: true
+- id: skill.mfa
+  name: MFA
+  verified: true
+- id: skill.micro.perimetre
+  name: micro-périmètre
+  verified: true
+- id: skill.microservices
+  name: microservices
+  verified: true
+- id: skill.microsoft.365
+  name: Microsoft 365
+  verified: true
+- id: skill.mimikatz
+  name: Mimikatz
+  verified: true
+- id: skill.modelisation.de.menaces.stride
+  name: modélisation de menaces STRIDE
+  verified: true
+- id: skill.moindre.privilege
+  name: Moindre privilège
+  verified: true
+- id: skill.mongodb
+  name: MongoDB
+  verified: true
+- id: skill.mpls
+  name: MPLS
+  verified: true
+- id: skill.ms.project
+  name: MS Project
+  verified: true
+- id: skill.mvc
+  name: MVC
+  verified: true
+- id: skill.mysql
+  name: MySQL
+  verified: true
+- id: skill.nagios
+  name: Nagios
+  verified: true
+- id: skill.nat
+  name: NAT
+  verified: true
+- id: skill.netgear
+  name: Netgear
+  verified: true
+- id: skill.networkpolicies
+  name: NetworkPolicies
+  verified: true
+- id: skill.nginx
+  name: Nginx
+  verified: true
+- id: skill.nis2
+  name: NIS2
+  verified: true
+- id: skill.nist.csf
+  name: NIST CSF
+  verified: true
+- id: skill.nltk
+  name: NLTK
+  verified: true
+- id: skill.nmap
+  name: Nmap
+  verified: true
+- id: skill.node.js
+  name: Node.js
+  verified: true
+- id: skill.notion
+  name: Notion
+  verified: true
+- id: skill.nsg
+  name: NSG
+  verified: true
+- id: skill.numpy
+  name: NumPy
+  verified: true
+- id: skill.opa.gatekeeper
+  name: OPA Gatekeeper
+  verified: true
+- id: skill.opencv
+  name: OpenCV
+  verified: true
+- id: skill.openvas
+  name: OpenVAS
+  verified: true
+- id: skill.optimisation
+  name: optimisation
+  verified: true
+- id: skill.ospf
+  name: OSPF
+  verified: true
+- id: skill.owasp.top.10
+  name: OWASP Top 10
+  verified: true
+- id: skill.owasp.zap
+  name: OWASP ZAP
+  verified: true
+- id: skill.pam
+  name: PAM
+  verified: true
+- id: skill.pandas
+  name: Pandas
+  verified: true
+- id: skill.pare.feu
+  name: pare-feu
+  verified: true
+- id: skill.pass.the.hash
+  name: Pass-the-Hash
+  verified: true
+- id: skill.pfsense
+  name: pfSense
+  verified: true
+- id: skill.php
+  name: PHP
+  verified: true
+- id: skill.pingcastle
+  name: PingCastle
+  verified: true
+- id: skill.plans.de.test
+  name: plans de test
+  verified: true
+- id: skill.plans.de.traitement
+  name: plans de traitement
+  verified: true
+- id: skill.pod.security.standards
+  name: Pod Security Standards
+  verified: true
+- id: skill.politiques.de.securite
+  name: Politiques de sécurité
+  verified: true
+- id: skill.postgresql
+  name: PostgreSQL
+  verified: true
+- id: skill.postman
+  name: Postman
+  verified: true
+- id: skill.power.bi
+  name: Power BI
+  verified: true
+- id: skill.powerpoint
+  name: PowerPoint
+  verified: true
+- id: skill.powershell
+  name: PowerShell
+  verified: true
+- id: skill.prometheus
+  name: Prometheus
+  verified: true
+- id: skill.proxmox
+  name: Proxmox
+  verified: true
+- id: skill.proxy
+  name: proxy
+  verified: true
+- id: skill.pyspark
+  name: PySpark
+  verified: true
+- id: skill.pytest
+  name: Pytest
+  verified: true
+- id: skill.python
+  name: Python
+  verified: true
+- id: skill.pytorch
+  name: PyTorch
+  verified: true
+- id: skill.raci
+  name: RACI
+  verified: true
+- id: skill.rbac
+  name: RBAC
+  verified: true
+- id: skill.react
+  name: React
+  verified: true
+- id: skill.recette.fonctionnelle
+  name: recette fonctionnelle
+  verified: true
+- id: skill.redis
+  name: Redis
+  verified: true
+- id: skill.registre.prive
+  name: registre privé
+  verified: true
+- id: skill.reporting
+  name: reporting
+  verified: true
+- id: skill.responsive.design
+  name: responsive design
+  verified: true
+- id: skill.rest
+  name: REST
+  verified: true
+- id: skill.rest.api
+  name: REST API
+  verified: true
+- id: skill.revue.des.acces
+  name: revue des accès
+  verified: true
+- id: skill.regles.sigma
+  name: règles Sigma
+  verified: true
+- id: skill.redaction.technique
+  name: rédaction technique
+  verified: true
+- id: skill.salesforce
+  name: Salesforce
+  verified: true
+- id: skill.scaleway
+  name: Scaleway
+  verified: true
+- id: skill.scaleway.container.registry
+  name: Scaleway Container Registry
+  verified: true
+- id: skill.scan.d.images
+  name: scan d'images
+  verified: true
+- id: skill.scikit.learn
+  name: scikit-learn
+  verified: true
+- id: skill.scrum
+  name: Scrum
+  verified: true
+- id: skill.seaborn
+  name: Seaborn
+  verified: true
+- id: skill.segmentation
+  name: segmentation
+  verified: true
+- id: skill.segmentation.reseau
+  name: segmentation réseau
+  verified: true
+- id: skill.selenium
+  name: Selenium
+  verified: true
+- id: skill.semgrep
+  name: Semgrep
+  verified: true
+- id: skill.servicenow
+  name: ServiceNow
+  verified: true
+- id: skill.shodan
+  name: Shodan
+  verified: true
+- id: skill.slack
+  name: Slack
+  verified: true
+- id: skill.snmp
+  name: SNMP
+  verified: true
+- id: skill.sonarqube
+  name: SonarQube
+  verified: true
+- id: skill.spacy
+  name: spaCy
+  verified: true
+- id: skill.splunk
+  name: Splunk
+  verified: true
+- id: skill.spring.boot
+  name: Spring Boot
+  verified: true
+- id: skill.sql
+  name: SQL
+  verified: true
+- id: skill.sqlite
+  name: SQLite
+  verified: true
+- id: skill.sqlmap
+  name: SQLmap
+  verified: true
+- id: skill.stp
+  name: STP
+  verified: true
+- id: skill.tableau
+  name: Tableau
+  verified: true
+- id: skill.tailwind
+  name: Tailwind
+  verified: true
+- id: skill.talend
+  name: Talend
+  verified: false
+  needs_review: true
+- id: skill.task.scheduler
+  name: Task Scheduler
+  verified: true
+- id: skill.tcp.ip
+  name: TCP/IP
+  verified: true
+- id: skill.tdd
+  name: TDD
+  verified: true
+- id: skill.teams
+  name: Teams
+  verified: true
+- id: skill.tensorflow
+  name: TensorFlow
+  verified: true
+- id: skill.terraform
+  name: Terraform
+  verified: true
+- id: skill.tests.de.regression
+  name: tests de régression
+  verified: true
+- id: skill.theharvester
+  name: theHarvester
+  verified: true
+- id: skill.tiering.model
+  name: tiering model
+  verified: true
+- id: skill.trello
+  name: Trello
+  verified: true
+- id: skill.trivy
+  name: Trivy
+  verified: true
+- id: skill.typescript
+  name: TypeScript
+  verified: true
+- id: skill.vagrant
+  name: Vagrant
+  verified: true
+- id: skill.vercel
+  name: Vercel
+  verified: true
+- id: skill.virtualbox
+  name: VirtualBox
+  verified: true
+- id: skill.vlans
+  name: VLANs
+  verified: true
+- id: skill.vm
+  name: VM
+  verified: true
+- id: skill.vmware
+  name: VMware
+  verified: true
+- id: skill.vpn
+  name: VPN
+  verified: true
+- id: skill.vue.js
+  name: Vue.js
+  verified: true
+- id: skill.wazuh
+  name: Wazuh
+  verified: true
+- id: skill.windows.server
+  name: Windows Server
+  verified: true
+- id: skill.wireshark
+  name: Wireshark
+  verified: true
+- id: skill.yaml
+  name: YAML
+  verified: true
+- id: skill.zabbix
+  name: Zabbix
+  verified: true
+- id: skill.enumeration.smb.ldap
+  name: énumération SMB/LDAP
+  verified: true
+- id: skill.claude
+  name: Claude
+  verified: true
+- id: skill.chatgpt
+  name: ChatGPT
+  verified: true
+locked:
+  name: Mouaad Sekkouri
+  email: mouaadsekkourii@gmail.com
+  phone: +33 7 51 13 54 25
+  linkedin: linkedin.com/in/sekkouri
+  diplomas:
+  - M1 Programme Grande École - Cybersécurité
+  - Bachelor Génie Informatique
+  employer_names:
+  - Baïfall Dream
+  - Concentrix
+  - Lionbridge
+  - Testronic
+  certification_names:
+  - Microsoft AZ-900 - Azure Fundamentals
+  dates:
+  - Juillet 2026 - Présent
+  - Janvier 2024 - Décembre 2025
+  - Mai 2023 - Janvier 2024
+  - Janvier 2022 - Mai 2023
+  - 2025 - présent
+  - 2021 - 2024
+  - Mars 2026

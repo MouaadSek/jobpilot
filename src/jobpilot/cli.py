@@ -474,6 +474,15 @@ def stats_cmd() -> None:
         conn.close()
 
 
+@app.command("facts")
+def facts_cmd() -> None:
+    """Print the provenance fact bank grouped for human review."""
+
+    from jobpilot.facts import format_fact_bank, load_fact_bank
+
+    typer.echo(format_fact_bank(load_fact_bank()))
+
+
 # ----- helpers -----
 
 def _csv(value: str) -> list[str]:

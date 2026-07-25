@@ -71,21 +71,20 @@ def check_profil(content, original_content=None):
 
 
 def check_project_descs(content):
-    """Rules 49-52: Each project-desc ~130-134 chars (excl. HTML tags)."""
+    """Require concise, non-empty project descriptions after AI rewriting."""
     descs = re.findall(r'<div class="project-desc">(.*?)</div>', content, re.DOTALL)
     if len(descs) == 0:
         return False, "PROJECTS: No project-desc found"
     results = []
     all_ok = True
     for i, desc in enumerate(descs, 1):
-        text = strip_html_tags(desc.strip())
-        text = decode_entities(text)
+        text = decode_entities(strip_html_tags(desc.strip()))
         length = len(text)
-        if length > 134:
-            results.append(f"  Project {i}: {length} chars — OVER by {length - 134}")
+        if length > 180:
+            results.append(f"  Project {i}: {length} chars — OVER 180")
             all_ok = False
-        elif length < 130:
-            results.append(f"  Project {i}: {length} chars — SHORT (target 130-134)")
+        elif length < 60:
+            results.append(f"  Project {i}: {length} chars — TOO SHORT (minimum 60)")
             all_ok = False
         else:
             results.append(f"  Project {i}: {length} chars — OK")
@@ -94,10 +93,10 @@ def check_project_descs(content):
 
 
 def check_project_count(content):
-    """Rule 48: Exactly 3 projects."""
+    """AI tailoring may select one to three projects from the chosen template."""
     count = len(re.findall(r'<div class="project-item">', content))
-    if count != 3:
-        return False, f"PROJECT-COUNT: {count} projects (expected 3)"
+    if not 1 <= count <= 3:
+        return False, f"PROJECT-COUNT: {count} projects (expected 1 to 3)"
     return True, f"PROJECT-COUNT: {count} — OK"
 
 
@@ -213,14 +212,16 @@ def check_stage_subtitle(content):
 
 
 def check_line_count(content, original_content=None):
-    """Rule 78: Line count should match original."""
+    """Structural tailoring may select and reorder sourced experience/project blocks."""
     lines = content.count("\n") + 1
     if original_content:
-        orig_lines = original_content.count("\n") + 1
-        if lines != orig_lines:
-            return False, f"LINE-COUNT: {lines} lines (original: {orig_lines}) — MISMATCH"
-        return True, f"LINE-COUNT: {lines} lines — matches original"
-    return True, f"LINE-COUNT: {lines} lines (no original to compare)"
+        original_lines = original_content.count("\n") + 1
+        return (
+            True,
+            f"LINE-COUNT: {lines} lines (original: {original_lines}) — "
+            "structural tailoring allowed",
+        )
+    return True, f"LINE-COUNT: {lines} lines (structural tailoring allowed)"
 
 
 def check_localisation(content):

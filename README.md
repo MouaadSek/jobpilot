@@ -92,6 +92,23 @@ with a clear configuration error instead of silently falling back.
 endpoint, including Ollama or LM Studio. Every provider feeds the same guarded
 tailoring and document-validation pipeline; nothing is auto-sent or submitted.
 
+### Fact bank
+
+`config/fact_bank.yaml` is the reviewable source of truth for every factual
+claim the tailoring model may use. It records stable fact ids, locked identity
+and career fields, and an explicit verified/unverified state for skills. Review
+it at any time with `jobpilot facts`; entries marked `needs_review` stay visible
+instead of being guessed. Posting titles are normalized before rendering so
+gender markers, reference codes, locations, and marketing noise do not reach the CV.
+
+All three advisor modes now use the same sourced-content JSON contract. The
+advisor may rewrite and reorder experience/project content and lead with the
+most relevant verified skills, but every generated bullet and letter paragraph
+cites stable fact ids. The shared validator rejects unknown/review-pending ids,
+unverified skills, unsupported numbers, and unsupported proper nouns before any
+PDF is generated. Identity, contact details, employers, dates, diplomas, and
+certification names remain renderer-owned and cannot be supplied by the model.
+
 ## Sources
 
 Each source below is fully coded and unit-tested; it just needs a credential and
@@ -138,6 +155,7 @@ jobpilot send <id>               # show the email for a ready app, confirm (y/N)
 jobpilot mark-sent <id>          # record an externally-submitted app as sent (ready -> applied)
 jobpilot dashboard --port 8787   # local review UI on 127.0.0.1
 jobpilot stats                   # snapshot: offers, companies, by-contract, applications
+jobpilot facts                   # review all allowed claims and locked fields
 jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
 
 # Cold outreach (draft here; final confirmation is in the local dashboard)
