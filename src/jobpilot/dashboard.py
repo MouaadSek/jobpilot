@@ -28,16 +28,19 @@ from jobpilot.mailer import (
     SendBlocked,
     mark_application_sent,
     prepare_application_email,
+    prepare_cold_email,
     send_application_email,
+    send_cold_email,
 )
 from jobpilot.review import (
     TAB_STATUSES,
     application_detail,
     applications_by_status,
     event_history,
+    outreach_drafts,
     status_tabs,
 )
-from jobpilot.state import IllegalTransition, transition
+from jobpilot.state import IllegalTransition, current_status, transition
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 ALLOWED_ARTIFACTS = frozenset(
@@ -85,6 +88,14 @@ async def _posted_body(request: Request) -> str:
 
     raw = (await request.body()).decode("utf-8")
     return parse_qs(raw, keep_blank_values=True).get("body", [""])[0]
+
+
+async def _posted_cold_send(request: Request) -> tuple[str, bool]:
+    """Read editable body and the named-mailbox confirmation checkbox."""
+
+    raw = (await request.body()).decode("utf-8")
+    fields = parse_qs(raw, keep_blank_values=True)
+    return fields.get("body", [""])[0], fields.get("personal_address_confirmed") == ["1"]
 
 
 def _safe_artifact_path(
@@ -205,6 +216,42 @@ def create_app(
             status_code=status_code,
         )
 
+    def cold_confirm_response(
+        request: Request,
+        db: sqlite3.Connection,
+        queue_id: int,
+        *,
+        body: str | None = None,
+        error: str | None = None,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        prep = prepare_cold_email(db, queue_id)
+        detail = application_detail(db, prep.application_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="application not found")
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "cold_email",
+                "application": detail,
+                "prep": {
+                    "queue_id": prep.queue_id,
+                    "recipient": prep.recipient,
+                    "subject": prep.subject,
+                    "body": prep.body if body is None else body,
+                    "scheduled_at": prep.scheduled_at,
+                    "personal_confirmation_required": (
+                        prep.personal_confirmation_required
+                    ),
+                },
+                "error": error or prep.blocked_reason,
+                "can_send": prep.blocked_reason is None,
+                "cold_send_enabled": get_settings().cold_send_enabled,
+            },
+            status_code=status_code,
+        )
+
     @app.get("/", response_class=HTMLResponse)
     def queue_page(
         request: Request,
@@ -221,6 +268,18 @@ def create_app(
                 "status": status,
                 "applications": applications_by_status(db, status),
                 "tabs": status_tabs(db, status),
+                "error": None,
+            },
+        )
+
+    @app.get("/outreach", response_class=HTMLResponse)
+    def outreach_page(request: Request, db: Database) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "outreach",
+                "drafts": outreach_drafts(db),
                 "error": None,
             },
         )
@@ -287,6 +346,88 @@ def create_app(
             except IllegalTransition as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(url="/", status_code=303)
+
+    @app.get("/outreach/{queue_id}", response_class=HTMLResponse)
+    def cold_confirm(
+        request: Request,
+        queue_id: int,
+        db: Database,
+    ) -> HTMLResponse:
+        try:
+            return cold_confirm_response(request, db, queue_id)
+        except MailerError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/outreach/{queue_id}/send")
+    def cold_send(
+        request: Request,
+        queue_id: int,
+        db: Database,
+        form: tuple[str, bool] = Depends(_posted_cold_send),
+    ) -> Response:
+        body, personal_address_confirmed = form
+        with APPLICATION_LOCK:
+            try:
+                prep = prepare_cold_email(db, queue_id)
+            except MailerError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            try:
+                status = current_status(db, prep.application_id)
+                if status == "queued":
+                    approve_application(
+                        db,
+                        prep.application_id,
+                        via="dashboard outreach",
+                    )
+                elif status not in {"generating", "ready"}:
+                    return cold_confirm_response(
+                        request,
+                        db,
+                        queue_id,
+                        body=body,
+                        error=(
+                            "cold application cannot be sent from "
+                            f"status '{status}'"
+                        ),
+                        status_code=409,
+                    )
+                send_cold_email(
+                    db,
+                    queue_id,
+                    body=body,
+                    personal_address_confirmed=personal_address_confirmed,
+                    sender=sender,
+                )
+            except ApplicationNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except ApplicationNotQueuedError as exc:
+                return cold_confirm_response(
+                    request,
+                    db,
+                    queue_id,
+                    body=body,
+                    error=str(exc),
+                    status_code=409,
+                )
+            except SendBlocked as exc:
+                return cold_confirm_response(
+                    request,
+                    db,
+                    queue_id,
+                    body=body,
+                    error=str(exc),
+                    status_code=409,
+                )
+            except MailerError as exc:
+                return cold_confirm_response(
+                    request,
+                    db,
+                    queue_id,
+                    body=body,
+                    error=str(exc),
+                    status_code=422,
+                )
+        return RedirectResponse(url="/outreach", status_code=303)
 
     @app.get("/application/{application_id}/email", response_class=HTMLResponse)
     def email_confirm(

@@ -13,6 +13,7 @@ Discovery is behind an interface so it is pluggable; the default is manual entry
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from abc import ABC, abstractmethod
 from collections import Counter
@@ -42,6 +43,28 @@ PERSONAL_EMAIL_DOMAINS = {
     "gmx.fr", "protonmail.com", "proton.me", "free.fr", "orange.fr",
     "wanadoo.fr", "sfr.fr", "laposte.net", "bbox.fr", "numericable.fr",
 }
+
+# Generic mailboxes may be sent after the standard confirmation. A named
+# mailbox on a professional domain requires the additional UI confirmation.
+GENERIC_EMAIL_LOCAL_PARTS = frozenset(
+    {
+        "career",
+        "careers",
+        "contact",
+        "emploi",
+        "emplois",
+        "hiring",
+        "hr",
+        "info",
+        "job",
+        "jobs",
+        "recrutement",
+        "recruiting",
+        "rh",
+        "talent",
+        "talents",
+    }
+)
 
 
 def _utc_now() -> str:
@@ -90,6 +113,18 @@ def is_professional_address(email: str | None) -> bool:
     if not local.strip() or "." not in domain:
         return False
     return domain not in PERSONAL_EMAIL_DOMAINS
+
+
+def requires_personal_confirmation(email: str | None) -> bool:
+    """Whether a named mailbox on a professional domain needs extra approval."""
+
+    if not is_professional_address(email):
+        return False
+    assert email is not None
+    local = email.partition("@")[0].strip().casefold()
+    # Qualifiers such as recrutement.paris or jobs-emea remain generic.
+    base = re.split(r"[+._-]", local, maxsplit=1)[0]
+    return base not in GENERIC_EMAIL_LOCAL_PARTS
 
 
 # ---- Suppression list ----

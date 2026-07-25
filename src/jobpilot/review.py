@@ -47,6 +47,23 @@ def queued_applications(db: sqlite3.Connection) -> list[dict[str, Any]]:
     return applications_by_status(db, "queued")
 
 
+def outreach_drafts(db: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return unsent cold drafts that may still be reviewed or retried."""
+
+    rows = db.execute(
+        "SELECT q.id AS queue_id, q.application_id, q.to_email, q.subject, "
+        "       q.scheduled_at, a.status, a.contact_name, "
+        "       c.name AS company "
+        "FROM email_queue q "
+        "JOIN applications a ON a.id = q.application_id "
+        "LEFT JOIN companies c ON c.id = a.company_id "
+        "WHERE a.kind = 'cold' AND q.sent_at IS NULL "
+        "  AND a.status IN ('queued', 'generating', 'ready') "
+        "ORDER BY q.scheduled_at, q.id"
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def status_tabs(db: sqlite3.Connection, active: str) -> list[dict[str, Any]]:
     """Navigation tabs with per-status counts for offer applications."""
 

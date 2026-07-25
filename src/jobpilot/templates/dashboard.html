@@ -97,6 +97,12 @@
     .score { color: var(--success); font-variant-numeric: tabular-nums; font-weight: 700; }
     .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
     .back { text-decoration: none; }
+    .top-nav { display: flex; gap: 14px; align-items: center; }
+    .top-nav a { font-weight: 650; text-decoration: none; }
+    .checkbox-row {
+      display: flex; gap: 9px; align-items: flex-start; margin: 12px 0;
+      color: var(--ink);
+    }
     .meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -190,7 +196,10 @@
         <h1>JobPilot</h1>
         <div class="muted">Local application review</div>
       </div>
-      {% if view == "detail" %}<a class="back" href="/">← Review queue</a>{% endif %}
+      <nav class="top-nav" aria-label="Main navigation">
+        <a href="/">Applications</a>
+        <a href="/outreach">Outreach</a>
+      </nav>
     </header>
 
     {% if view == "queue" %}
@@ -243,6 +252,81 @@
         {% else %}
           <div class="empty">No applications with status “{{ status }}”.</div>
         {% endif %}
+      </section>
+    {% elif view == "outreach" %}
+      <section class="panel">
+        <h2>Outreach drafts</h2>
+        <p class="muted">Cold emails awaiting confirmation. No message is sent from this list.</p>
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+        {% if drafts %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Recipient</th>
+                  <th>Subject</th>
+                  <th>Company</th>
+                  <th>Status</th>
+                  <th>Scheduled</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for draft in drafts %}
+                  <tr>
+                    <td>{{ draft.to_email }}</td>
+                    <td class="title">{{ draft.subject }}</td>
+                    <td>{{ draft.company or "—" }}</td>
+                    <td>{{ draft.status }}</td>
+                    <td>{{ draft.scheduled_at }}</td>
+                    <td><a href="/outreach/{{ draft.queue_id }}">Review</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty">No cold outreach drafts awaiting review.</div>
+        {% endif %}
+      </section>
+    {% elif view == "cold_email" %}
+      <section class="panel">
+        <a class="back" href="/outreach">← Outreach drafts</a>
+        <h2>Confirmer l'envoi du cold email</h2>
+        <div class="muted">{{ application.company or "Unknown company" }}</div>
+
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+        {% if not cold_send_enabled %}
+          <p class="muted">
+            Live cold sending is disabled by default. Final confirmation will
+            remain blocked until COLD_SEND_ENABLED=true is explicitly configured.
+          </p>
+        {% endif %}
+
+        <dl class="meta">
+          <div><dt>Destinataire</dt><dd>{{ prep.recipient }}</dd></div>
+          <div><dt>Objet</dt><dd>{{ prep.subject }}</dd></div>
+          <div><dt>Créneau prévu</dt><dd>{{ prep.scheduled_at }}</dd></div>
+        </dl>
+
+        <form method="post" action="/outreach/{{ prep.queue_id }}/send" data-busy>
+          <h3>Message et ligne d'opposition</h3>
+          <textarea name="body" rows="16" class="body-edit">{{ prep.body }}</textarea>
+          {% if prep.personal_confirmation_required %}
+            <label class="checkbox-row">
+              <input type="checkbox" name="personal_address_confirmed" value="1" required>
+              <span>
+                Je confirme explicitement l'envoi à cette adresse professionnelle
+                nominative après avoir vérifié le destinataire.
+              </span>
+            </label>
+          {% endif %}
+          <div class="actions">
+            <button type="submit" data-label="Confirmer et envoyer"{% if not can_send %} disabled{% endif %}>Confirmer et envoyer</button>
+            <a class="btn secondary" href="/outreach">Annuler</a>
+          </div>
+          {% if not can_send %}<p class="muted">L'envoi est bloqué : {{ error }}.</p>{% endif %}
+        </form>
       </section>
     {% elif view == "email" %}
       <section class="panel">

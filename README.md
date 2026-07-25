@@ -131,7 +131,7 @@ jobpilot dashboard --port 8787   # local review UI on 127.0.0.1
 jobpilot stats                   # snapshot: offers, companies, by-contract, applications
 jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
 
-# Cold outreach (drafting only; nothing sends without `apply`)
+# Cold outreach (draft here; final confirmation is in the local dashboard)
 jobpilot add-contact --company "ACME" --name "Jean Dupont" --role RSSI --email rh@acme.fr
 jobpilot contacts --company "ACME"
 jobpilot draft-cold --company "ACME" --role "analyste SOC" --contact 1
@@ -144,11 +144,12 @@ strong matches cap around 0.45–0.50. The queue threshold is therefore
 `JOBPILOT_QUEUE_THRESHOLD` (default **0.35**), applied at runtime without editing
 `matcher.py`.
 
-**Cold-mail rails** (in `contacts.py`, enforced at draft/queue time): max 25/day,
-≥4 min stagger, suppression list honored, professional addresses only (no free
-providers), mandatory opt-out line. Drafts queue in `email_queue` (email) and as
-`linkedin_draft` events; **nothing sends without a prior `human_approved` event**
-(recorded by `jobpilot apply`).
+**Cold-mail rails** are enforced when drafting and rechecked immediately before
+SMTP dispatch: one shared maximum of 25 application/cold emails per UTC day,
+at least four minutes between cold sends, suppression-list refusal,
+professional-domain recipients only, mandatory opt-out text, and an extra
+confirmation for named professional mailboxes. **Nothing sends without a prior
+`human_approved` event.**
 
 ## Dashboard
 
@@ -171,6 +172,30 @@ each status; the queue is the default view. The dashboard shows offer and event
 details and lets you approve or skip through the same state-machine paths as the
 CLI. Approval generates the CV, motivation letter, and tracker row synchronously
 for local review. The server always binds to loopback only.
+
+### Cold outreach sending (disabled by default)
+
+The dashboard's **Outreach** tab lists unsent cold-email drafts. Selecting one
+opens a separate confirmation page showing the exact recipient, subject,
+editable body, scheduled time, and mandatory French opt-out footer. A named
+professional mailbox such as `jean.dupont@company.fr` also requires its own
+explicit checkbox. The separate **Confirmer et envoyer** action records human
+approval through the existing application flow, rechecks every legal rail, and
+only then may call the existing STARTTLS SMTP sender.
+
+Live cold dispatch is protected by this release gate:
+
+```dotenv
+COLD_SEND_ENABLED=false
+```
+
+Keep it `false` until the owner has explicitly signed off. The Outreach list,
+confirmation page, editing, and validation remain available, but final sending
+returns a clear disabled message and SMTP is never called. After sign-off,
+setting it to `true` enables confirmed sends. Successful sends record
+`cold_mail_sent`; blocked or failed attempts record `cold_send_failed`, including
+recipient and subject. Suppression can be added at any time with
+`jobpilot suppress <email>`.
 
 ### Sending an application by email
 

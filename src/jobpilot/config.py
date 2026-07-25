@@ -28,6 +28,18 @@ def _path(env_var: str, default_rel: str) -> Path:
     return p if p.is_absolute() else PROJECT_ROOT / p
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
 @dataclass(frozen=True)
 class Settings:
     db_path: Path
@@ -77,6 +89,7 @@ class Settings:
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_name: str = "Mouaad Sekkouri"
+    cold_send_enabled: bool = False
 
     # Applicant contact details used only to prefill ATS forms. These stay in
     # .env rather than the matching profile because they are not scoring data.
@@ -170,6 +183,7 @@ def get_settings() -> Settings:
         smtp_username=os.getenv("SMTP_USERNAME") or None,
         smtp_password=os.getenv("SMTP_PASSWORD") or None,
         smtp_from_name=os.getenv("SMTP_FROM_NAME", "Mouaad Sekkouri"),
+        cold_send_enabled=_env_bool("COLD_SEND_ENABLED"),
         applicant_full_name=os.getenv("APPLICANT_FULL_NAME") or None,
         applicant_email=os.getenv("APPLICANT_EMAIL") or None,
         applicant_phone=os.getenv("APPLICANT_PHONE") or None,
