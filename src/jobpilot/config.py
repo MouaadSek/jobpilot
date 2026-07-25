@@ -78,6 +78,13 @@ class Settings:
     smtp_password: str | None = None
     smtp_from_name: str = "Mouaad Sekkouri"
 
+    # Applicant contact details used only to prefill ATS forms. These stay in
+    # .env rather than the matching profile because they are not scoring data.
+    applicant_full_name: str | None = None
+    applicant_email: str | None = None
+    applicant_phone: str | None = None
+    applicant_linkedin_url: str | None = None
+
     def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
         if not self.smtp_username or not self.smtp_password:
             raise MissingCredentialError(
@@ -163,4 +170,8 @@ def get_settings() -> Settings:
         smtp_username=os.getenv("SMTP_USERNAME") or None,
         smtp_password=os.getenv("SMTP_PASSWORD") or None,
         smtp_from_name=os.getenv("SMTP_FROM_NAME", "Mouaad Sekkouri"),
+        applicant_full_name=os.getenv("APPLICANT_FULL_NAME") or None,
+        applicant_email=os.getenv("APPLICANT_EMAIL") or None,
+        applicant_phone=os.getenv("APPLICANT_PHONE") or None,
+        applicant_linkedin_url=os.getenv("APPLICANT_LINKEDIN_URL") or None,
     )

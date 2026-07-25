@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from jobpilot.apply_assist import ApplyAssistError, launch_application_assist
 from jobpilot.apply_flow import (
     APPLICATION_LOCK,
     ApplicationGenerationError,
@@ -153,6 +154,11 @@ def create_app(
                 "application": detail,
                 "events": event_history(db, application_id),
                 "tracker_row": tracker_row,
+                "prefill_eligible": (
+                    detail["status"] == "ready"
+                    and detail["source"] == "ats"
+                    and bool(detail["url"])
+                ),
                 "error": error,
             },
             status_code=status_code,
@@ -328,6 +334,27 @@ def create_app(
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             except MailerError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            url=f"/application/{application_id}", status_code=303
+        )
+
+    @app.post("/application/{application_id}/prefill")
+    def prefill(request: Request, application_id: int, db: Database) -> Response:
+        """Launch a visible ATS form prefill; the human alone may submit it."""
+
+        with APPLICATION_LOCK:
+            try:
+                launch_application_assist(
+                    db,
+                    application_id,
+                    output_root=artifacts_root,
+                )
+            except ApplyAssistError as exc:
+                # A direct request to an ineligible record stays a clean dashboard
+                # response; adapter/browser errors are handled by the URL fallback.
+                return detail_response(
+                    request, db, application_id, error=str(exc), status_code=409
+                )
         return RedirectResponse(
             url=f"/application/{application_id}", status_code=303
         )

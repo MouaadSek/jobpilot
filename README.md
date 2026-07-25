@@ -71,6 +71,7 @@ All secrets live in `.env` (gitignored); `.env.example` documents every key.
 | `OPENAI_API_KEY` | OpenAI or OpenAI-compatible tailoring credential |
 | `OPENAI_MODEL` | Model name (default `gpt-5.4-mini`) |
 | `OPENAI_BASE_URL` | Chat Completions API base (default `https://api.openai.com/v1`) |
+| `APPLICANT_FULL_NAME` / `APPLICANT_EMAIL` / `APPLICANT_PHONE` / `APPLICANT_LINKEDIN_URL` | Contact details used only to prefill visible ATS forms |
 
 Which sources run is controlled by `config/sources.yaml`; ATS targets by
 `config/targets.yaml`; CV variants by `config/variants.yaml`.
@@ -187,6 +188,25 @@ and a blocked send is refused with an explanation while the application stays
 (`jobpilot mark-sent <id>`) records an externally-submitted application in the
 same funnel. Configure SMTP via `SMTP_USERNAME` / `SMTP_PASSWORD` (Gmail app
 password); the password is redacted from all logs and errors.
+
+### ATS application assist (prefill only)
+
+For `ready` offers originating from the configured Lever, Greenhouse, or
+SmartRecruiters pollers, the dashboard shows **Ouvrir et pré-remplir**. Set all
+four `APPLICANT_*` values in `.env` first. The action opens a **visible**
+Playwright Chromium window, fills best-effort name, email, phone, LinkedIn,
+and CV fields, and adds the motivation letter only where the ATS exposes a
+cover-letter upload field.
+
+JobPilot never clicks a final submit/apply/send control, handles a CAPTCHA,
+creates an account, or enters a password. The browser remains for the human to
+review and manually submit or abandon. If the ATS is unknown, selectors have
+changed, files are unavailable, or Playwright fails, the dashboard safely opens
+the apply URL in the default browser and records an `apply_url_opened` audit
+event. Missing `APPLICANT_*` settings are shown as a clear setup error instead.
+A successful prefill records `prefill_launched`; neither event changes
+application status. After personally submitting the application, use **Marquer
+comme envoyée** to record the existing `ready → applied` transition.
 
 > Screenshot placeholder: review queue and generated-document detail view.
 

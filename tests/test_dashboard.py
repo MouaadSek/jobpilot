@@ -353,9 +353,11 @@ def _ready_email_app(
     *,
     suffix: str,
     contact_email: str | None = "recrutement@acme.example",
+    source_name: str = "france_travail",
+    url: str | None = None,
 ) -> int:
     source_id = db.execute(
-        "SELECT id FROM sources WHERE name = 'france_travail'"
+        "SELECT id FROM sources WHERE name = ?", (source_name,)
     ).fetchone()["id"]
     company_id = db.execute(
         "INSERT INTO companies (name, city) VALUES ('Acme', 'Paris')"
@@ -366,7 +368,7 @@ def _ready_email_app(
         "description, contract_type, city, content_hash, contact_email) "
         "VALUES (?, ?, ?, ?, 'Analyste SOC', 'desc', 'alternance', 'Paris', ?, ?)",
         (source_id, company_id, f"e-{suffix}",
-         f"https://example.test/{suffix}", digest, contact_email),
+         url or f"https://example.test/{suffix}", digest, contact_email),
     ).lastrowid
     application_id = int(
         db.execute(
@@ -421,6 +423,48 @@ def test_ready_detail_hides_email_button_without_contact(
     assert f"/application/{without_contact}/email" not in hidden.text
     # Manual mark-sent stays available on every ready application.
     assert f"/application/{without_contact}/mark-sent" in hidden.text
+
+
+def test_ready_ats_application_shows_and_launches_prefill_button(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jobpilot import dashboard
+    from jobpilot.apply_assist import AssistResult
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix="ats-prefill",
+        source_name="ats",
+        url="https://jobs.lever.co/acme/security",
+    )
+    launches: list[tuple[int, Path | None]] = []
+
+    def fake_launch(
+        db: sqlite3.Connection,
+        application_id: int,
+        *,
+        output_root: Path | None = None,
+    ) -> AssistResult:
+        assert db is dashboard_db
+        launches.append((application_id, output_root))
+        return AssistResult("prefill_launched", adapter="lever")
+
+    monkeypatch.setattr(dashboard, "launch_application_assist", fake_launch)
+    with _client(dashboard_db, tmp_path) as client:
+        detail = client.get(f"/application/{app_id}")
+        response = client.post(
+            f"/application/{app_id}/prefill", follow_redirects=False
+        )
+
+    assert f"/application/{app_id}/prefill" in detail.text
+    assert "Ouvrir et pré-remplir" in detail.text
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/application/{app_id}"
+    assert launches == [(app_id, tmp_path)]
+    assert current_status(dashboard_db, app_id) == "ready"
 
 
 def test_dashboard_send_success_transitions_and_records_event(

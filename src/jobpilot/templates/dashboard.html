@@ -299,6 +299,11 @@
           </div>
         {% elif application.status == "ready" %}
           <div class="actions">
+            {% if prefill_eligible %}
+              <form method="post" action="/application/{{ application.id }}/prefill" data-busy>
+                <button type="submit" data-label="Ouvrir et pré-remplir">Ouvrir et pré-remplir</button>
+              </form>
+            {% endif %}
             {% if application.contact_email %}
               <a class="btn" href="/application/{{ application.id }}/email">Préparer l'envoi par email</a>
             {% endif %}
