@@ -13,7 +13,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from jobpilot.apply_assist import ApplyAssistError, launch_application_assist
+from jobpilot.apply_assist import (
+    ApplyAssistError,
+    WTTJApplyError,
+    launch_application_assist,
+    launch_wttj_application,
+)
 from jobpilot.apply_flow import (
     APPLICATION_LOCK,
     ApplicationGenerationError,
@@ -148,6 +153,20 @@ def create_app(
         detail = application_detail(db, application_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="application not found")
+        events = event_history(db, application_id)
+        latest_event = events[-1] if events else None
+        latest_event_name = latest_event["event"] if latest_event is not None else None
+        wttj_alert = None
+        if latest_event_name == "apply_blocked":
+            wttj_alert = (
+                "La candidature WTTJ a été bloquée avant envoi. "
+                f"Détail : {latest_event['detail']}"
+            )
+        elif latest_event_name == "submit_unconfirmed":
+            wttj_alert = (
+                "L'envoi WTTJ n'a pas pu être confirmé. Vérifiez la candidature "
+                f"manuellement avant de réessayer. Détail : {latest_event['detail']}"
+            )
         tracker_row = None
         if detail["status"] == "ready":
             try:
@@ -163,16 +182,60 @@ def create_app(
             context={
                 "view": "detail",
                 "application": detail,
-                "events": event_history(db, application_id),
+                "events": events,
                 "tracker_row": tracker_row,
                 "prefill_eligible": (
                     detail["status"] == "ready"
                     and detail["source"] == "ats"
                     and bool(detail["url"])
                 ),
+                "wttj_eligible": (
+                    detail["status"] == "ready"
+                    and detail["source"] == "wttj"
+                    and bool(detail["url"])
+                    and latest_event_name != "submit_unconfirmed"
+                ),
+                "wttj_alert": wttj_alert,
                 "error": error,
             },
             status_code=status_code,
+        )
+
+    def wttj_confirm_response(
+        request: Request,
+        db: sqlite3.Connection,
+        application_id: int,
+    ) -> HTMLResponse:
+        detail = application_detail(db, application_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="application not found")
+        events = event_history(db, application_id)
+        latest_event_name = events[-1]["event"] if events else None
+        if (
+            detail["status"] != "ready"
+            or detail["source"] != "wttj"
+            or not detail["url"]
+            or latest_event_name == "submit_unconfirmed"
+        ):
+            return detail_response(
+                request,
+                db,
+                application_id,
+                error=(
+                    "WTTJ application is only available for a ready WTTJ offer "
+                    "with an application URL."
+                ),
+                status_code=409,
+            )
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "wttj",
+                "application": detail,
+                "wttj_live_mode": get_settings().wttj_auto_submit_enabled,
+                "error": None,
+            },
         )
 
     def email_confirm_response(
@@ -436,6 +499,98 @@ def create_app(
         db: Database,
     ) -> HTMLResponse:
         return email_confirm_response(request, db, application_id)
+
+    @app.get("/application/{application_id}/wttj", response_class=HTMLResponse)
+    def wttj_confirm(
+        request: Request,
+        application_id: int,
+        db: Database,
+    ) -> HTMLResponse:
+        """Show the final human confirmation before the WTTJ apply assist."""
+
+        return wttj_confirm_response(request, db, application_id)
+
+    @app.post("/application/{application_id}/wttj/apply")
+    def wttj_apply(
+        request: Request,
+        application_id: int,
+        db: Database,
+    ) -> Response:
+        """Run the confirmed WTTJ flow and surface safety outcomes prominently."""
+
+        with APPLICATION_LOCK:
+            detail = application_detail(db, application_id)
+            if detail is None:
+                raise HTTPException(status_code=404, detail="application not found")
+            events = event_history(db, application_id)
+            latest_event_name = events[-1]["event"] if events else None
+            if (
+                detail["status"] != "ready"
+                or detail["source"] != "wttj"
+                or not detail["url"]
+                or latest_event_name == "submit_unconfirmed"
+            ):
+                return detail_response(
+                    request,
+                    db,
+                    application_id,
+                    error=(
+                        "WTTJ application is only available for a ready WTTJ "
+                        "offer with an application URL."
+                    ),
+                    status_code=409,
+                )
+            try:
+                result = launch_wttj_application(
+                    db,
+                    application_id,
+                    output_root=artifacts_root,
+                    via="dashboard",
+                )
+            except WTTJApplyError as exc:
+                return detail_response(
+                    request,
+                    db,
+                    application_id,
+                    error=str(exc),
+                    status_code=409,
+                )
+
+            if result.outcome in {"apply_dry_run", "application_submitted"}:
+                return RedirectResponse(
+                    url=f"/application/{application_id}",
+                    status_code=303,
+                )
+            if result.outcome == "apply_blocked":
+                reason = result.reason or "unknown safety check"
+                return detail_response(
+                    request,
+                    db,
+                    application_id,
+                    error=(
+                        "La candidature WTTJ a été bloquée avant envoi : "
+                        f"{reason}."
+                    ),
+                    status_code=409,
+                )
+            if result.outcome == "submit_unconfirmed":
+                return detail_response(
+                    request,
+                    db,
+                    application_id,
+                    error=(
+                        "L'envoi WTTJ n'a pas pu être confirmé. Vérifiez la "
+                        "candidature manuellement avant de réessayer."
+                    ),
+                    status_code=409,
+                )
+            return detail_response(
+                request,
+                db,
+                application_id,
+                error=f"Résultat WTTJ inattendu : {result.outcome}.",
+                status_code=422,
+            )
 
     @app.post("/application/{application_id}/email/send")
     def email_send(

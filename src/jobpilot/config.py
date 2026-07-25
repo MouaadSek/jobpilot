@@ -105,6 +105,8 @@ class Settings:
 
     # WTTJ request ceiling per search query.
     wttj_max_pages: int = 5
+    # WTTJ inline apply remains a fill/upload-only dry run unless explicitly enabled.
+    wttj_auto_submit_enabled: bool = False
 
     def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
         if not self.smtp_username or not self.smtp_password:
@@ -211,4 +213,5 @@ def get_settings() -> Settings:
         imap_port=int(os.getenv("IMAP_PORT", "993")),
         imap_folder=os.getenv("IMAP_FOLDER", "INBOX"),
         wttj_max_pages=int(os.getenv("WTTJ_MAX_PAGES", "5")),
+        wttj_auto_submit_enabled=_env_bool("WTTJ_AUTO_SUBMIT_ENABLED"),
     )

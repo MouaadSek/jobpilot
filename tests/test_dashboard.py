@@ -8,13 +8,14 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from jobpilot.apply_flow import APPLICATION_LOCK
 from jobpilot.dashboard import create_app, database_connection
-from jobpilot.state import current_status
+from jobpilot.state import current_status, log_event
 from tests.test_tailoring import _Advisor, _Toolchain
 
 
@@ -465,6 +466,205 @@ def test_ready_ats_application_shows_and_launches_prefill_button(
     assert response.headers["location"] == f"/application/{app_id}"
     assert launches == [(app_id, tmp_path)]
     assert current_status(dashboard_db, app_id) == "ready"
+
+
+@pytest.mark.parametrize(
+    ("live_mode", "mode_label", "mode_explanation"),
+    (
+        (False, "Simulation (dry-run)", "il ne sera pas soumis"),
+        (True, "Envoi réel", "Mode envoi réel activé"),
+    ),
+)
+def test_ready_wttj_detail_links_to_confirmation_with_artifacts_and_mode(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    live_mode: bool,
+    mode_label: str,
+    mode_explanation: str,
+) -> None:
+    from jobpilot import dashboard
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix=f"wttj-confirm-{live_mode}",
+        source_name="wttj",
+        url="https://www.welcometothejungle.com/fr/companies/acme/jobs/soc",
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "get_settings",
+        lambda: SimpleNamespace(wttj_auto_submit_enabled=live_mode),
+    )
+
+    with _client(dashboard_db, tmp_path) as client:
+        detail = client.get(f"/application/{app_id}")
+        confirmation = client.get(f"/application/{app_id}/wttj")
+
+    assert detail.status_code == 200
+    assert f'href="/application/{app_id}/wttj"' in detail.text
+    assert "Postuler sur WTTJ" in detail.text
+    assert confirmation.status_code == 200
+    assert "Analyste SOC" in confirmation.text
+    assert "cv.pdf" in confirmation.text
+    assert "motivation_letter.pdf" in confirmation.text
+    assert mode_label in confirmation.text
+    assert mode_explanation in confirmation.text
+
+
+@pytest.mark.parametrize("outcome", ("apply_dry_run", "application_submitted"))
+def test_wttj_success_and_dry_run_redirect_to_detail(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    from jobpilot import dashboard
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix=f"wttj-{outcome}",
+        source_name="wttj",
+        url="https://www.welcometothejungle.com/fr/companies/acme/jobs/soc",
+    )
+    launches: list[tuple[int, Path | None, str]] = []
+
+    def fake_launch(
+        db: sqlite3.Connection,
+        application_id: int,
+        *,
+        output_root: Path | None = None,
+        via: str,
+    ) -> SimpleNamespace:
+        assert db is dashboard_db
+        launches.append((application_id, output_root, via))
+        return SimpleNamespace(outcome=outcome, reason=None)
+
+    monkeypatch.setattr(dashboard, "launch_wttj_application", fake_launch)
+    with _client(dashboard_db, tmp_path) as client:
+        response = client.post(
+            f"/application/{app_id}/wttj/apply",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/application/{app_id}"
+    assert launches == [(app_id, tmp_path, "dashboard")]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reason", "expected"),
+    (
+        ("apply_blocked", "captcha_detected", "captcha_detected"),
+        ("submit_unconfirmed", None, "n&#39;a pas pu être confirmé"),
+    ),
+)
+def test_wttj_safety_outcome_is_prominent_on_detail(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+    reason: str | None,
+    expected: str,
+) -> None:
+    from jobpilot import dashboard
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix=f"wttj-{outcome}",
+        source_name="wttj",
+        url="https://www.welcometothejungle.com/fr/companies/acme/jobs/soc",
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "launch_wttj_application",
+        lambda *args, **kwargs: SimpleNamespace(outcome=outcome, reason=reason),
+    )
+
+    with _client(dashboard_db, tmp_path) as client:
+        response = client.post(f"/application/{app_id}/wttj/apply")
+
+    assert response.status_code == 409
+    assert 'role="alert"' in response.text
+    assert expected in response.text
+    assert current_status(dashboard_db, app_id) == "ready"
+
+
+
+def test_unconfirmed_wttj_submission_cannot_be_retried_from_dashboard(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jobpilot import dashboard
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix="wttj-no-retry",
+        source_name="wttj",
+        url="https://www.welcometothejungle.com/fr/companies/acme/jobs/soc",
+    )
+    log_event(dashboard_db, app_id, "submit_unconfirmed", {"via": "dashboard"})
+    monkeypatch.setattr(
+        dashboard,
+        "launch_wttj_application",
+        lambda *args, **kwargs: pytest.fail("unconfirmed submission must not retry"),
+    )
+
+    with _client(dashboard_db, tmp_path) as client:
+        detail = client.get(f"/application/{app_id}")
+        confirmation = client.get(f"/application/{app_id}/wttj")
+        action = client.post(f"/application/{app_id}/wttj/apply")
+
+    assert detail.status_code == 200
+    assert "Postuler sur WTTJ" not in detail.text
+    assert "Vérifiez la candidature manuellement" in detail.text
+    assert confirmation.status_code == 409
+    assert action.status_code == 409
+
+
+@pytest.mark.parametrize(
+    ("status", "source_name"),
+    (("queued", "wttj"), ("ready", "ats")),
+)
+def test_wttj_confirmation_rejects_wrong_state_or_source_cleanly(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    source_name: str,
+) -> None:
+    from jobpilot import dashboard
+
+    app_id = _ready_email_app(
+        dashboard_db,
+        tmp_path,
+        suffix=f"wttj-ineligible-{status}-{source_name}",
+        source_name=source_name,
+        url="https://www.welcometothejungle.com/fr/companies/acme/jobs/soc",
+    )
+    dashboard_db.execute(
+        "UPDATE applications SET status = ? WHERE id = ?",
+        (status, app_id),
+    )
+    dashboard_db.commit()
+    monkeypatch.setattr(
+        dashboard,
+        "launch_wttj_application",
+        lambda *args, **kwargs: pytest.fail("ineligible record must not launch"),
+    )
+
+    with _client(dashboard_db, tmp_path) as client:
+        confirmation = client.get(f"/application/{app_id}/wttj")
+        action = client.post(f"/application/{app_id}/wttj/apply")
+
+    assert confirmation.status_code == 409
+    assert action.status_code == 409
+    assert "WTTJ application is only available" in action.text
 
 
 def test_dashboard_send_success_transitions_and_records_event(

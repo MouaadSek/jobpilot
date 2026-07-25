@@ -72,6 +72,7 @@ All secrets live in `.env` (gitignored); `.env.example` documents every key.
 | `OPENAI_MODEL` | Model name (default `gpt-5.4-mini`) |
 | `OPENAI_BASE_URL` | Chat Completions API base (default `https://api.openai.com/v1`) |
 | `APPLICANT_FULL_NAME` / `APPLICANT_EMAIL` / `APPLICANT_PHONE` / `APPLICANT_LINKEDIN_URL` | Contact details used only to prefill visible ATS forms |
+| `WTTJ_AUTO_SUBMIT_ENABLED` | WTTJ inline apply gate: `false` (default) is fill/upload-only dry run; `true` explicitly enables live submission |
 
 Which sources run is controlled by `config/sources.yaml`; ATS targets by
 `config/targets.yaml`; CV variants by `config/variants.yaml`.
@@ -259,6 +260,31 @@ event. Missing `APPLICANT_*` settings are shown as a clear setup error instead.
 A successful prefill records `prefill_launched`; neither event changes
 application status. After personally submitting the application, use **Marquer
 comme envoyée** to record the existing `ready → applied` transition.
+
+### WTTJ inline application (dry-run by default)
+
+For a `ready` WTTJ offer with generated documents, the dashboard can open the
+inline application form in a visible browser, fill the applicant details, and
+upload the CV and motivation letter. The default configuration is deliberately
+safe:
+
+```dotenv
+WTTJ_AUTO_SUBMIT_ENABLED=false
+```
+
+In this dry-run mode, JobPilot fills and uploads, saves
+`output/applications/<id>/wttj_apply.png` for review, and records
+`apply_dry_run`, but it never clicks the final submit control and leaves the
+application `ready`.
+
+Set `WTTJ_AUTO_SUBMIT_ENABLED=true` only after explicitly opting into live
+submission. Live mode still requires the dashboard's human-approved action and
+aborts without submitting if it detects a CAPTCHA, an unmapped required field,
+an offer mismatch, or a missing required document. A confirmed submission
+records `application_submitted` and transitions `ready → applied`; if WTTJ
+does not expose a verifiable confirmation, JobPilot records
+`submit_unconfirmed` and leaves the application `ready`. Blocked attempts fall
+back to opening the offer URL for manual completion.
 
 > Screenshot placeholder: review queue and generated-document detail view.
 

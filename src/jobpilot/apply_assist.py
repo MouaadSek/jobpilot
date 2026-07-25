@@ -1,18 +1,21 @@
-"""Best-effort ATS form prefill that always leaves final submission to a human.
+"""Best-effort ATS prefill and human-approved WTTJ inline applications.
 
-The module intentionally has no click helpers. It fills only known applicant
-fields and uploads local documents, then leaves a visible Playwright browser
-open for the human to review, submit, or abandon. ATS markup changes often, so
-all mapping or Playwright failures safely fall back to the URL in the default
-browser instead of interrupting the dashboard.
+The generic ATS path intentionally has no click helpers: it fills known fields,
+uploads local documents, and leaves submission to the human. WTTJ is the one
+explicit exception. Its adapter may click the submit control only after a fresh
+dashboard approval, pre-submit assertions, and the disabled-by-default
+``WTTJ_AUTO_SUBMIT_ENABLED`` gate. Any blocker leaves state unchanged and opens
+the ordinary offer URL for the human.
 """
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Literal, Protocol
@@ -20,7 +23,7 @@ from urllib.parse import urlparse
 
 from jobpilot.config import Settings, get_settings
 from jobpilot.logging_conf import get_logger
-from jobpilot.state import log_event
+from jobpilot.state import log_event, transition
 
 log = get_logger("apply_assist")
 
@@ -31,6 +34,18 @@ class ApplyAssistError(RuntimeError):
 
 class SelectorError(ApplyAssistError):
     """Raised when an adapter cannot safely map a required field."""
+
+
+class WTTJApplyError(ApplyAssistError):
+    """Raised when a WTTJ application is missing or not eligible."""
+
+
+class WTTJApplyBlocked(WTTJApplyError):
+    """A safe, auditable pre-submit abort with a stable machine reason."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -96,6 +111,7 @@ class PrefillPlan:
 
     fills: tuple[FillAction, ...]
     uploads: tuple[UploadAction, ...]
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,21 +123,51 @@ class AssistResult:
     fallback_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class WTTJApplyResult:
+    """Auditable outcome of one approved WTTJ dashboard action."""
+
+    outcome: Literal[
+        "apply_dry_run",
+        "application_submitted",
+        "apply_blocked",
+        "submit_unconfirmed",
+    ]
+    screenshot_path: Path | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class _ConfirmationBaseline:
+    url: str
+    visible_selectors: frozenset[str]
+
+
 class _Locator(Protocol):
     @property
     def first(self) -> _Locator: ...
 
     def count(self) -> int: ...
 
+    def is_visible(self) -> bool: ...
+
     def fill(self, value: str) -> None: ...
 
     def set_input_files(self, files: str) -> None: ...
 
+    def click(self) -> None: ...
+
 
 class _Page(Protocol):
+    url: str
+
     def content(self) -> str: ...
 
     def locator(self, selector: str) -> _Locator: ...
+
+    def screenshot(self, *, path: str, full_page: bool) -> None: ...
+
+    def wait_for_timeout(self, timeout: float) -> None: ...
 
 
 class BrowserLauncher(Protocol):
@@ -168,10 +214,10 @@ class _ControlParser(HTMLParser):
         tag: str,
         attrs: list[tuple[str, str | None]],
     ) -> None:
-        if tag not in {"input", "textarea"}:
+        if tag not in {"input", "select", "textarea"}:
             return
         attributes = {
-            key.lower(): value.lower() if value is not None else ""
+            key.lower(): value if value is not None else ""
             for key, value in attrs
         }
         self.controls.append(_Control(tag=tag.lower(), attributes=attributes))
@@ -184,6 +230,54 @@ def _controls_from_html(html: str) -> tuple[_Control, ...]:
     return tuple(parser.controls)
 
 
+@dataclass(frozen=True)
+class _Form:
+    attributes: dict[str, str]
+    controls: tuple[_Control, ...]
+
+
+class _FormParser(HTMLParser):
+    """Collect controls by form so automation never targets the wrong form."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.forms: list[_Form] = []
+        self._attributes: dict[str, str] | None = None
+        self._controls: list[_Control] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        tag = tag.casefold()
+        attributes = {
+            key.casefold(): value if value is not None else ""
+            for key, value in attrs
+        }
+        if tag == "form":
+            if self._attributes is None:
+                self._attributes = attributes
+                self._controls = []
+            return
+        if self._attributes is not None and tag in {"input", "select", "textarea"}:
+            self._controls.append(_Control(tag=tag, attributes=attributes))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() != "form" or self._attributes is None:
+            return
+        self.forms.append(_Form(self._attributes, tuple(self._controls)))
+        self._attributes = None
+        self._controls = []
+
+
+def _forms_from_html(html: str) -> tuple[_Form, ...]:
+    parser = _FormParser()
+    parser.feed(html)
+    parser.close()
+    return tuple(parser.forms)
+
+
 def _selector_matches(control: _Control, selector: str) -> bool:
     """Match the deliberately simple tag[attr=value] selectors used below."""
 
@@ -194,12 +288,13 @@ def _selector_matches(control: _Control, selector: str) -> bool:
         return False
     if "*=" in raw_attribute:
         attribute, value = raw_attribute.split("*=", maxsplit=1)
-        actual = control.attributes.get(attribute.lower(), "")
+        actual = control.attributes.get(attribute.lower(), "").lower()
         return value.strip("'\"").lower() in actual
     if "=" not in raw_attribute:
         return False
     attribute, value = raw_attribute.split("=", maxsplit=1)
-    return control.attributes.get(attribute.lower()) == value.strip("'\"").lower()
+    actual = control.attributes.get(attribute.lower(), "").lower()
+    return actual == value.strip("'\"").lower()
 
 
 def _first_matching_selector(
@@ -214,6 +309,15 @@ def _first_matching_selector(
         ),
         None,
     )
+
+
+def _css_attribute_value(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _scoped_selector(scope: str | None, selector: str) -> str:
+    return f"{scope} {selector}" if scope else selector
 
 
 class ApplyAdapter(Protocol):
@@ -255,7 +359,17 @@ class _BaseAdapter:
         cv_path: Path,
         letter_path: Path | None,
     ) -> PrefillPlan:
-        controls = _controls_from_html(html)
+        return self._build_plan(
+            _controls_from_html(html), applicant, cv_path, letter_path
+        )
+
+    def _build_plan(
+        self,
+        controls: tuple[_Control, ...],
+        applicant: ApplicantProfile,
+        cv_path: Path,
+        letter_path: Path | None,
+    ) -> PrefillPlan:
         fills = self._fill_actions(controls, applicant)
         cv_selector = _first_matching_selector(controls, self.cv_selectors)
         if cv_selector is None:
@@ -297,12 +411,14 @@ class _BaseAdapter:
 
     def apply_plan(self, page: _Page, plan: PrefillPlan) -> None:
         for action in plan.fills:
-            locator = page.locator(action.selector)
+            selector = _scoped_selector(plan.scope, action.selector)
+            locator = page.locator(selector)
             if locator.count() == 0:
                 raise SelectorError(f"{self.name}: {action.field} field disappeared")
             locator.first.fill(action.value)
         for action in plan.uploads:
-            locator = page.locator(action.selector)
+            selector = _scoped_selector(plan.scope, action.selector)
+            locator = page.locator(selector)
             if locator.count() == 0:
                 raise SelectorError(f"{self.name}: {action.field} upload disappeared")
             locator.first.set_input_files(str(action.path))
@@ -380,10 +496,337 @@ class SmartRecruitersAdapter(_BaseAdapter):
         return "smartrecruiters.com" in (urlparse(url).hostname or "").lower()
 
 
+_TITLE_RE = re.compile(
+    r"<[^>]*data-testid=[\"']job-title[\"'][^>]*>(.*?)</[^>]+>",
+    re.IGNORECASE | re.DOTALL,
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _identity(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", unescape(value).casefold()))
+
+
+def _page_offer_identity(html: str) -> tuple[str, str]:
+    controls = _controls_from_html(html)
+    offer_control = next(
+        (
+            control
+            for control in controls
+            if control.attributes.get("name", "").casefold() == "offer_id"
+        ),
+        None,
+    )
+    offer_id = offer_control.attributes.get("value", "") if offer_control else ""
+    if not offer_id:
+        match = re.search(r"data-offer-id=[\"']([^\"']+)", html, re.IGNORECASE)
+        offer_id = match.group(1) if match else ""
+    title_match = _TITLE_RE.search(html)
+    title = (
+        unescape(_TAG_RE.sub("", title_match.group(1))).strip()
+        if title_match
+        else ""
+    )
+    return offer_id.strip(), title
+
+
+def _wttj_application_form(
+    html: str,
+    cv_selectors: tuple[str, ...],
+) -> tuple[_Form, str, str, bool]:
+    forms_with_cv: list[tuple[_Form, str, str]] = []
+    for form in _forms_from_html(html):
+        cv_selector = _first_matching_selector(form.controls, cv_selectors)
+        if cv_selector is None:
+            continue
+        offer_control = next(
+            (
+                control
+                for control in form.controls
+                if control.attributes.get("name", "").casefold() == "offer_id"
+            ),
+            None,
+        )
+        offer_id = offer_control.attributes.get("value", "").strip() if offer_control else ""
+        forms_with_cv.append((form, offer_id, cv_selector))
+
+    identified = [candidate for candidate in forms_with_cv if candidate[1]]
+    if len(identified) == 1:
+        form, offer_id, cv_selector = identified[0]
+        return form, offer_id, cv_selector, True
+    if not identified and len(forms_with_cv) == 1:
+        form, _, cv_selector = forms_with_cv[0]
+        page_offer_id, _ = _page_offer_identity(html)
+        if page_offer_id:
+            return form, page_offer_id, cv_selector, False
+    raise WTTJApplyBlocked(
+        "application_form_ambiguous",
+        "exactly one WTTJ application form must be identifiable",
+    )
+
+
+class WTTJAdapter(_BaseAdapter):
+    """WTTJ inline form adapter with explicit pre-submit assertions."""
+
+    name = "wttj"
+    name_fields = (
+        ("first_name", ("input[name='first_name']",), "first_name"),
+        ("last_name", ("input[name='last_name']",), "last_name"),
+        (
+            "name",
+            ("input[name='full_name']", "input[name='name']"),
+            "full_name",
+        ),
+    )
+    email_selectors = (
+        "input[name='email']",
+        "input[name='candidate_email']",
+        "input[type='email']",
+    )
+    phone_selectors = (
+        "input[name='phone']",
+        "input[name='candidate_phone']",
+        "input[name='phone_number']",
+        "input[type='tel']",
+    )
+    linkedin_selectors = (
+        "input[name*='linkedin']",
+        "input[id*='linkedin']",
+    )
+    cv_selectors = (
+        "input[name*='resume']",
+        "input[name='cv']",
+        "input[id='cv']",
+    )
+    letter_selectors = (
+        "input[name*='cover_letter']",
+        "input[name*='motivation_letter']",
+        "input[name*='letter']",
+    )
+    submit_selectors = (
+        "button[data-testid='submit-application']",
+        "button.submit-application",
+        "button[type='submit']",
+        "input[type='submit']",
+    )
+    confirmation_selectors = (
+        "[data-testid='application-success']",
+        ".application-success",
+        "[data-status='submitted']",
+    )
+
+    def matches(self, url: str) -> bool:
+        hostname = (urlparse(url).hostname or "").casefold()
+        return hostname == "welcometothejungle.com" or hostname.endswith(
+            ".welcometothejungle.com"
+        )
+
+    def build_plan(
+        self,
+        html: str,
+        applicant: ApplicantProfile,
+        cv_path: Path,
+        letter_path: Path | None,
+    ) -> PrefillPlan:
+        form, offer_id, cv_selector, has_offer_control = _wttj_application_form(
+            html, self.cv_selectors
+        )
+        letter_selector = _first_matching_selector(
+            form.controls, self.letter_selectors
+        )
+        if letter_selector is not None and letter_path is None:
+            raise WTTJApplyBlocked(
+                "missing_letter",
+                "motivation_letter.pdf is required because the WTTJ form has a letter field",
+            )
+        plan = self._build_plan(form.controls, applicant, cv_path, letter_path)
+        scope = (
+            "form:has(input[name='offer_id'][value="
+            f"{_css_attribute_value(offer_id)}])"
+            if has_offer_control
+            else f"form:has({cv_selector})"
+        )
+        return PrefillPlan(plan.fills, plan.uploads, scope=scope)
+
+    def validate_pre_submit(
+        self,
+        html: str,
+        plan: PrefillPlan,
+        *,
+        expected_external_id: str,
+        expected_title: str,
+    ) -> None:
+        normalized_html = html.casefold()
+        if any(
+            marker in normalized_html
+            for marker in (
+                "captcha",
+                "g-recaptcha",
+                "hcaptcha",
+                "data-sitekey",
+                "cloudflare challenge",
+                "are you human",
+            )
+        ):
+            raise WTTJApplyBlocked("captcha_detected", "CAPTCHA or bot check detected")
+        form, offer_id, _, _ = _wttj_application_form(html, self.cv_selectors)
+        controls = form.controls
+        if any(
+            control.attributes.get("type", "").casefold() == "password"
+            for control in controls
+        ):
+            raise WTTJApplyBlocked("password_detected", "password field detected")
+        account_markers = (
+            "create_account",
+            "create-account",
+            "create account",
+            "créer un compte",
+            "creer un compte",
+            "account required",
+            "sign up",
+            "inscription obligatoire",
+        )
+        if any(marker in normalized_html for marker in account_markers):
+            raise WTTJApplyBlocked("account_required", "account creation is required")
+
+        _, title = _page_offer_identity(html)
+        if (
+            not offer_id
+            or not title
+            or offer_id != expected_external_id
+            or _identity(title) != _identity(expected_title)
+        ):
+            raise WTTJApplyBlocked(
+                "offer_mismatch",
+                "the WTTJ page does not match the selected application",
+            )
+
+        mapped_fills = tuple(plan.fills)
+        mapped_uploads = tuple(plan.uploads)
+        for control in controls:
+            if "required" not in control.attributes:
+                continue
+            control_type = control.attributes.get("type", "text").casefold()
+            if control_type == "hidden":
+                if not control.attributes.get("value", "").strip():
+                    raise WTTJApplyBlocked(
+                        "required_field_unmapped", "a required hidden field is empty"
+                    )
+                continue
+            if control_type in {"checkbox", "radio"}:
+                if "checked" not in control.attributes:
+                    raise WTTJApplyBlocked(
+                        "required_field_unmapped",
+                        "a required choice needs manual review",
+                    )
+                continue
+            if control_type == "file":
+                mapped = next(
+                    (
+                        action
+                        for action in mapped_uploads
+                        if _selector_matches(control, action.selector)
+                    ),
+                    None,
+                )
+                valid = (
+                    mapped is not None
+                    and mapped.path.is_file()
+                    and mapped.path.stat().st_size > 0
+                )
+            else:
+                mapped = next(
+                    (
+                        action
+                        for action in mapped_fills
+                        if _selector_matches(control, action.selector)
+                    ),
+                    None,
+                )
+                valid = mapped is not None and bool(mapped.value.strip())
+            if not valid:
+                field = control.attributes.get("name", control.tag)
+                raise WTTJApplyBlocked(
+                    "required_field_unmapped",
+                    f"required WTTJ field is not safely mapped: {field}",
+                )
+
+    def _assert_scope_unique(self, page: _Page, plan: PrefillPlan) -> None:
+        if plan.scope is None or page.locator(plan.scope).count() != 1:
+            raise WTTJApplyBlocked(
+                "application_form_changed",
+                "the identified WTTJ application form changed before submission",
+            )
+
+    def apply_plan(self, page: _Page, plan: PrefillPlan) -> None:
+        self._assert_scope_unique(page, plan)
+        super().apply_plan(page, plan)
+
+    def submit(self, page: _Page, plan: PrefillPlan) -> None:
+        self._assert_scope_unique(page, plan)
+        for selector in self.submit_selectors:
+            scoped = _scoped_selector(plan.scope, selector)
+            locator = page.locator(scoped)
+            if locator.count() == 1:
+                locator.first.click()
+                return
+        raise WTTJApplyBlocked("submit_missing", "WTTJ submit control not found")
+
+    def confirmation_baseline(self, page: _Page) -> _ConfirmationBaseline:
+        visible = frozenset(
+            selector
+            for selector in self.confirmation_selectors
+            if page.locator(selector).count()
+            and page.locator(selector).first.is_visible()
+        )
+        return _ConfirmationBaseline(url=page.url, visible_selectors=visible)
+
+    def _confirmation_present(
+        self,
+        page: _Page,
+        baseline: _ConfirmationBaseline,
+    ) -> bool:
+        path_segments = {
+            segment
+            for segment in urlparse(page.url).path.casefold().split("/")
+            if segment
+        }
+        if page.url != baseline.url and path_segments.intersection(
+            {"confirmation", "confirmed", "merci", "application-success"}
+        ):
+            return True
+        for selector in self.confirmation_selectors:
+            locator = page.locator(selector)
+            if (
+                selector not in baseline.visible_selectors
+                and locator.count()
+                and locator.first.is_visible()
+            ):
+                return True
+        return False
+
+    def submission_confirmed(
+        self,
+        page: _Page,
+        baseline: _ConfirmationBaseline,
+        *,
+        timeout_ms: int = 5_000,
+    ) -> bool:
+        poll_ms = 100
+        attempts = max(1, timeout_ms // poll_ms)
+        for attempt in range(attempts + 1):
+            if self._confirmation_present(page, baseline):
+                return True
+            if attempt < attempts:
+                page.wait_for_timeout(poll_ms)
+        return False
+
+
 ADAPTERS: tuple[ApplyAdapter, ...] = (
     LeverAdapter(),
     GreenhouseAdapter(),
     SmartRecruitersAdapter(),
+    WTTJAdapter(),
 )
 
 
@@ -436,6 +879,160 @@ def _fallback(
         {"reason": reason, "opened": opened},
     )
     return AssistResult("apply_url_opened", adapter=None, fallback_reason=reason)
+
+
+def _application_for_wttj(
+    db: sqlite3.Connection,
+    application_id: int,
+) -> sqlite3.Row:
+    row = db.execute(
+        "SELECT a.status, o.external_id, o.url, o.title, s.name AS source, "
+        "(SELECT e.event FROM events e WHERE e.application_id = a.id "
+        " ORDER BY e.id DESC LIMIT 1) AS latest_event "
+        "FROM applications a "
+        "JOIN offers o ON o.id = a.offer_id "
+        "JOIN sources s ON s.id = o.source_id "
+        "WHERE a.id = ?",
+        (application_id,),
+    ).fetchone()
+    if row is None:
+        raise WTTJApplyError(f"no application with id={application_id}")
+    if row["status"] != "ready":
+        raise WTTJApplyError("application must be in 'ready' state for WTTJ apply")
+    if row["source"] != "wttj" or not row["url"]:
+        raise WTTJApplyError("application is not an eligible WTTJ offer")
+    if row["latest_event"] == "submit_unconfirmed":
+        raise WTTJApplyError(
+            "previous WTTJ submission is unconfirmed; verify it manually before retrying"
+        )
+    return row
+
+
+def _open_for_human(
+    application_id: int,
+    url: str,
+    opener: Callable[[str], bool],
+) -> bool:
+    try:
+        return bool(opener(url))
+    except Exception as exc:  # platform-owned browser integration
+        log.warning(
+            "WTTJ browser fallback failed for application %d: %s",
+            application_id,
+            exc,
+        )
+        return False
+
+
+def launch_wttj_application(
+    db: sqlite3.Connection,
+    application_id: int,
+    *,
+    output_root: Path | None = None,
+    settings: Settings | None = None,
+    launcher: BrowserLauncher | None = None,
+    opener: Callable[[str], bool] = webbrowser.open,
+    via: str = "dashboard",
+) -> WTTJApplyResult:
+    """Fill a WTTJ inline form and submit only behind the explicit live gate."""
+
+    row = _application_for_wttj(db, application_id)
+    configured = settings or get_settings()
+    live = configured.wttj_auto_submit_enabled
+    mode = "live" if live else "dry-run"
+    url = str(row["url"])
+    log_event(
+        db,
+        application_id,
+        "human_approved",
+        {"via": via, "action": "wttj_apply", "mode": mode},
+    )
+    try:
+        applicant = ApplicantProfile.from_settings(configured)
+        application_dir = Path(output_root or configured.output_dir) / str(application_id)
+        application_dir.mkdir(parents=True, exist_ok=True)
+        cv_path = application_dir / "cv.pdf"
+        if not cv_path.is_file() or cv_path.stat().st_size == 0:
+            raise WTTJApplyBlocked("missing_cv", "generated cv.pdf is missing or empty")
+        letter_path = application_dir / "motivation_letter.pdf"
+        if not letter_path.is_file() or letter_path.stat().st_size == 0:
+            letter_path = None
+
+        adapter = WTTJAdapter()
+        page = (launcher or VisibleBrowserLauncher()).open_page(url)
+        html = page.content()
+        plan = adapter.build_plan(html, applicant, cv_path, letter_path)
+        adapter.validate_pre_submit(
+            html,
+            plan,
+            expected_external_id=str(row["external_id"] or ""),
+            expected_title=str(row["title"] or ""),
+        )
+        adapter.apply_plan(page, plan)
+        screenshot_path = application_dir / "wttj_apply.png"
+        page.screenshot(path=str(screenshot_path), full_page=True)
+
+        if not live:
+            log_event(
+                db,
+                application_id,
+                "apply_dry_run",
+                {"via": via, "screenshot": str(screenshot_path)},
+            )
+            return WTTJApplyResult(
+                "apply_dry_run", screenshot_path=screenshot_path
+            )
+
+        confirmation_baseline = adapter.confirmation_baseline(page)
+        adapter.submit(page, plan)
+        if not adapter.submission_confirmed(page, confirmation_baseline):
+            log_event(
+                db,
+                application_id,
+                "submit_unconfirmed",
+                {"via": via, "screenshot": str(screenshot_path)},
+            )
+            return WTTJApplyResult(
+                "submit_unconfirmed",
+                screenshot_path=screenshot_path,
+                reason="submission confirmation was not detected",
+            )
+
+        log_event(
+            db,
+            application_id,
+            "application_submitted",
+            {"via": via, "adapter": adapter.name, "screenshot": str(screenshot_path)},
+        )
+        transition(
+            db,
+            application_id,
+            "applied",
+            detail={"via": via, "adapter": adapter.name},
+        )
+        return WTTJApplyResult(
+            "application_submitted", screenshot_path=screenshot_path
+        )
+    except WTTJApplyBlocked as exc:
+        opened = _open_for_human(application_id, url, opener)
+        log_event(
+            db,
+            application_id,
+            "apply_blocked",
+            {"via": via, "reason": exc.reason, "opened": opened},
+        )
+        return WTTJApplyResult("apply_blocked", reason=exc.reason)
+    except Exception as exc:
+        detail = configured.redact(str(exc))
+        log.warning("WTTJ apply failed for application %d: %s", application_id, detail)
+        opened = _open_for_human(application_id, url, opener)
+        log_event(
+            db,
+            application_id,
+            "apply_blocked",
+            {"via": via, "reason": "automation_error", "opened": opened},
+        )
+        return WTTJApplyResult("apply_blocked", reason="automation_error")
 
 
 def launch_application_assist(
