@@ -92,17 +92,22 @@ with a clear configuration error instead of silently falling back.
 endpoint, including Ollama or LM Studio. Every provider feeds the same guarded
 tailoring and document-validation pipeline; nothing is auto-sent or submitted.
 
-## Pending setup
+## Sources
 
 Each source below is fully coded and unit-tested; it just needs a credential and
 then works via `jobpilot ingest`. Until then it is skipped with a clear message.
 
 - **Gmail alerts (LinkedIn + Indeed)** — set `GMAIL_ADDRESS` and
   `GMAIL_APP_PASSWORD` in `.env` (enable IMAP, create an App Password at
-  <https://myaccount.google.com/apppasswords>, requires 2FA). We parse the
-  job-alert emails read-only; we never scrape LinkedIn/Indeed. The HTML parsers
-  are fixture-tested; their company/location selectors should be confirmed
-  against a real forwarded alert.
+  <https://myaccount.google.com/apppasswords>, requires 2FA). Run
+  `jobpilot ingest -s linkedin_alert` and
+  `jobpilot ingest -s indeed_alert`, or let the scheduler run both. IMAP uses
+  `BODY.PEEK[]` against a read-only folder: messages are never moved, deleted,
+  or marked read. Optional `IMAP_HOST`, `IMAP_PORT`, `IMAP_FOLDER`, and
+  `EMAIL_ALERT_SINCE_DAYS` settings tune the transport and lookback. Extracted
+  links are canonicalized without tracking parameters, and repeated alerts are
+  deduplicated through the normal offer-ingestion path. We never scrape
+  LinkedIn or Indeed pages.
 - **Welcome to the Jungle** — set `WTTJ_API_KEY` (the public Algolia search key;
   open WTTJ job search with devtools Network open and copy the `X-Algolia-API-Key`
   header from the `*-dsn.algolia.net` request). App id/index default but are

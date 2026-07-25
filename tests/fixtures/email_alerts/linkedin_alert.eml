@@ -1,0 +1,37 @@
+From: LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>
+To: mouaad@example.com
+Subject: 2 nouvelles offres pour cybersécurité
+Date: Fri, 24 Jul 2026 08:00:00 +0000
+Message-ID: <linkedin-alert-1@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<!doctype html>
+<html lang="fr">
+  <body>
+    <table role="presentation">
+      <tr class="job-card">
+        <td>
+          <a href="https://www.linkedin.com/comm/jobs/view/3812345678/?trk=eml-jymbii-organic-job-card&amp;utm_source=email&amp;refId=abc123">
+            Alternance Analyste SOC
+          </a>
+          <div>ACME Cyber</div>
+          <div>Lille, Hauts-de-France</div>
+          <p>Surveillez les alertes SIEM et participez à la réponse aux incidents.</p>
+        </td>
+      </tr>
+      <tr class="job-card">
+        <td>
+          <a href="https://www.linkedin.com/comm/jobs/view/3899999999/?trackingId=xyz&amp;midToken=mail">
+            Stage Cloud Security
+          </a>
+          <div>SecuCorp</div>
+          <div>Paris, Île-de-France</div>
+          <p>Contribuez au durcissement Azure et aux contrôles CIS.</p>
+        </td>
+      </tr>
+    </table>
+    <a href="https://www.linkedin.com/comm/jobs/alerts?trk=unsubscribe">Gérer l'alerte</a>
+  </body>
+</html>

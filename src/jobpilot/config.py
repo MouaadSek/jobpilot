@@ -98,6 +98,11 @@ class Settings:
     applicant_phone: str | None = None
     applicant_linkedin_url: str | None = None
 
+    # IMAP transport tuning; Gmail credentials above remain the single login.
+    imap_host: str = "imap.gmail.com"
+    imap_port: int = 993
+    imap_folder: str = "INBOX"
+
     def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
         if not self.smtp_username or not self.smtp_password:
             raise MissingCredentialError(
@@ -114,9 +119,20 @@ class Settings:
         )
 
     def redact(self, text: str) -> str:
-        """Remove the SMTP password from error/log text, like the API keys."""
-        if self.smtp_password:
-            text = text.replace(self.smtp_password, "[REDACTED]")
+        """Remove configured secrets from exception text before display/logging."""
+
+        secrets = (
+            self.ft_client_secret,
+            self.lba_api_key,
+            self.gmail_app_password,
+            self.wttj_api_key,
+            self.anthropic_api_key,
+            self.openai_api_key,
+            self.smtp_password,
+        )
+        for secret in secrets:
+            if secret:
+                text = text.replace(secret, "[REDACTED]")
         return text
 
     def require_gmail_credentials(self) -> tuple[str, str]:
@@ -188,4 +204,7 @@ def get_settings() -> Settings:
         applicant_email=os.getenv("APPLICANT_EMAIL") or None,
         applicant_phone=os.getenv("APPLICANT_PHONE") or None,
         applicant_linkedin_url=os.getenv("APPLICANT_LINKEDIN_URL") or None,
+        imap_host=os.getenv("IMAP_HOST", "imap.gmail.com"),
+        imap_port=int(os.getenv("IMAP_PORT", "993")),
+        imap_folder=os.getenv("IMAP_FOLDER", "INBOX"),
     )

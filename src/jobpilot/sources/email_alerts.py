@@ -16,11 +16,13 @@ from __future__ import annotations
 import email
 import imaplib
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import Message
 from html import unescape
 from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from jobpilot.config import Settings
 from jobpilot.logging_conf import get_logger
@@ -29,12 +31,20 @@ from jobpilot.sources.base import Source
 
 log = get_logger("email_alerts")
 
+
+class EmailAlertError(RuntimeError):
+    """A redacted IMAP or alert-processing failure safe for CLI/log display."""
+
+
 LINKEDIN_SENDERS = [
-    "jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com",
+    "jobalerts-noreply@linkedin.com",
+    "jobs-noreply@linkedin.com",
     "jobs-listings@linkedin.com",
 ]
 INDEED_SENDERS = [
-    "alert@indeed.com", "noreply@indeed.com", "donotreply@indeed.com",
+    "alert@indeed.com",
+    "noreply@indeed.com",
+    "donotreply@indeed.com",
     "invitetoapply@indeed.com",
 ]
 
@@ -47,38 +57,74 @@ def _strip_tags(html: str) -> str:
 
 # ---- IMAP transport (injectable for tests) ----
 
+
 class GmailIMAP:
     """Minimal read-only Gmail IMAP client."""
 
-    def __init__(self, address: str, app_password: str,
-                 host: str = "imap.gmail.com") -> None:
+    def __init__(
+        self,
+        address: str,
+        app_password: str,
+        host: str = "imap.gmail.com",
+        port: int = 993,
+        folder: str = "INBOX",
+        redact: Callable[[str], str] | None = None,
+    ) -> None:
         self._address = address
         self._password = app_password
         self._host = host
+        self._port = port
+        self._folder = folder
+        self._redact = redact or (lambda text: text)
 
     def fetch_from(self, senders: list[str], since_days: int) -> list[Message]:
         since = (datetime.now(UTC) - timedelta(days=since_days)).strftime("%d-%b-%Y")
-        conn = imaplib.IMAP4_SSL(self._host)
+        conn: imaplib.IMAP4_SSL | None = None
         try:
+            conn = imaplib.IMAP4_SSL(self._host, self._port)
             conn.login(self._address, self._password)
-            conn.select("INBOX", readonly=True)
+            status, _ = conn.select(self._folder, readonly=True)
+            if status != "OK":
+                raise EmailAlertError(f"cannot select IMAP folder {self._folder!r}")
             messages: list[Message] = []
+            fetched_ids: set[bytes] = set()
             for sender in senders:
                 typ, data = conn.search(None, "FROM", f'"{sender}"', "SINCE", since)
                 if typ != "OK" or not data or not data[0]:
                     continue
                 for num in data[0].split():
-                    typ, msg_data = conn.fetch(num, "(RFC822)")
+                    if num in fetched_ids:
+                        continue
+                    fetched_ids.add(num)
+                    typ, msg_data = conn.fetch(num, "(BODY.PEEK[])")
                     if typ != "OK" or not msg_data or not msg_data[0]:
                         continue
-                    raw = msg_data[0][1]
+                    raw = next(
+                        (
+                            item[1]
+                            for item in msg_data
+                            if isinstance(item, tuple)
+                            and len(item) > 1
+                            and isinstance(item[1], bytes)
+                        ),
+                        None,
+                    )
+                    if raw is None:
+                        log.warning("IMAP message %r had no RFC822 payload", num)
+                        continue
                     messages.append(email.message_from_bytes(raw))
             return messages
+        except EmailAlertError:
+            raise
+        except Exception as exc:
+            detail = self._redact(str(exc))
+            raise EmailAlertError(f"IMAP alert fetch failed: {detail}") from exc
         finally:
-            try:
-                conn.logout()
-            except Exception:  # best-effort close
-                log.debug("IMAP logout failed", exc_info=True)
+            if conn is not None:
+                try:
+                    conn.logout()
+                except Exception:  # best-effort close
+                    log.debug("IMAP logout failed", exc_info=True)
 
 
 def html_of(msg: Message) -> str:
@@ -103,34 +149,81 @@ def html_of(msg: Message) -> str:
 
 # ---- anchor extraction ----
 
+
+@dataclass
+class _AlertAnchor:
+    href: str
+    text: str
+    context: tuple[str, ...] = ()
+
+
+@dataclass
+class _TextContainer:
+    tag: str
+    chunks: list[str]
+    anchors: list[_AlertAnchor]
+
+
 class _AnchorParser(HTMLParser):
-    """Collects (href, inner_text) for every <a> tag."""
+    """Collect anchors plus nearby table/list-card text without dependencies."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.anchors: list[tuple[str, str]] = []
+        self.anchors: list[_AlertAnchor] = []
         self._href: str | None = None
         self._text: list[str] = []
+        self._containers: list[_TextContainer] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"td", "tr", "li", "article"}:
+            self._containers.append(_TextContainer(tag, [], []))
         if tag == "a":
             self._href = dict(attrs).get("href")
             self._text = []
 
     def handle_data(self, data: str) -> None:
+        cleaned = " ".join(data.split())
+        if cleaned:
+            for container in self._containers:
+                container.chunks.append(cleaned)
         if self._href is not None:
             self._text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self._href is not None:
-            self.anchors.append((self._href, " ".join(" ".join(self._text).split())))
+            anchor = _AlertAnchor(
+                self._href,
+                " ".join(" ".join(self._text).split()),
+            )
+            self.anchors.append(anchor)
+            for container in self._containers:
+                container.anchors.append(anchor)
             self._href = None
             self._text = []
+        if tag in {"td", "tr", "li", "article"}:
+            self._close_container(tag)
+
+    def finish(self) -> None:
+        while self._containers:
+            self._close_container(self._containers[-1].tag)
+
+    def _close_container(self, tag: str) -> None:
+        for index in range(len(self._containers) - 1, -1, -1):
+            if self._containers[index].tag != tag:
+                continue
+            container = self._containers.pop(index)
+            context = tuple(container.chunks)
+            if len(context) > 1:
+                for anchor in container.anchors:
+                    if not anchor.context:
+                        anchor.context = context
+            return
 
 
-def _anchors(html: str) -> list[tuple[str, str]]:
+def _anchors(html: str) -> list[_AlertAnchor]:
     p = _AnchorParser()
     p.feed(html)
+    p.finish()
     return p.anchors
 
 
@@ -138,25 +231,72 @@ def _anchors(html: str) -> list[tuple[str, str]]:
 
 _LINKEDIN_ID_RE = re.compile(r"/jobs/view/(\d+)")
 _INDEED_JK_RE = re.compile(r"[?&]jk=([0-9a-f]+)")
+_CTA_TEXT = {
+    "apply",
+    "postuler",
+    "see job",
+    "view job",
+    "voir l'offre",
+    "voir le poste",
+}
+
+
+def clean_job_url(url: str, provider: str) -> str:
+    """Return a stable detail URL with email/tracking parameters removed."""
+
+    raw = unescape(url).strip()
+    if provider == "linkedin":
+        match = _LINKEDIN_ID_RE.search(raw)
+        if match:
+            return f"https://www.linkedin.com/jobs/view/{match.group(1)}"
+    if provider == "indeed":
+        query = parse_qs(urlsplit(raw).query)
+        job_keys = query.get("jk")
+        if job_keys and job_keys[0]:
+            return "https://fr.indeed.com/viewjob?" + urlencode({"jk": job_keys[0]})
+
+    parsed = urlsplit(raw)
+    kept = []
+    for key, values in parse_qs(parsed.query, keep_blank_values=True).items():
+        normalized = key.casefold()
+        if normalized.startswith("utm_") or normalized in {
+            "trk",
+            "trackingid",
+            "refid",
+            "midtoken",
+            "from",
+            "tk",
+            "advn",
+        }:
+            continue
+        kept.extend((key, value) for value in values)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept), parsed.fragment))
 
 
 def parse_linkedin(html: str) -> list[OfferRecord]:
     """Extract jobs from a LinkedIn job-alert email."""
     out: list[OfferRecord] = []
     seen: set[str] = set()
-    for href, text in _anchors(html):
-        m = _LINKEDIN_ID_RE.search(href)
-        if not m or not text:
+    for anchor in _anchors(html):
+        match = _LINKEDIN_ID_RE.search(anchor.href)
+        if not match or not anchor.text:
             continue
-        job_id = m.group(1)
+        job_id = match.group(1)
         if job_id in seen:
             continue
         seen.add(job_id)
-        title, company, city = _split_card(text)
-        out.append(OfferRecord(
-            external_id=job_id, url=unescape(href), title=title,
-            company_name=company, city=city, contract_type="unknown",
-        ).normalized())
+        title, company, city, description = _card_fields(anchor)
+        out.append(
+            OfferRecord(
+                external_id=job_id,
+                url=clean_job_url(anchor.href, "linkedin"),
+                title=title,
+                company_name=company,
+                city=city,
+                description=description,
+                contract_type="unknown",
+            ).normalized()
+        )
     return out
 
 
@@ -164,19 +304,26 @@ def parse_indeed(html: str) -> list[OfferRecord]:
     """Extract jobs from an Indeed job-alert email."""
     out: list[OfferRecord] = []
     seen: set[str] = set()
-    for href, text in _anchors(html):
-        m = _INDEED_JK_RE.search(href)
-        if not m or not text:
+    for anchor in _anchors(html):
+        match = _INDEED_JK_RE.search(anchor.href)
+        if not match or not anchor.text:
             continue
-        jk = m.group(1)
+        jk = match.group(1)
         if jk in seen:
             continue
         seen.add(jk)
-        title, company, city = _split_card(text)
-        out.append(OfferRecord(
-            external_id=jk, url=unescape(href), title=title,
-            company_name=company, city=city, contract_type="unknown",
-        ).normalized())
+        title, company, city, description = _card_fields(anchor)
+        out.append(
+            OfferRecord(
+                external_id=jk,
+                url=clean_job_url(anchor.href, "indeed"),
+                title=title,
+                company_name=company,
+                city=city,
+                description=description,
+                contract_type="unknown",
+            ).normalized()
+        )
     return out
 
 
@@ -193,35 +340,106 @@ def _split_card(text: str) -> tuple[str, str | None, str | None]:
     return title, company, city
 
 
+def _card_fields(
+    anchor: _AlertAnchor,
+) -> tuple[str, str | None, str | None, str | None]:
+    title, company, city = _split_card(anchor.text)
+    details: list[str] = []
+    for chunk in anchor.context:
+        cleaned = " ".join(chunk.split())
+        if (
+            not cleaned
+            or cleaned == anchor.text
+            or cleaned.casefold() in _CTA_TEXT
+            or cleaned in details
+        ):
+            continue
+        details.append(cleaned)
+    if company is None and details:
+        company = details.pop(0)
+    if city is None and details:
+        city = details.pop(0)
+    description = " ".join(details) if details else None
+    return title, company, city, description
+
+
 # ---- Source implementations ----
+
 
 class _EmailAlertSource(Source):
     senders: list[str] = []
+    provider = "unknown"
 
-    def __init__(self, settings: Settings, *, imap: GmailIMAP | None = None,
-                 since_days: int | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        imap: GmailIMAP | None = None,
+        since_days: int | None = None,
+    ) -> None:
         address, password = settings.require_gmail_credentials()
-        self._imap = imap or GmailIMAP(address, password)
-        self._since_days = (
-            since_days if since_days is not None else settings.email_alert_since_days
+        self._settings = settings
+        self._imap = imap or GmailIMAP(
+            address,
+            password,
+            host=settings.imap_host,
+            port=settings.imap_port,
+            folder=settings.imap_folder,
+            redact=settings.redact,
         )
+        self._since_days = since_days if since_days is not None else settings.email_alert_since_days
 
     def _parse(self, html: str) -> list[OfferRecord]:  # overridden
         raise NotImplementedError
 
     def fetch_offers(self) -> Iterator[OfferRecord]:
+        try:
+            messages = self._imap.fetch_from(self.senders, self._since_days)
+        except EmailAlertError:
+            raise
+        except Exception as exc:
+            detail = self._settings.redact(str(exc))
+            raise EmailAlertError(f"IMAP alert fetch failed: {detail}") from exc
+
+        emails_scanned = 0
+        entries_found = 0
         seen: set[str] = set()
-        for msg in self._imap.fetch_from(self.senders, self._since_days):
-            for rec in self._parse(html_of(msg)):
+        for msg in messages:
+            emails_scanned += 1
+            try:
+                records = self._parse(html_of(msg))
+            except Exception as exc:
+                log.warning(
+                    "skipping malformed %s alert: %s",
+                    self.provider,
+                    self._settings.redact(str(exc)),
+                )
+                continue
+            if not records:
+                log.warning(
+                    "skipping malformed %s alert: no job entries",
+                    self.provider,
+                )
+                continue
+            entries_found += len(records)
+            for rec in records:
                 key = rec.external_id or rec.hash
                 if key in seen:
                     continue
                 seen.add(key)
                 yield rec
+        log.info(
+            "email alerts provider=%s emails_scanned=%d entries_found=%d unique_entries=%d",
+            self.provider,
+            emails_scanned,
+            entries_found,
+            len(seen),
+        )
 
 
 class LinkedInAlertSource(_EmailAlertSource):
     name = "linkedin_alert"
+    provider = "linkedin"
     senders = LINKEDIN_SENDERS
 
     def _parse(self, html: str) -> list[OfferRecord]:
@@ -230,6 +448,7 @@ class LinkedInAlertSource(_EmailAlertSource):
 
 class IndeedAlertSource(_EmailAlertSource):
     name = "indeed_alert"
+    provider = "indeed"
     senders = INDEED_SENDERS
 
     def _parse(self, html: str) -> list[OfferRecord]:

@@ -1,0 +1,37 @@
+From: Indeed Job Alerts <alert@indeed.com>
+To: mouaad@example.com
+Subject: Nouvelles offres DevSecOps
+Date: Fri, 24 Jul 2026 09:00:00 +0000
+Message-ID: <indeed-alert-1@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<!doctype html>
+<html lang="fr">
+  <body>
+    <table role="presentation">
+      <tr class="job_seen_beacon">
+        <td>
+          <a href="https://fr.indeed.com/rc/clk?jk=a1b2c3d4e5f60718&amp;from=ja&amp;utm_campaign=job_alert&amp;advn=9988">
+            Stage Pentest
+          </a>
+          <span>RedTeam SAS</span>
+          <span>Villeneuve-d'Ascq (59)</span>
+          <div>Testez des applications web et rédigez les rapports de vulnérabilité.</div>
+        </td>
+      </tr>
+      <tr class="job_seen_beacon">
+        <td>
+          <a href="https://fr.indeed.com/pagead/clk?jk=ffee00112233aabb&amp;from=ja&amp;tk=mailtoken">
+            Alternance DevSecOps
+          </a>
+          <span>CloudCorp</span>
+          <span>Paris (75)</span>
+          <div>Sécurisez les pipelines CI/CD et les déploiements Kubernetes.</div>
+        </td>
+      </tr>
+    </table>
+    <a href="https://fr.indeed.com/account/viewalerts">Gérer mes alertes</a>
+  </body>
+</html>
