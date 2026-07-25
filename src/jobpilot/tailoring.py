@@ -15,7 +15,7 @@ import subprocess
 import sys
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 from html.entities import codepoint2name
 from pathlib import Path
@@ -29,6 +29,8 @@ from jobpilot.config import (
     PROJECT_ROOT,
     get_settings,
 )
+from jobpilot.facts import build_cv_title
+from jobpilot.facts import normalise_role_title as normalise_role_title
 from jobpilot.logging_conf import get_logger
 from jobpilot.state import current_status, log_event, transition
 
@@ -1898,6 +1900,15 @@ def generate_application(
         original_html = original_path.read_text(encoding="utf-8")
         template_context = extract_template_context(original_html)
         plan = chosen_advisor.advise(offer, selection, template_context)
+        plan = replace(
+            plan,
+            job_title=build_cv_title(
+                offer.title,
+                contract_type=selection.contract_type,
+                duration_months=offer.duration_months,
+                start_date=_offer_start(offer.description),
+            ),
+        )
         tailored_html = tailor_cv_html(
             original_html,
             plan,
