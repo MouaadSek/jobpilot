@@ -50,6 +50,81 @@ def _offer() -> OfferContext:
     )
 
 
+def _experience_content() -> list[dict[str, object]]:
+    """Every employer, reverse-chronological, with the required bullet minimums."""
+
+    return [
+        {
+            "experience_id": "experience.baifall_dream",
+            "bullets": [
+                {
+                    "text": (
+                        "Définition des exigences de journalisation et de traçabilité "
+                        "en vue de la supervision sécurité de la plateforme."
+                    ),
+                    "sources": [
+                        "experience.baifall.specification.des.exigences.de.journalisation.et"
+                    ],
+                },
+                {
+                    "text": (
+                        "Cadrage des exigences de sécurité applicative : "
+                        "authentification, gestion des accès, chiffrement."
+                    ),
+                    "sources": [
+                        "experience.baifall.definition.des.exigences.de.securite.applicative"
+                    ],
+                },
+            ],
+        },
+        {
+            "experience_id": "experience.concentrix",
+            "bullets": [
+                {
+                    "text": (
+                        "Résolution de 1 500+ incidents avec 85 % de résolution "
+                        "au premier contact selon les SLA."
+                    ),
+                    "sources": ["experience.concentrix.incidents"],
+                },
+                {
+                    "text": (
+                        "Analyse de logs et réduction du délai moyen de résolution "
+                        "de 20 %."
+                    ),
+                    "sources": ["experience.concentrix.resolution_time"],
+                },
+            ],
+        },
+        {
+            "experience_id": "experience.lionbridge",
+            "bullets": [
+                {
+                    "text": (
+                        "Validation de 200 000+ éléments localisés avec un taux "
+                        "d'erreur inférieur à 0,5 %."
+                    ),
+                    "sources": ["experience.lionbridge.traitement.et.validation.de.200"],
+                }
+            ],
+        },
+        {
+            "experience_id": "experience.testronic",
+            "bullets": [
+                {
+                    "text": (
+                        "Détection de 90+ anomalies critiques avant production, "
+                        "taux de reproductibilité de 95 %."
+                    ),
+                    "sources": [
+                        "experience.testronic.detection.de.90.anomalies.critiques.2"
+                    ],
+                }
+            ],
+        },
+    ]
+
+
 def _payload() -> dict[str, object]:
     context = extract_template_context(TEMPLATE_PATH.read_text(encoding="utf-8"))
     return {
@@ -61,27 +136,7 @@ def _payload() -> dict[str, object]:
         "profile_contract_phrase": None,
         "rhythm_phrase": None,
         "rationale": "Le contenu met en avant la détection et la réponse aux incidents.",
-        "experience_content": [
-            {
-                "experience_id": "experience.concentrix",
-                "bullets": [
-                    {
-                        "text": (
-                            "Résolution de 1 500+ incidents avec 85 % de résolution "
-                            "au premier contact selon les SLA."
-                        ),
-                        "sources": ["experience.concentrix.incidents"],
-                    },
-                    {
-                        "text": (
-                            "Analyse de logs et réduction du délai moyen de résolution "
-                            "de 20 %."
-                        ),
-                        "sources": ["experience.concentrix.resolution_time"],
-                    },
-                ],
-            }
-        ],
+        "experience_content": _experience_content(),
         "project_content": [
             {
                 "project_id": "project.soc.alternance.2",
@@ -101,6 +156,16 @@ def _payload() -> dict[str, object]:
                         "et 3 procédures de réponse."
                     ),
                     "sources": ["project.soc.alternance.1.outcome"],
+                },
+            },
+            {
+                "project_id": "project.soc.alternance.3",
+                "description": {
+                    "text": (
+                        "Simulation de 5 cyberattaques sur 5 machines et validation "
+                        "des défenses de détection."
+                    ),
+                    "sources": ["project.soc.alternance.3.outcome"],
                 },
             },
         ],
@@ -198,9 +263,9 @@ def test_structured_plan_renders_tailored_claims_and_injects_locked_headers() ->
     assert "Résolution de 1 500+ incidents avec 85 %" in tailored
     assert "Surveillance de 3 serveurs" in tailored
     assert tailored.index("Surveillance Endpoint") < tailored.index("SOC Lab")
-    assert "Lionbridge" not in tailored
-    assert "Testronic" not in tailored
-    assert "Concentrix" in tailored
+    assert tailored.index("Baïfall Dream") < tailored.index("Concentrix")
+    assert tailored.index("Concentrix") < tailored.index("Lionbridge")
+    assert tailored.index("Lionbridge") < tailored.index("Testronic")
     assert "Janvier 2024 - Décembre 2025" in tailored
     assert "MOUAAD SEKKOURI" in tailored
     assert plan.letter_body_html.startswith("<p>Madame, Monsieur,</p>")
@@ -235,6 +300,7 @@ def test_provenance_rejects_fabricated_numbers_and_tools(
 
 def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
     import dataclasses
+
     from jobpilot.facts import SkillFact
     base = load_fact_bank()
     from jobpilot.facts import FactClaim
@@ -394,7 +460,7 @@ def test_valid_sourced_advice_completes_the_shared_generation_path(
     assert current_status(db, application_id) == "ready"
     assert outcome.generation is not None
     tailored = outcome.generation.cv_html_path.read_text(encoding="utf-8")
-    assert tailored.count('<div class="project-item">') == 2
+    assert tailored.count('<div class="project-item">') == 3
     assert "Résolution de 1 500+ incidents avec 85 %" in tailored
     assert outcome.generation.tracker_path.exists()
 

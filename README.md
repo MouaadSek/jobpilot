@@ -110,6 +110,26 @@ unverified skills, unsupported numbers, and unsupported proper nouns before any
 PDF is generated. Identity, contact details, employers, dates, diplomas, and
 certification names remain renderer-owned and cannot be supplied by the model.
 
+### Structural completeness floor
+
+Provenance stops fabrication; a second set of rules stops omission. A generated
+CV is rejected (rollback to `queued` plus a `generation_failed` event) unless:
+
+- every employer in the fact bank appears, in reverse-chronological order by
+  start date, with at least 2 bullets for the two most recent employers and at
+  least 1 for each older one;
+- exactly 3 projects are selected;
+- no tool is listed under two skill categories;
+- the header location is a real region, never a bare country.
+
+The model still chooses which bullets represent an employer, how they read,
+which 3 projects to show, and how the letter is written. It no longer chooses
+whether an employer appears. The header location is renderer-owned: it uses the
+offer's region and falls back to `config/profile.yaml` (city + region) instead of
+a bare country. The tracker row's variant and project columns are derived from
+the validated document, not from the pre-generation routing guess, which is
+recorded as `routing_variant` in the status-change event detail.
+
 ## Sources
 
 Each source below is fully coded and unit-tested; it just needs a credential and

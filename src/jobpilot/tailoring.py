@@ -29,9 +29,10 @@ from jobpilot.config import (
     PROJECT_ROOT,
     get_settings,
 )
-from jobpilot.facts import FactBank, build_cv_title, load_fact_bank
+from jobpilot.facts import ExperienceFact, FactBank, build_cv_title, load_fact_bank
 from jobpilot.facts import normalise_role_title as normalise_role_title
 from jobpilot.logging_conf import get_logger
+from jobpilot.profile import CvProfile, load_cv_profile
 from jobpilot.state import current_status, log_event, transition
 
 log = get_logger("tailoring")
@@ -337,6 +338,18 @@ class TailoringPlan:
         else:
             raise TailoringError("tailoring plan field 'job_title' must be non-empty text")
 
+        # The header location is renderer-owned: whatever the model says about it
+        # is dropped as soon as the offer is known.
+        raw_location = data.get("location_region")
+        if offer is not None:
+            location_region = resolve_header_location(offer.city)
+        elif isinstance(raw_location, str) and raw_location.strip():
+            location_region = raw_location.strip()
+        else:
+            raise TailoringError(
+                "tailoring plan field 'location_region' must be non-empty text"
+            )
+
         if structured:
             if data.get("letter_body_html") not in (None, ""):
                 raise TailoringError(
@@ -352,7 +365,7 @@ class TailoringPlan:
             tech_order=text_tuple("tech_order"),
             tech_keywords=keywords,
             project_order=text_tuple("project_order"),
-            location_region=required_text("location_region"),
+            location_region=location_region,
             letter_body_html=letter_body_html,
             rationale=required_text("rationale"),
             profile_contract_phrase=optional_text("profile_contract_phrase"),
@@ -777,6 +790,10 @@ _KNOWN_SKILLS = {
     "wireshark",
 }
 
+# Countries are never an acceptable CV header location: they say nothing about
+# where the candidate can actually work.
+_BARE_COUNTRIES = frozenset({"france", "belgique", "belgium", "luxembourg", "suisse"})
+
 _ZONE6_BULLETS = {
     "grc": (
         "Cadrage réglementaire : immatriculation <strong>DGFiP</strong>, "
@@ -1124,10 +1141,16 @@ def _validate_plan(plan: TailoringPlan, selection: VariantSelection) -> None:
             "Guyane",
             "La Réunion",
             "Mayotte",
-            "France",
             "Nord",
         )
     }
+    # A bare country is not a location: the renderer injects the profile's own
+    # region whenever the offer's city does not resolve to one.
+    if _normalize(plan.location_region) in _BARE_COUNTRIES:
+        raise TailoringError(
+            "location must be a region or city, never a bare country: "
+            f"{plan.location_region}"
+        )
     if _normalize(plan.location_region) not in allowed_regions:
         raise TailoringError("location must be one region only")
     if selection.adapted_for_stage and not plan.profile_contract_phrase:
@@ -1268,6 +1291,78 @@ def validate_provenance(
                 )
 
 
+_FRENCH_MONTHS = {
+    "janvier": 1,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "decembre": 12,
+}
+
+# The two most recent employers carry the offer's relevance and need real
+# substance; older ones only have to close the timeline.
+_RECENT_EMPLOYER_COUNT = 2
+_RECENT_EMPLOYER_MIN_BULLETS = 2
+_OLDER_EMPLOYER_MIN_BULLETS = 1
+_REQUIRED_PROJECT_COUNT = 3
+
+
+def _experience_start(entry: ExperienceFact) -> tuple[int, int]:
+    """Sort key from an experience's start date, most recent first."""
+
+    normalized = _normalize(entry.dates)
+    match = re.match(rf"({'|'.join(_FRENCH_MONTHS)})\s+(\d{{4}})", normalized)
+    if match:
+        return (int(match.group(2)), _FRENCH_MONTHS[match.group(1)])
+    year = re.match(r"(\d{4})", normalized)
+    if year:
+        return (int(year.group(1)), 1)
+    raise TailoringError(f"experience has an unparsable start date: {entry.id}")
+
+
+def _reverse_chronological_experiences(bank: FactBank) -> tuple[ExperienceFact, ...]:
+    return tuple(sorted(bank.experience, key=_experience_start, reverse=True))
+
+
+def _validate_experience_completeness(
+    plan: TailoringPlan,
+    bank: FactBank,
+) -> None:
+    """Selection freedom covers bullets, never whether an employer appears."""
+
+    expected = _reverse_chronological_experiences(bank)
+    expected_ids = [entry.id for entry in expected]
+    chosen_ids = [entry.experience_id for entry in plan.experience_content]
+    employer_by_id = {entry.id: entry.employer for entry in expected}
+    missing = [entry_id for entry_id in expected_ids if entry_id not in chosen_ids]
+    if missing:
+        names = ", ".join(employer_by_id[entry_id] for entry_id in missing)
+        raise TailoringError(f"missing employer in generated CV: {names}")
+    if chosen_ids != expected_ids:
+        raise TailoringError(
+            "experiences must be listed in reverse-chronological order: "
+            + ", ".join(employer_by_id[entry_id] for entry_id in expected_ids)
+        )
+    for position, chosen in enumerate(plan.experience_content):
+        minimum = (
+            _RECENT_EMPLOYER_MIN_BULLETS
+            if position < _RECENT_EMPLOYER_COUNT
+            else _OLDER_EMPLOYER_MIN_BULLETS
+        )
+        if len(chosen.bullets) < minimum:
+            raise TailoringError(
+                f"employer {employer_by_id[chosen.experience_id]} needs at least "
+                f"{minimum} bullet(s), found {len(chosen.bullets)}"
+            )
+
+
 def _all_sourced_bullets(plan: TailoringPlan) -> tuple[SourcedBullet, ...]:
     return (
         tuple(
@@ -1295,6 +1390,7 @@ def _validate_sourced_plan(
     unknown_experiences = set(chosen_experiences) - experience_ids
     if unknown_experiences:
         raise TailoringError(f"unknown experience ids: {sorted(unknown_experiences)}")
+    _validate_experience_completeness(plan, bank)
     experience_by_id = {entry.id: entry for entry in bank.experience}
     for chosen in plan.experience_content:
         own_fact_ids = {fact.id for fact in experience_by_id[chosen.experience_id].facts}
@@ -1318,8 +1414,11 @@ def _validate_sourced_plan(
         raise TailoringError(
             f"project ids do not belong to the selected template: {sorted(unknown_projects)}"
         )
-    if not 1 <= len(chosen_projects) <= 3:
-        raise TailoringError("project_content must select between 1 and 3 projects")
+    if len(chosen_projects) != _REQUIRED_PROJECT_COUNT:
+        raise TailoringError(
+            f"project_content must select exactly {_REQUIRED_PROJECT_COUNT} projects, "
+            f"found {len(chosen_projects)}"
+        )
     project_by_id = {entry.id: entry for entry in bank.projects}
     for chosen in plan.project_content:
         own_fact_ids = {fact.id for fact in project_by_id[chosen.project_id].facts}
@@ -1482,6 +1581,59 @@ def _lead_verified_skills(
     return source
 
 
+def _tech_lists(source: str) -> list[tuple[re.Match[str], re.Match[str], list[str]]]:
+    """Every tech row paired with its skill-list match and decoded values."""
+
+    rows: list[tuple[re.Match[str], re.Match[str], list[str]]] = []
+    for row_match in _TECH_ROW_RE.finditer(source):
+        list_match = re.search(
+            r'(<div class="tech-list">)(.*?)(</div></div>)',
+            row_match.group(0),
+        )
+        if list_match is None:
+            continue
+        values = [value.strip() for value in _plain(list_match.group(2)).split(",")]
+        rows.append((row_match, list_match, [value for value in values if value]))
+    return rows
+
+
+def _validate_skill_categories(source: str) -> None:
+    """Reject a rendered CV that lists the same tool under two categories."""
+
+    seen: dict[str, str] = {}
+    for row_match, _list_match, values in _tech_lists(source):
+        category = _extract_first(
+            r'<div class="tech-category">(.*?)</div>',
+            row_match.group(0),
+            "tech category",
+        )
+        for value in values:
+            key = _normalize(value)
+            previous = seen.get(key)
+            if previous is not None:
+                raise TailoringError(
+                    f"duplicate tool across skill categories: {value} "
+                    f"({previous} and {category})"
+                )
+            seen[key] = category
+
+
+def _validate_header_location(source: str) -> None:
+    """Reject a rendered CV whose header location is a bare country."""
+
+    match = re.search(
+        r"(?:&#x1F4CD;|📍)\s*(.*?)\s*(?:&nbsp;\|&nbsp;|<br\s*/?>)",
+        source,
+    )
+    if not match:
+        raise TailoringError("tailored contact location not found")
+    location = _plain(match.group(1))
+    if _normalize(location) in _BARE_COUNTRIES:
+        raise TailoringError(
+            f"CV header location must not be a bare country: {location}"
+        )
+
+
 def _tailor_profile(
     source: str,
     plan: TailoringPlan,
@@ -1595,6 +1747,13 @@ def _add_tech_keywords(
 ) -> str:
     added = 0
     known_skills = {_normalize(skill) for skill in _KNOWN_SKILLS}
+    # A tool belongs to one category line only, so an addition that already
+    # appears anywhere in the grid is a no-op rather than a duplicate.
+    present = {
+        _normalize(value)
+        for _row, _list_match, values in _tech_lists(source)
+        for value in values
+    }
     for requested_category, keywords in requested.items():
         category_key = _normalize(requested_category)
         row_match = next(
@@ -1629,9 +1788,10 @@ def _add_tech_keywords(
                 raise TailoringError(
                     f"tech keyword is not in Mouaad's verified skill set: {keyword}"
                 )
-            if _contains(existing, keyword):
+            if _contains(existing, keyword) or _normalize(keyword) in present:
                 continue
             additions.append(_encode_text(keyword, entities=entities))
+            present.add(_normalize(keyword))
             added += 1
         if not additions:
             continue
@@ -1741,6 +1901,8 @@ def tailor_cv_html(
         )
         if result.count("\n") != original_html.count("\n"):
             raise TailoringError("tailoring unexpectedly changed the template line count")
+    _validate_skill_categories(result)
+    _validate_header_location(result)
     return result
 
 
@@ -1874,7 +2036,6 @@ Return exactly this shape:
   "tech_order": ["all exact categories, most relevant first"],
   "tech_keywords": {{}},
   "project_order": ["all exact project titles, most relevant first"],
-  "location_region": "one French region",
   "profile_contract_phrase": null,
   "rhythm_phrase": null,
   "rationale": "short French explanation",
@@ -1897,14 +2058,23 @@ Return exactly this shape:
 }}
 
 Rules:
-- Select and order the strongest experiences and 1 to 3 projects for this offer.
+- experience_content must contain EVERY experience id from the fact bank, in
+  reverse-chronological order by start date, exactly as listed above. Omitting an
+  employer leaves an unexplained gap and the CV is rejected. You choose which
+  bullets represent an employer and how they read, never whether it appears.
+- Give the two most recent employers at least 2 bullets each and every older
+  employer at least 1.
+- project_content must contain exactly 3 projects; pick and order the 3 most
+  relevant for this offer.
+- skill_order must not repeat a tool: each tool belongs to one category only.
 - Rewrite every bullet and project description in the offer's language and emphasis.
 - Every generated bullet, description, and letter paragraph must cite one or more
   exact fact ids. Numbers, percentages, durations, tools, and proper nouns must occur
   in the cited facts. Never cite a needs-review or unverified skill.
 - Never output a name, contact field, employer, role header, date, diploma,
   certification name, project title, or project stack. The renderer injects them.
-- Do not output job_title or letter_body_html. The renderer owns both.
+- Do not output job_title, location_region, or letter_body_html. The renderer owns
+  all three; a location you supply is discarded.
 - Use only plain text in sourced content: no HTML and no em dash.
 - Keep experience bullets concise enough for a one-page CV.
 - Keep project descriptions between 95 and 134 characters when possible.
@@ -2133,6 +2303,19 @@ def _infer_region(city: str) -> str:
     return "France"
 
 
+def resolve_header_location(offer_city: str, profile: CvProfile | None = None) -> str:
+    """Renderer-owned CV header location; the advisor has no say in it.
+
+    Prefers the offer's own region so the CV reads as locally available, and
+    falls back to the profile's region rather than the bare country the offer
+    city could not be resolved to.
+    """
+    region = _infer_region(offer_city)
+    if _normalize(region) not in _BARE_COUNTRIES:
+        return region
+    return (profile or load_cv_profile()).header_location
+
+
 def _offer_start(description: str) -> str:
     match = re.search(
         r"(?:dès|a partir de|à partir de)\s+"
@@ -2179,13 +2362,17 @@ def _interactive_structured_payload(
 ) -> Mapping[str, Any]:
     bank = load_fact_bank()
     context = _advisor_fact_context(selection, template, bank)
-    experiences = context["experience"]
+    order = [entry.id for entry in _reverse_chronological_experiences(bank)]
+    experiences = sorted(
+        context["experience"],
+        key=lambda entry: order.index(entry["experience_id"]),
+    )
     projects = context["projects"]
     skills = context["verified_skills"]
     concentrix = next(
         entry for entry in experiences if entry["experience_id"] == "experience.concentrix"
     )
-    chosen_projects = list(projects[:3])
+    chosen_projects = list(projects[:_REQUIRED_PROJECT_COUNT])
     first_project_fact = chosen_projects[0]["facts"][0]
     profile_contract = None
     if selection.adapted_for_stage:
@@ -2199,18 +2386,24 @@ def _interactive_structured_payload(
         "tech_order": list(template.tech_categories),
         "tech_keywords": {},
         "project_order": list(template.project_titles),
-        "location_region": _infer_region(offer.city),
+        "location_region": resolve_header_location(offer.city),
         "profile_contract_phrase": profile_contract,
         "rhythm_phrase": None,
         "rationale": f"Variant {selection.label} selected from the offer missions.",
+        # Every employer is mandatory; only the bullet count varies with recency.
         "experience_content": [
             {
-                "experience_id": concentrix["experience_id"],
+                "experience_id": entry["experience_id"],
                 "bullets": [
                     {"text": fact["text"], "sources": [fact["id"]]}
-                    for fact in concentrix["facts"][:2]
+                    for fact in entry["facts"][
+                        : _RECENT_EMPLOYER_MIN_BULLETS
+                        if position < _RECENT_EMPLOYER_COUNT
+                        else _OLDER_EMPLOYER_MIN_BULLETS
+                    ]
                 ],
             }
+            for position, entry in enumerate(experiences)
         ],
         "project_content": [
             {
@@ -2576,6 +2769,41 @@ def _persist_variant(
     )
 
 
+_TEMPLATE_LABELS: dict[str, str] = {
+    template_name: label for label, template_name in _TEMPLATES.values()
+} | {
+    template_name: label for _slug, label, template_name in _STAGE_TEMPLATES.values()
+}
+
+
+def document_variant_label(
+    tailored_html: str,
+    bank: FactBank,
+    *,
+    fallback: str,
+) -> str:
+    """Name the variant the rendered CV actually is, not the one routing guessed.
+
+    Resolved from the projects the validated document carries: they belong to
+    exactly one template unless several templates share the whole set.
+    """
+    titles = extract_template_context(tailored_html).project_titles
+    templates_by_title: dict[str, set[str]] = {}
+    for project in bank.projects:
+        templates_by_title.setdefault(_normalize(project.title), set()).update(
+            project.source_templates
+        )
+    candidates: set[str] | None = None
+    for title in titles:
+        owners = templates_by_title.get(_normalize(title))
+        if not owners:
+            return fallback
+        candidates = owners if candidates is None else candidates & owners
+    if not candidates or len(candidates) != 1:
+        return fallback
+    return _TEMPLATE_LABELS.get(next(iter(candidates)), fallback)
+
+
 def _tracker_value(value: object) -> str:
     """Keep TSV cells single-line and inert when opened in spreadsheet software."""
 
@@ -2646,13 +2874,15 @@ def generate_application(
                 duration_months=offer.duration_months,
                 start_date=_offer_start(offer.description),
             ),
+            location_region=resolve_header_location(offer.city),
         )
+        bank = load_fact_bank()
         tailored_html = tailor_cv_html(
             original_html,
             plan,
             selection,
             offer_description=offer.description,
-            fact_bank=load_fact_bank(),
+            fact_bank=bank,
             offer=offer,
         )
 
@@ -2679,15 +2909,22 @@ def generate_application(
         )
         chosen_toolchain.verify_page_count(letter_pdf_path)
 
+        # The tracker describes the document that was generated and validated,
+        # never the pre-generation routing guess.
         final_context = extract_template_context(tailored_html)
+        document_label = document_variant_label(
+            tailored_html,
+            bank,
+            fallback=selection.label,
+        )
         tracker_row = chosen_toolchain.format_tracker_row(
             entreprise=_tracker_value(offer.company),
             poste=_tracker_value(offer.title),
             contrat=_tracker_value(selection.contract_type.title()),
             type=_tracker_value("Non renseigné"),
-            localisation=_tracker_value(plan.location_region),
+            localisation=_tracker_value(final_context.location_region),
             source=_tracker_value(offer.source),
-            cv=_tracker_value(f"CV {selection.label}"),
+            cv=_tracker_value(f"CV {document_label}"),
             projets=_tracker_value(", ".join(final_context.project_titles)),
             adaptations=_tracker_value(plan.rationale),
             lien=_tracker_value(offer.url),
@@ -2717,6 +2954,8 @@ def generate_application(
             "ready",
             detail={
                 "variant": selection.slug,
+                "routing_variant": selection.label,
+                "document_variant": document_label,
                 "cv_pdf_path": str(cv_pdf_path),
                 "letter_pdf_path": str(letter_pdf_path),
                 "tracker_path": str(tracker_path),

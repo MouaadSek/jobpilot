@@ -13,9 +13,52 @@ from pathlib import Path
 
 import yaml
 
+from jobpilot.config import PROJECT_ROOT
 from jobpilot.logging_conf import get_logger
 
 log = get_logger("profile")
+
+DEFAULT_CV_PROFILE_PATH = PROJECT_ROOT / "config" / "profile.yaml"
+
+
+class CvProfileError(ValueError):
+    """Raised when the committed CV profile is missing or malformed."""
+
+
+@dataclass(frozen=True, slots=True)
+class CvProfile:
+    """Renderer-owned candidate facts injected into every generated CV."""
+
+    city: str
+    region: str
+
+    @property
+    def header_location(self) -> str:
+        """The location printed in the CV header when the offer yields none."""
+        return self.region or self.city
+
+
+def load_cv_profile(path: Path | None = None) -> CvProfile:
+    """Load the committed CV profile, failing loudly rather than defaulting."""
+    chosen = Path(path or DEFAULT_CV_PROFILE_PATH)
+    try:
+        raw = yaml.safe_load(chosen.read_text(encoding="utf-8")) or {}
+    except OSError as exc:
+        raise CvProfileError(f"could not read CV profile: {chosen}") from exc
+    except yaml.YAMLError as exc:
+        raise CvProfileError(f"CV profile is invalid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise CvProfileError("CV profile must be an object")
+    location = raw.get("location")
+    if not isinstance(location, dict):
+        raise CvProfileError("CV profile must define a 'location' object")
+    city = location.get("city")
+    region = location.get("region")
+    if not isinstance(city, str) or not city.strip():
+        raise CvProfileError("CV profile location.city must be non-empty text")
+    if not isinstance(region, str) or not region.strip():
+        raise CvProfileError("CV profile location.region must be non-empty text")
+    return CvProfile(city=city.strip(), region=region.strip())
 
 
 @dataclass(slots=True)

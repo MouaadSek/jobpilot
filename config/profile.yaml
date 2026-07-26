@@ -1,0 +1,7 @@
+# Candidate profile facts owned by the renderer, never by an AI advisor.
+# The CV header location is injected from here whenever the offer's own city
+# does not resolve to a French region, so a generated CV never falls back to a
+# bare country name.
+location:
+  city: Lille
+  region: Hauts-de-France
