@@ -76,9 +76,9 @@ experience:
   location: Varsovie
   facts:
   - id: experience.lionbridge.traitement.et.validation.de.200
-    text: Traitement et validation de 200 000+ strings localisés, taux d'erreur inf?rieur ? 0,5 % sur 8 mois consécutifs.
+    text: Traitement et validation de 200 000+ strings localisés, taux d'erreur inférieur à 0,5 % sur 8 mois consécutifs.
   - id: experience.lionbridge.traitement.et.validation.de.200.2
-    text: Traitement et validation de 200 000+ éléments localisés pour un produit SI international, taux d'erreur inf?rieur ? 0,5 % sur 8 mois.
+    text: Traitement et validation de 200 000+ éléments localisés pour un produit SI international, taux d'erreur inférieur à 0,5 % sur 8 mois.
 - id: experience.testronic
   employer: Testronic
   role: Analyste QA
@@ -1577,10 +1577,6 @@ skills:
 - id: skill.tailwind
   name: Tailwind
   verified: true
-- id: skill.talend
-  name: Talend
-  verified: false
-  needs_review: true
 - id: skill.task.scheduler
   name: Task Scheduler
   verified: true
@@ -1658,12 +1654,6 @@ skills:
   verified: true
 - id: skill.enumeration.smb.ldap
   name: énumération SMB/LDAP
-  verified: true
-- id: skill.claude
-  name: Claude
-  verified: true
-- id: skill.chatgpt
-  name: ChatGPT
   verified: true
 locked:
   name: Mouaad Sekkouri

@@ -234,18 +234,29 @@ def test_provenance_rejects_fabricated_numbers_and_tools(
 
 
 def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
-    bank = load_fact_bank()
+    import dataclasses
+    from jobpilot.facts import SkillFact
+    base = load_fact_bank()
+    from jobpilot.facts import FactClaim
+    zzz = SkillFact(id="skill.zzztool", name="Zzztool", verified=False, needs_review=True)
+    claims = dict(base.claims)
+    claims[zzz.id] = FactClaim(id=zzz.id, text=zzz.name, section="skills")
+    bank = dataclasses.replace(
+        base,
+        skills=base.skills + (zzz,),
+        claims=claims,
+    )
 
     with pytest.raises(TailoringError, match="unverified skill"):
         validate_provenance(
-            (SourcedBullet(text="Talend", sources=("skill.talend",)),),
+            (SourcedBullet(text="Zzztool", sources=("skill.zzztool",)),),
             bank,
         )
     with pytest.raises(TailoringError, match="unverified skill"):
         validate_provenance(
             (
                 SourcedBullet(
-                    text="Utilisation de talend pour les données.",
+                    text="Utilisation de zzztool pour les données.",
                     sources=("experience.concentrix.incidents",),
                 ),
             ),

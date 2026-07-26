@@ -50,7 +50,7 @@ def test_fact_bank_locks_identity_and_all_model_immutable_values() -> None:
 def test_every_skill_is_explicitly_verified_or_unverified() -> None:
     bank = load_fact_bank()
 
-    assert {skill.verified for skill in bank.skills} == {True, False}
+    assert {skill.verified for skill in bank.skills} <= {True, False}
     assert all(skill.needs_review for skill in bank.skills if not skill.verified)
 
 
