@@ -90,8 +90,26 @@ prompts. Choosing `anthropic` or `openai` explicitly without its API key fails
 with a clear configuration error instead of silently falling back.
 
 `OPENAI_BASE_URL` may point to any compatible hosted or local Chat Completions
-endpoint, including Ollama or LM Studio. Every provider feeds the same guarded
-tailoring and document-validation pipeline; nothing is auto-sent or submitted.
+endpoint, including Ollama or LM Studio. **Google Gemini is a supported
+configuration** through its OpenAI-compatible endpoint:
+
+```bash
+TAILORING_PROVIDER=openai
+OPENAI_API_KEY=<your Gemini API key>
+OPENAI_MODEL=gemini-2.5-flash
+OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+```
+
+Every provider feeds the same guarded tailoring and document-validation
+pipeline; nothing is auto-sent or submitted.
+
+Responses are normalized before validation: when a model returns the sourced
+structure (`experience_content`, `project_content`, `skill_order`,
+`letter_paragraphs`) **and** the legacy fields it supersedes (`tech_keywords`,
+`letter_body_html`), the sourced structure wins and the redundant fields are
+dropped with a debug log line instead of failing the run. Normalization is
+shape-only — provenance, structural completeness, and locked-field rules still
+apply in full to the sourced content.
 
 ### Fact bank
 
