@@ -18,6 +18,7 @@ from jobpilot.descriptions import backfill_descriptions, clear_match_scores
 from jobpilot.ingest import ingest_source
 from jobpilot.logging_conf import get_logger
 from jobpilot.profile import ProfileInput, load_variants, save_profile, sync_variants
+from jobpilot.reparse import ALERT_SOURCES, reparse_alerts
 from jobpilot.review import status_counts
 from jobpilot.sources.registry import (
     available_sources,
@@ -123,6 +124,47 @@ def backfill_descriptions_cmd(
         f"unchanged={result.unchanged} "
         f"already_synthesized={result.already_synthesized}"
     )
+
+
+@app.command("reparse-alerts")
+def reparse_alerts_cmd(
+    source: str | None = typer.Option(
+        None, "--source", "-s",
+        help=f"Restrict to one alert source. Default: {', '.join(ALERT_SOURCES)}.",
+    ),
+) -> None:
+    """Re-derive company / city / workplace / easy-apply for stored alert offers.
+
+    Alert cards read "Company · City (Workplace)". Offers ingested before that
+    was parsed structurally hold interface text ("Recrutement actif", "1
+    relation") in `city`, which the hard filter rejects on. This re-runs the
+    structural parse over the card text still stored on each offer.
+
+    Applications, statuses and events are never touched, and offers that already
+    have an application are skipped, exactly as `rescore` does.
+    """
+    conn = connect()
+    try:
+        result = reparse_alerts(conn, source)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--source") from exc
+    finally:
+        conn.close()
+    typer.echo(
+        f"{result.source}: scanned={result.scanned} updated={result.updated} "
+        f"unchanged={result.unchanged} noise_cleared={result.noise_cleared} "
+        f"skipped_with_application={result.skipped_with_application}"
+    )
+    if result.unrecoverable:
+        typer.secho(
+            f"{result.unrecoverable} offer(s) had no card text left to parse: their "
+            "location was interface text and no 'Company · City' line was retained. "
+            "The raw alert emails are not stored, so those cities are cleared to NULL "
+            "rather than guessed — re-run `jobpilot ingest --source linkedin_alert` to "
+            "recover them from the mailbox.",
+            fg=typer.colors.YELLOW,
+        )
+    typer.echo("run `jobpilot rescore` then `jobpilot score` to re-evaluate them")
 
 
 @app.command("rescore")

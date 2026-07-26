@@ -54,6 +54,7 @@ class OfferRecord:
     stack_tags: list[str] = field(default_factory=list)
     posted_at: str | None = None  # ISO 8601 UTC
     contact_email: str | None = None  # offer contact address, when the source exposes one
+    easy_apply: bool = False  # provider supports an inline application flow
 
     def normalized(self) -> OfferRecord:
         """Coerce enum-constrained fields to legal values (schema CHECK safety)."""

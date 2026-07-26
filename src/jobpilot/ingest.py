@@ -41,7 +41,7 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _get_or_create_company(
+def get_or_create_company(
     db: sqlite3.Connection, company: CompanyRecord, cache: dict[str, int]
 ) -> tuple[int, bool]:
     key = " ".join(company.name.lower().split())
@@ -73,14 +73,14 @@ def _insert_offer(
         "(source_id, company_id, external_id, url, title, description, "
         " contract_type, duration_months, city, remote_policy, salary_min, "
         " salary_max, stack_tags, posted_at, scraped_at, content_hash, "
-        " contact_email) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " contact_email, easy_apply) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             sid, company_id, offer.external_id, offer.url, offer.title,
             offer.description, offer.contract_type, offer.duration_months,
             offer.city, offer.remote_policy, offer.salary_min, offer.salary_max,
             offer.stack_tags_json, offer.posted_at, _utc_now(), offer.hash,
-            offer.contact_email,
+            offer.contact_email, int(offer.easy_apply),
         ),
     )
     return cur.rowcount > 0
@@ -94,7 +94,7 @@ def ingest_source(db: sqlite3.Connection, src: Source) -> IngestResult:
 
     # Companies-likely-to-hire (used by later cold-mail phase) go in first.
     for company in src.fetch_companies():
-        _, created = _get_or_create_company(db, company, company_cache)
+        _, created = get_or_create_company(db, company, company_cache)
         if created:
             result.companies_created += 1
 
@@ -102,7 +102,7 @@ def ingest_source(db: sqlite3.Connection, src: Source) -> IngestResult:
         result.fetched += 1
         company_id: int | None = None
         if offer.company_name:
-            company_id, created = _get_or_create_company(
+            company_id, created = get_or_create_company(
                 db, CompanyRecord(name=offer.company_name), company_cache
             )
             if created:

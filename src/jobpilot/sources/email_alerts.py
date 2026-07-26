@@ -300,6 +300,202 @@ _CTA_TEXT = {
 }
 
 
+# ---- card UI noise (single source of truth) ----
+#
+# Alert cards interleave the real fields with interface chrome. The old
+# positional reader popped whichever chunk came next into `company` then `city`,
+# so on real LinkedIn mail `offers.city` filled up with "Recrutement actif" (26
+# rows), "1 relation" (6), "Candidature simplifiée" (4) and similar — and the
+# hard filter then rejected those offers on location, unscored.
+#
+# Nothing matching this block may ever reach `company`, `city` or `title`. A
+# rejected chunk leaves the field None on purpose: the hard filter treats an
+# unknown location as "do not reject", whereas a junk location guarantees one.
+
+# Whole-string chrome. Compared casefolded, so entries stay lowercase.
+_NOISE_LITERALS: frozenset[str] = frozenset(
+    {
+        "recrutement actif",
+        "actively recruiting",
+        "candidature simplifiée",
+        "candidature simplifiee",
+        "easy apply",
+        "promu",
+        "promoted",
+        "voir l'offre",
+        "postuler",
+        *_CTA_TEXT,
+    }
+)
+
+# Chrome carrying a variable number, which no literal list can enumerate.
+# LinkedIn writes social proof as "1 relation", "82 anciens collègues",
+# "9 anciens élèves" — all observed in the real mailbox.
+_NOISE_COUNT_RE = re.compile(
+    r"^\d+\s+("
+    r"relations?|connections?|mutual connections?|abonnés?|followers?"
+    r"|anciens?\s+(collègues?|élèves?|eleves?)"
+    r"|alumni"
+    r")$",
+    re.IGNORECASE,
+)
+
+# Bare gender markers: "F/H", "H/F", "M/F", "(F/H)", "F/H/X", even "F/H F/H".
+# They are a job-title suffix that leaked into the card, never a place.
+_NOISE_GENDER_RE = re.compile(r"^[()\s/]*(?:[fhmwx](?:\s*/\s*[fhmwx])+[()\s]*)+$", re.IGNORECASE)
+
+# Salary lines ("entre 46 k € et 70 k € par an"). Not a location either; parsing
+# them into salary_min/max is out of scope here, so they are simply refused.
+_NOISE_SALARY_RE = re.compile(r"€|\beur\b", re.IGNORECASE)
+
+_NOISE_PATTERNS = (_NOISE_COUNT_RE, _NOISE_GENDER_RE, _NOISE_SALARY_RE)
+
+# "Easy Apply" is chrome, but it is *useful* chrome: it marks offers that
+# support LinkedIn's inline application flow (Tasks 17/18). It is stripped out
+# of the text field and kept as OfferRecord.easy_apply instead.
+_EASY_APPLY_RE = re.compile(r"\b(candidature\s+simplifi[ée]e|easy\s+apply)\b", re.IGNORECASE)
+
+
+def is_noise(text: str | None) -> bool:
+    """True when `text` is card chrome that must never be stored as a field."""
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return True
+    if cleaned.casefold() in _NOISE_LITERALS:
+        return True
+    return any(pattern.search(cleaned) for pattern in _NOISE_PATTERNS)
+
+
+# Some cards append the company to the title anchor ("Ingénieur Cloud Security
+# H/F Inetum") and repeat the bare title as the next chunk, which the positional
+# reader then filed as the city. A chunk that is the offer's own title is not a
+# place. The length guard keeps a genuine city that merely happens to open the
+# title ("Paris" in "Paris Saint-Germain — Analyste") out of this rule.
+_TITLE_ECHO_MIN_RATIO = 0.5
+
+
+def is_title_echo(chunk: str | None, title: str | None) -> bool:
+    """True when `chunk` restates `title` rather than naming a company or place."""
+    a = " ".join((chunk or "").split()).casefold()
+    b = " ".join((title or "").split()).casefold()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return longer.startswith(shorter) and len(shorter) >= _TITLE_ECHO_MIN_RATIO * len(longer)
+
+
+def scrub_chunk(text: str | None) -> tuple[str | None, bool]:
+    """Strip UI markers from one card chunk.
+
+    Returns ``(usable_text_or_None, easy_apply_seen)``. Chunks are often mixed
+    ("Levallois-Perret (Sur site) Candidature simplifiée"), so the Easy Apply
+    marker is removed rather than used to reject the whole chunk; whatever is
+    left is then held to the noise rules.
+    """
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return None, False
+    easy_apply = bool(_EASY_APPLY_RE.search(cleaned))
+    if easy_apply:
+        cleaned = " ".join(_EASY_APPLY_RE.sub(" ", cleaned).split())
+    if is_noise(cleaned):
+        return None, easy_apply
+    return cleaned, easy_apply
+
+
+# ---- workplace type -> remote_policy ----
+#
+# The vocabulary is models.REMOTE_POLICIES, the same one france_travail and
+# wttj (_REMOTE_MAP) write. No new terms are invented here.
+_WORKPLACE_MAP: dict[str, str] = {
+    "sur site": "onsite",
+    "on-site": "onsite",
+    "on site": "onsite",
+    "onsite": "onsite",
+    "hybride": "hybrid",
+    "hybrid": "hybrid",
+    "à distance": "full_remote",
+    "a distance": "full_remote",
+    "remote": "full_remote",
+}
+
+# Card separators, most specific first. The middle dot (U+00B7) is what
+# LinkedIn actually emits; the bullet is a layout variant. A plain hyphen is
+# accepted only as a last resort and only when exactly one occurs (see
+# _parse_card_line), because hyphens are common inside real company and city
+# names ("Le Plessis-Robinson", "Roissy-en-France").
+_CARD_DOT_RE = re.compile(r"\s*[·•]\s*")
+_CARD_DASH_RE = re.compile(r"\s+[-–—]\s+")
+
+_TRAILING_PAREN_RE = re.compile(r"\s*\(([^()]*)\)\s*$")
+
+
+def split_workplace(text: str | None) -> tuple[str | None, str | None]:
+    """Split a trailing "(Sur site)" / "(Hybride)" / "(À distance)" off a location.
+
+    Returns ``(location_without_the_parenthetical, remote_policy_or_None)``. A
+    parenthetical that is not a recognised workplace type is left in place —
+    Indeed writes "Villeneuve-d'Ascq (59)", which is part of the location.
+    """
+    cleaned = " ".join((text or "").split())
+    if not cleaned:
+        return None, None
+    match = _TRAILING_PAREN_RE.search(cleaned)
+    if not match:
+        return cleaned, None
+    policy = _WORKPLACE_MAP.get(" ".join(match.group(1).split()).casefold())
+    if policy is None:
+        return cleaned, None
+    remainder = cleaned[: match.start()].strip()
+    return (remainder or None), policy
+
+
+@dataclass(slots=True)
+class _Card:
+    """The fields one alert card can carry, before they reach an OfferRecord."""
+
+    company: str | None = None
+    city: str | None = None
+    remote_policy: str | None = None
+    easy_apply: bool = False
+
+
+def parse_card_line(text: str | None) -> _Card | None:
+    """Parse LinkedIn's "Company · City (Workplace)" card line.
+
+    Returns None when the line does not carry that structure, so the caller can
+    fall back. Never guesses: a line without a separator yields None rather than
+    a company invented from a city or the reverse.
+    """
+    cleaned, easy_apply = scrub_chunk(text)
+    if not cleaned:
+        return None
+
+    parts = [p.strip() for p in _CARD_DOT_RE.split(cleaned) if p.strip()]
+    if len(parts) < 2:
+        # Hyphen fallback, unambiguous case only: exactly one " - " separator.
+        dashed = [p.strip() for p in _CARD_DASH_RE.split(cleaned) if p.strip()]
+        if len(dashed) != 2:
+            return None
+        parts = dashed
+
+    # More than one dot ("Acme · Paris · Île-de-France"): company leads, the
+    # location is the remainder joined back up.
+    company = parts[0]
+    city = ", ".join(parts[1:])
+    city, policy = split_workplace(city)
+
+    if is_noise(company):
+        company = None
+    if city is not None and is_noise(city):
+        city = None
+    if company is None and city is None:
+        return None
+    return _Card(company=company, city=city, remote_policy=policy, easy_apply=easy_apply)
+
+
 def clean_job_url(url: str, provider: str) -> str:
     """Return a stable detail URL with email/tracking parameters removed."""
 
@@ -344,16 +540,18 @@ def parse_linkedin(html: str) -> list[OfferRecord]:
         if job_id in seen:
             continue
         seen.add(job_id)
-        title, company, city, description = _card_fields(anchor)
+        fields = _card_fields(anchor)
         out.append(
             OfferRecord(
                 external_id=job_id,
                 url=clean_job_url(anchor.href, "linkedin"),
-                title=title,
-                company_name=company,
-                city=city,
-                description=description,
+                title=fields.title,
+                company_name=fields.company,
+                city=fields.city,
+                description=fields.description,
                 contract_type="unknown",
+                remote_policy=fields.remote_policy,
+                easy_apply=fields.easy_apply,
             ).normalized()
         )
     return out
@@ -371,16 +569,18 @@ def parse_indeed(html: str) -> list[OfferRecord]:
         if jk in seen:
             continue
         seen.add(jk)
-        title, company, city, description = _card_fields(anchor)
+        fields = _card_fields(anchor)
         out.append(
             OfferRecord(
                 external_id=jk,
                 url=clean_job_url(anchor.href, "indeed"),
-                title=title,
-                company_name=company,
-                city=city,
-                description=description,
+                title=fields.title,
+                company_name=fields.company,
+                city=fields.city,
+                description=fields.description,
                 contract_type="unknown",
+                remote_policy=fields.remote_policy,
+                easy_apply=fields.easy_apply,
             ).normalized()
         )
     return out
@@ -399,27 +599,90 @@ def _split_card(text: str) -> tuple[str, str | None, str | None]:
     return title, company, city
 
 
-def _card_fields(
-    anchor: _AlertAnchor,
-) -> tuple[str, str | None, str | None, str | None]:
-    title, company, city = _split_card(anchor.text)
+@dataclass(slots=True)
+class CardFields:
+    """Everything one alert card yields, ready to copy onto an OfferRecord."""
+
+    title: str
+    company: str | None = None
+    city: str | None = None
+    remote_policy: str = "unknown"
+    easy_apply: bool = False
+    description: str | None = None
+
+
+def _card_fields(anchor: _AlertAnchor) -> CardFields:
+    """Derive the offer fields of one alert card, structurally.
+
+    Order of preference:
+
+    1. a "Company · City (Workplace)" line anywhere in the card's context —
+       this is the real LinkedIn layout and the only reliable signal;
+    2. the anchor text's own "Title - Company - City" split;
+    3. positional fallback over the remaining chunks, exactly as before, but
+       only over chunks that survived the noise filter.
+
+    Anything the card does not state stays None. Nothing is inferred: no city
+    is guessed from a company name, no region from a city, no workplace type
+    from anything.
+    """
+    anchor_title, anchor_company, anchor_city = _split_card(anchor.text)
+    title, easy_apply = scrub_chunk(anchor_title)
+    if title is None:
+        # A card whose anchor text is entirely chrome has no usable title; keep
+        # the raw text so the offer is still identifiable rather than crashing.
+        title = " ".join(anchor.text.split())
+
+    card = _Card()
+
+    # (1) structural card line, taken from the context chunks.
     details: list[str] = []
+    seen: set[str] = set()
     for chunk in anchor.context:
         cleaned = " ".join(chunk.split())
-        if (
-            not cleaned
-            or cleaned == anchor.text
-            or cleaned.casefold() in _CTA_TEXT
-            or cleaned in details
-        ):
+        if not cleaned or cleaned == anchor.text or cleaned in seen:
             continue
-        details.append(cleaned)
-    if company is None and details:
-        company = details.pop(0)
-    if city is None and details:
-        city = details.pop(0)
-    description = " ".join(details) if details else None
-    return title, company, city, description
+        seen.add(cleaned)
+        if card.company is None and card.city is None:
+            parsed = parse_card_line(cleaned)
+            if parsed is not None:
+                card = parsed
+                continue
+        usable, chunk_easy_apply = scrub_chunk(cleaned)
+        easy_apply = easy_apply or chunk_easy_apply
+        if usable is not None and not is_title_echo(usable, title):
+            details.append(usable)
+    easy_apply = easy_apply or card.easy_apply
+
+    # (2) the anchor text's own split, for cards that pack the fields inline.
+    if card.company is None:
+        card.company, company_easy_apply = scrub_chunk(anchor_company)
+        easy_apply = easy_apply or company_easy_apply
+    if card.city is None:
+        card.city, city_easy_apply = scrub_chunk(anchor_city)
+        easy_apply = easy_apply or city_easy_apply
+
+    # (3) positional fallback over what is left, noise already removed.
+    if card.company is None and details:
+        card.company = details.pop(0)
+    if card.city is None and details:
+        card.city = details.pop(0)
+
+    # A location reached by (2) or (3) can still carry its workplace suffix.
+    if card.remote_policy is None:
+        card.city, card.remote_policy = split_workplace(card.city)
+
+    if card.city is None and card.company is None:
+        log.warning("alert card yielded no company or city: %r", anchor.text)
+
+    return CardFields(
+        title=title,
+        company=card.company,
+        city=card.city,
+        remote_policy=card.remote_policy or "unknown",
+        easy_apply=easy_apply,
+        description=" ".join(details) if details else None,
+    )
 
 
 # ---- Source implementations ----

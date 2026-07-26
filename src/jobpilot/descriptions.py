@@ -158,7 +158,7 @@ class RescoreResult:
         }
 
 
-def _source_filter(db: sqlite3.Connection, source: str | None) -> tuple[str, list[int]]:
+def source_filter(db: sqlite3.Connection, source: str | None) -> tuple[str, list[int]]:
     """Return an SQL fragment + params restricting a query to one source."""
     if source is None:
         return "", []
@@ -180,7 +180,7 @@ def backfill_descriptions(
     untouched on purpose — it is the dedup key of the row as it was ingested,
     and alert offers dedup on (source_id, external_id) anyway.
     """
-    clause, params = _source_filter(db, source)
+    clause, params = source_filter(db, source)
     rows = db.execute(
         "SELECT o.id, o.title, o.description, o.city, c.name AS company_name "
         "FROM offers o LEFT JOIN companies c ON c.id = o.company_id "
@@ -219,7 +219,7 @@ def clear_match_scores(db: sqlite3.Connection, source: str | None = None) -> Res
     scores back a human decision that is now owned by the state machine. Nothing
     here touches `applications`, statuses or events.
     """
-    clause, params = _source_filter(db, source)
+    clause, params = source_filter(db, source)
     selectable = (
         "SELECT o.id FROM offers o "
         "LEFT JOIN applications a ON a.offer_id = o.id "

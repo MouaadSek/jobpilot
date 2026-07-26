@@ -165,6 +165,7 @@ jobpilot ingest --source all     # fetch offers from every enabled source
 jobpilot ingest -s france_travail --since 7
 jobpilot score                   # score unscored offers; queue those above threshold
 jobpilot backfill-descriptions -s linkedin_alert   # compose descriptions for thin stored offers
+jobpilot reparse-alerts -s linkedin_alert          # re-derive company/city/workplace from stored card text
 jobpilot rescore -s linkedin_alert                 # clear match_scores so `score` re-evaluates
 jobpilot queue                   # list queued applications, highest score first
 jobpilot apply <id>              # approve offer, tailor docs, queue them for human review
@@ -198,6 +199,34 @@ application are skipped outright. Measured on the 112 stored `linkedin_alert`
 offers, backfill + rescore + score lifted the mean semantic score of the
 scoreable ones from 0.143 to 0.207 and the mean final from 0.075 to 0.107,
 turning a flat near-zero cluster into a usable ranking.
+
+**Alert card fields.** LinkedIn and Indeed alert cards read
+`Company · City (Workplace)`, where the workplace is `Sur site` / `Hybride` /
+`À distance` (or their English equivalents) and maps onto the same
+`onsite` / `hybrid` / `full_remote` vocabulary every other source writes. The
+parser splits that line structurally and refuses to store interface text —
+`Recrutement actif`, `N relation(s)`, `N anciens collègues`, `Candidature
+simplifiée`, `Promu`, bare gender markers (`F/H`), salary lines — in `company`,
+`city` or `title`. A field it cannot read stays `NULL`, which the hard filter
+treats as "unknown location, do not reject"; a wrong value would guarantee
+rejection. Nothing is inferred: no city is guessed from a company name, no
+region from a city, no workplace type from anything.
+
+`Candidature simplifiée` / `Easy Apply` is kept rather than discarded, as
+`offers.easy_apply` (migration `004`), because it marks the offers that support
+LinkedIn's inline application flow.
+
+**`reparse-alerts`** repairs offers ingested before that fix. The raw alert
+emails are not stored, but the card text survives in the fields the old parser
+mis-filed, which is enough to re-run the parse offline. Offers with no card text
+left are reported as unrecoverable and have the junk cleared to `NULL` rather
+than guessed — re-run `jobpilot ingest -s linkedin_alert` to recover those from
+the mailbox. Like `rescore`, it is idempotent, takes an optional `--source`, and
+skips any offer that already has an application; it never touches
+`applications`, statuses or events. Measured on the 112 stored `linkedin_alert`
+offers, it cut hard-filter rejections on location from **85 to 45** and raised
+the offers reaching scoring from **27 to 67**. Run `rescore` then `score`
+afterwards to re-evaluate them.
 
 **Cold-mail rails** are enforced when drafting and rechecked immediately before
 SMTP dispatch: one shared maximum of 25 application/cold emails per UTC day,
