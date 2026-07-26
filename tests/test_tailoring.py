@@ -295,13 +295,36 @@ def test_tailoring_preserves_entity_encoding() -> None:
     assert "&Icirc;le-de-France" in tailored
 
 
-def test_tailoring_rejects_profile_phrase_outside_three_to_five_words() -> None:
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "SOC",
+        # 8 words: past the bound even for French.
+        "validation et vérification des systèmes embarqués pour l'aéronautique civile",
+    ],
+)
+def test_tailoring_rejects_profile_phrase_outside_three_to_seven_words(phrase: str) -> None:
     original = (TEMPLATES / "Mouaad_Sekkouri_-_SOC__Alternance.html").read_text(encoding="utf-8")
-    plan = _plan_for(original, profile_domain_phrase="SOC")
+    plan = _plan_for(original, profile_domain_phrase=phrase)
     selection = pick_variant("SIEM", title="Analyste SOC")
 
-    with pytest.raises(TailoringError, match="3 to 5 words"):
+    with pytest.raises(TailoringError, match="3 to 7 words"):
         tailor_cv_html(original, plan, selection, offer_description="SIEM")
+
+
+def test_tailoring_accepts_a_six_word_french_domain_phrase() -> None:
+    """The V&V case: a natural French phrase needs more room than five words."""
+
+    original = (TEMPLATES / "Mouaad_Sekkouri_-_SOC__Alternance.html").read_text(encoding="utf-8")
+    plan = _plan_for(
+        original,
+        profile_domain_phrase="validation et vérification des systèmes embarqués",
+    )
+    selection = pick_variant("SIEM", title="Analyste SOC")
+
+    tailored = tailor_cv_html(original, plan, selection, offer_description="SIEM")
+
+    assert "validation et vérification des systèmes embarqués" in tailored
 
 
 class _Advisor:

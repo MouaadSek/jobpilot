@@ -111,6 +111,24 @@ dropped with a debug log line instead of failing the run. Normalization is
 shape-only — provenance, structural completeness, and locked-field rules still
 apply in full to the sourced content.
 
+### Validation-feedback retry
+
+Models tend to miss one mechanical rule at a time, and every rejection used to
+cost a human approve click. When a generated plan is rejected by the validator,
+the API advisors (`anthropic`, `openai`) are re-called **exactly once** with the
+validator's error appended to the prompt and an instruction to fix only that.
+Budget for up to two calls per generation.
+
+- Interactive mode never retries: a person is already reading the error.
+- Transport, auth, rate-limit, and malformed-response failures are never
+  retried, so a 429 does not turn into a retry storm.
+- The retry feeds back the error text and nothing else. It relaxes no rule; the
+  second answer faces the same provenance, completeness, and locked-field checks
+  as the first.
+- If the retry is also rejected, the run fails exactly as before — rollback to
+  `queued` plus a `generation_failed` event, which now records both attempts'
+  errors under `attempts`.
+
 ### Fact bank
 
 `config/fact_bank.yaml` is the reviewable source of truth for every factual
