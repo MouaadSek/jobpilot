@@ -220,6 +220,35 @@ def test_openai_provider_returns_the_shared_sourced_plan() -> None:
 
 
 @respx.mock
+def test_gemini_via_openai_base_url_is_normalized_by_the_shared_layer() -> None:
+    """The observed real case: Gemini fills both structures, we keep the sourced one."""
+
+    selection = pick_variant(_offer().description, title=_offer().title)
+    respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ).respond(
+        200,
+        json={
+            "choices": [{"message": {"content": json.dumps(_gemini_shaped_payload())}}]
+        },
+    )
+
+    plan = OpenAITailoringAdvisor(
+        api_key="test-key",
+        model="gemini-2.5-flash",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+    ).advise(
+        _offer(),
+        selection,
+        extract_template_context(TEMPLATE_PATH.read_text(encoding="utf-8")),
+    )
+
+    assert plan.has_sourced_content is True
+    assert plan.tech_keywords == {}
+    assert "Lettre héritée" not in plan.letter_body_html
+
+
+@respx.mock
 def test_anthropic_provider_returns_the_shared_sourced_plan() -> None:
     selection = pick_variant(_offer().description, title=_offer().title)
     route = respx.post("https://api.anthropic.com/v1/messages").respond(
@@ -378,11 +407,85 @@ def test_structured_plan_rejects_model_generated_locked_fields() -> None:
         )
 
 
-def test_structured_plan_rejects_legacy_tech_keyword_injection() -> None:
+def _gemini_shaped_payload() -> dict[str, object]:
+    """A real Gemini answer fills the sourced structure AND the legacy fields."""
+
     payload = _payload()
     payload["tech_keywords"] = {"Sécurité": ["Microsoft Sentinel"]}
+    payload["letter_body_html"] = "<p>Madame, Monsieur,</p><p>Lettre héritée.</p>"
+    return payload
 
-    with pytest.raises(TailoringError, match="tech_keywords"):
+
+def test_structured_plan_drops_redundant_legacy_fields() -> None:
+    selection = pick_variant(_offer().description, title=_offer().title)
+
+    plan = TailoringPlan.from_mapping(
+        _gemini_shaped_payload(),
+        offer=_offer(),
+        selection=selection,
+    )
+
+    assert plan.has_sourced_content is True
+    assert plan.tech_keywords == {}
+    assert "Lettre héritée" not in plan.letter_body_html
+    assert plan.letter_body_html.startswith("<p>Madame, Monsieur,</p>")
+    assert "Cette alternance correspond à mon projet professionnel." in plan.letter_body_html
+
+    tailored = tailor_cv_html(
+        TEMPLATE_PATH.read_text(encoding="utf-8"),
+        plan,
+        selection,
+        offer_description=_offer().description,
+        fact_bank=load_fact_bank(),
+        offer=_offer(),
+    )
+
+    assert "Microsoft Sentinel" not in tailored
+
+
+def test_dropping_legacy_fields_still_enforces_the_content_rules() -> None:
+    payload = _gemini_shaped_payload()
+    experiences = payload["experience_content"]
+    assert isinstance(experiences, list)
+    payload["experience_content"] = experiences[1:]
+    selection = pick_variant(_offer().description, title=_offer().title)
+    plan = TailoringPlan.from_mapping(payload, offer=_offer(), selection=selection)
+
+    with pytest.raises(TailoringError, match="missing employer"):
+        tailor_cv_html(
+            TEMPLATE_PATH.read_text(encoding="utf-8"),
+            plan,
+            selection,
+            offer_description=_offer().description,
+            fact_bank=load_fact_bank(),
+            offer=_offer(),
+        )
+
+
+def test_legacy_plan_without_sourced_structure_keeps_its_fields() -> None:
+    payload = _payload()
+    for key in ("experience_content", "project_content", "skill_order", "letter_paragraphs"):
+        payload.pop(key)
+    payload["tech_keywords"] = {"Sécurité": ["Microsoft Sentinel"]}
+    payload["letter_body_html"] = "<p>Madame, Monsieur,</p><p>Lettre héritée.</p>"
+
+    plan = TailoringPlan.from_mapping(
+        payload,
+        offer=_offer(),
+        selection=pick_variant(_offer().description, title=_offer().title),
+    )
+
+    assert plan.has_sourced_content is False
+    assert plan.tech_keywords == {"Sécurité": ("Microsoft Sentinel",)}
+    assert plan.letter_body_html == "<p>Madame, Monsieur,</p><p>Lettre héritée.</p>"
+
+
+def test_legacy_plan_without_sourced_structure_still_requires_a_letter() -> None:
+    payload = _payload()
+    for key in ("experience_content", "project_content", "skill_order", "letter_paragraphs"):
+        payload.pop(key)
+
+    with pytest.raises(TailoringError, match="letter_body_html"):
         TailoringPlan.from_mapping(
             payload,
             offer=_offer(),

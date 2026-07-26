@@ -320,10 +320,27 @@ class TailoringPlan:
                 "structured tailoring requires experience_content, project_content, "
                 "skill_order, and letter_paragraphs"
             )
-        if structured and keywords:
-            raise TailoringError(
-                "structured tailoring uses sourced skill_order; tech_keywords must be empty"
-            )
+        if structured:
+            # Some models (notably Gemini through the OpenAI-compatible endpoint)
+            # fill the sourced structure AND the legacy fields it supersedes. The
+            # sourced structure is authoritative, so the redundant answer is dropped
+            # instead of being treated as a contract violation. Shape only: every
+            # content rule still applies to the sourced structure afterwards.
+            discarded = [
+                name
+                for name, value in (
+                    ("tech_keywords", keywords),
+                    ("letter_body_html", data.get("letter_body_html")),
+                )
+                if value
+            ]
+            if discarded:
+                log.debug(
+                    "discarded redundant legacy advisor fields superseded by the "
+                    "sourced structure: %s",
+                    ", ".join(discarded),
+                )
+            keywords = {}
 
         raw_title = data.get("job_title")
         if isinstance(raw_title, str) and raw_title.strip():
@@ -351,10 +368,7 @@ class TailoringPlan:
             )
 
         if structured:
-            if data.get("letter_body_html") not in (None, ""):
-                raise TailoringError(
-                    "letter_body_html is renderer-owned for structured tailoring"
-                )
+            # Renderer-owned: anything the model supplied here was dropped above.
             letter_body_html = _render_sourced_letter(letter_paragraphs)
         else:
             letter_body_html = required_text("letter_body_html")
@@ -2073,8 +2087,9 @@ Rules:
   in the cited facts. Never cite a needs-review or unverified skill.
 - Never output a name, contact field, employer, role header, date, diploma,
   certification name, project title, or project stack. The renderer injects them.
-- Do not output job_title, location_region, or letter_body_html. The renderer owns
-  all three; a location you supply is discarded.
+- Do not output job_title, location_region, letter_body_html, or tech_keywords. The
+  renderer owns them and the sourced structure above supersedes them, so anything you
+  put there is ignored and only wastes tokens. Leave tech_keywords empty.
 - Use only plain text in sourced content: no HTML and no em dash.
 - Keep experience bullets concise enough for a one-page CV.
 - Keep project descriptions between 95 and 134 characters when possible.
