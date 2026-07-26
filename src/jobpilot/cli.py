@@ -14,6 +14,7 @@ from jobpilot.apply_flow import (
 )
 from jobpilot.config import MissingCredentialError, get_settings
 from jobpilot.db import connect, init_db
+from jobpilot.descriptions import backfill_descriptions, clear_match_scores
 from jobpilot.ingest import ingest_source
 from jobpilot.logging_conf import get_logger
 from jobpilot.profile import ProfileInput, load_variants, save_profile, sync_variants
@@ -93,6 +94,60 @@ def score_cmd() -> None:
     finally:
         conn.close()
     typer.echo(f"scored; {queued} offer(s) newly queued")
+
+
+@app.command("backfill-descriptions")
+def backfill_descriptions_cmd(
+    source: str | None = typer.Option(
+        None, "--source", "-s", help="Restrict to one source name. Default: all sources.",
+    ),
+) -> None:
+    """Synthesise descriptions for stored offers whose text is too thin to score.
+
+    Composes a paragraph from the fields the offer already has (title, company,
+    location, contract keywords, any snippet). Invents nothing, leaves richer
+    descriptions untouched, and is safe to re-run.
+    """
+    settings = get_settings()
+    conn = connect()
+    try:
+        result = backfill_descriptions(
+            conn, source, min_chars=settings.alert_min_description_chars
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--source") from exc
+    finally:
+        conn.close()
+    typer.echo(
+        f"{result.source}: scanned={result.scanned} updated={result.updated} "
+        f"unchanged={result.unchanged} "
+        f"already_synthesized={result.already_synthesized}"
+    )
+
+
+@app.command("rescore")
+def rescore_cmd(
+    source: str | None = typer.Option(
+        None, "--source", "-s", help="Restrict to one source name. Default: all sources.",
+    ),
+) -> None:
+    """Clear stored match_scores so the next `score` run re-evaluates those offers.
+
+    Offers that already have an application are left untouched, as are all
+    applications, statuses and events. The threshold and blend are unchanged.
+    """
+    conn = connect()
+    try:
+        result = clear_match_scores(conn, source)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--source") from exc
+    finally:
+        conn.close()
+    typer.echo(
+        f"{result.source}: cleared={result.cleared} "
+        f"skipped_with_application={result.skipped_with_application}"
+    )
+    typer.echo("run `jobpilot score` to re-evaluate them")
 
 
 @app.command("queue")

@@ -126,6 +126,21 @@ then works via `jobpilot ingest`. Until then it is skipped with a clear message.
   links are canonicalized without tracking parameters, and repeated alerts are
   deduplicated through the normal offer-ingestion path. We never scrape
   LinkedIn or Indeed pages.
+
+  Senders are matched by **domain**, not by exact address: any address on
+  `linkedin.com` / `indeed.com` / `indeedemail.com` or a subdomain of those
+  (`fr.indeed.com`, `e.linkedin.com`) is accepted, matched on domain boundaries
+  so lookalikes such as `indeed.evil.com` or `notlinkedin.com` are not. Non-job
+  mail from those domains simply yields no entries and is skipped with a
+  warning.
+
+  Alerts carry a title, company and location but effectively no description, and
+  `matcher.py` builds its matching text from `title + description`. Offers whose
+  description is shorter than `ALERT_MIN_DESCRIPTION_CHARS` (default 120) get one
+  composed from the fields the alert did provide. This is field assembly, not
+  generation: no LLM call, no scraping, and nothing that was not in the alert.
+  Composed descriptions are prefixed `[synthèse-alerte]` so they stay
+  recognizable, which needs no schema change.
 - **Welcome to the Jungle** — set `WTTJ_API_KEY` (the public Algolia search key;
   open WTTJ job search with devtools Network open and copy the `X-Algolia-API-Key`
   header from the `*-dsn.algolia.net` request), then run
@@ -149,6 +164,8 @@ jobpilot init-profile            # interactively fill profile + seed cv_variants
 jobpilot ingest --source all     # fetch offers from every enabled source
 jobpilot ingest -s france_travail --since 7
 jobpilot score                   # score unscored offers; queue those above threshold
+jobpilot backfill-descriptions -s linkedin_alert   # compose descriptions for thin stored offers
+jobpilot rescore -s linkedin_alert                 # clear match_scores so `score` re-evaluates
 jobpilot queue                   # list queued applications, highest score first
 jobpilot apply <id>              # approve offer, tailor docs, queue them for human review
 jobpilot skip <id>               # pass: queued -> skipped
@@ -171,6 +188,16 @@ French postings rarely name specific tools, so keyword stays low and finals for
 strong matches cap around 0.45–0.50. The queue threshold is therefore
 `JOBPILOT_QUEUE_THRESHOLD` (default **0.35**), applied at runtime without editing
 `matcher.py`.
+
+**Rescoring stored offers.** `backfill-descriptions` composes descriptions for
+offers already in the database whose text is too thin to embed; `rescore` then
+drops their `match_scores` rows so the next `jobpilot score` re-evaluates them.
+Both take an optional `--source`, both are idempotent, and neither touches the
+blend, the threshold, or any `applications` row — offers that already have an
+application are skipped outright. Measured on the 112 stored `linkedin_alert`
+offers, backfill + rescore + score lifted the mean semantic score of the
+scoreable ones from 0.143 to 0.207 and the mean final from 0.075 to 0.107,
+turning a flat near-zero cluster into a usable ranking.
 
 **Cold-mail rails** are enforced when drafting and rechecked immediately before
 SMTP dispatch: one shared maximum of 25 application/cold emails per UTC day,

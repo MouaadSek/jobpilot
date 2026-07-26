@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from jobpilot.config import MissingCredentialError, Settings
+from jobpilot.descriptions import is_synthesized
 from jobpilot.ingest import ingest_source
 from jobpilot.sources.email_alerts import (
     INDEED_DOMAINS,
@@ -215,6 +216,19 @@ def test_source_dedups_across_messages() -> None:
 def test_indeed_source() -> None:
     src = IndeedAlertSource(_settings(), imap=_FakeIMAP([_msg(INDEED_HTML)]))
     assert len(list(src.fetch_offers())) == 2
+
+
+def test_source_synthesises_a_description_for_thin_alert_entries() -> None:
+    """Alerts carry no description; the stored offer must still be scoreable."""
+    source = LinkedInAlertSource(_settings(), imap=_FakeIMAP([_msg(LINKEDIN_HTML)]))
+
+    records = list(source.fetch_offers())
+
+    first = records[0]
+    assert is_synthesized(first.description)
+    assert "Alternance Analyste SOC" in first.description
+    assert "ACME Cyber" in first.description
+    assert "Lille, Hauts-de-France" in first.description
 
 
 def test_missing_gmail_credentials_raises() -> None:

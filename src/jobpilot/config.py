@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+# Descriptions shorter than this count as absent; see jobpilot.descriptions.
+DEFAULT_ALERT_MIN_DESCRIPTION_CHARS = 120
 
 # Load .env from the project root once, without overriding real environment vars.
 load_dotenv(PROJECT_ROOT / ".env", override=False)
@@ -102,6 +104,10 @@ class Settings:
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     imap_folder: str = "INBOX"
+
+    # Below this many characters an offer description counts as absent and gets
+    # synthesised from the alert's own fields (jobpilot.descriptions).
+    alert_min_description_chars: int = DEFAULT_ALERT_MIN_DESCRIPTION_CHARS
 
     # WTTJ request ceiling per search query.
     wttj_max_pages: int = 5
@@ -212,6 +218,11 @@ def get_settings() -> Settings:
         imap_host=os.getenv("IMAP_HOST", "imap.gmail.com"),
         imap_port=int(os.getenv("IMAP_PORT", "993")),
         imap_folder=os.getenv("IMAP_FOLDER", "INBOX"),
+        alert_min_description_chars=int(
+            os.getenv(
+                "ALERT_MIN_DESCRIPTION_CHARS", str(DEFAULT_ALERT_MIN_DESCRIPTION_CHARS)
+            )
+        ),
         wttj_max_pages=int(os.getenv("WTTJ_MAX_PAGES", "5")),
         wttj_auto_submit_enabled=_env_bool("WTTJ_AUTO_SUBMIT_ENABLED"),
     )

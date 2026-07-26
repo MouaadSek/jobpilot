@@ -9,6 +9,11 @@ alerts collapse to one row.
 Mail is selected by SENDER DOMAIN (see the constants block below), not by exact
 address: the providers rotate local parts freely.
 
+Alerts carry a title, company and location but effectively no description, and
+matcher.py (frozen) builds its matching text from title + description. Records
+whose parsed description is thin therefore get one synthesised from the alert's
+own fields before they are yielded — see jobpilot.descriptions.
+
 The HTML parsers are tolerant and covered by fixture tests; their selectors should
 be confirmed against a real forwarded alert (title/link/job-id are reliable;
 company/location are best-effort from the alert layout).
@@ -29,6 +34,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from jobpilot.config import Settings
+from jobpilot.descriptions import enrich_offer
 from jobpilot.logging_conf import get_logger
 from jobpilot.models import OfferRecord
 from jobpilot.sources.base import Source
@@ -441,6 +447,7 @@ class _EmailAlertSource(Source):
             redact=settings.redact,
         )
         self._since_days = since_days if since_days is not None else settings.email_alert_since_days
+        self._min_description_chars = settings.alert_min_description_chars
 
     def _parse(self, html: str) -> list[OfferRecord]:  # overridden
         raise NotImplementedError
@@ -479,6 +486,9 @@ class _EmailAlertSource(Source):
                 continue
             entries_found += len(records)
             for rec in records:
+                # Synthesise before the key/hash is read: the stored row, its
+                # content_hash and the text matcher.py embeds must all agree.
+                enrich_offer(rec, self._min_description_chars)
                 key = rec.external_id or rec.hash
                 if key in seen:
                     continue
