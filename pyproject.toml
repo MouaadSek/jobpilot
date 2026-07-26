@@ -37,8 +37,20 @@ dev = [
 [project.scripts]
 jobpilot = "jobpilot.cli:app"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+# matcher.py is a frozen top-level module at the repo root (constitution: never
+# moved, renamed or edited), so it is declared here rather than discovered.
+# package-dir maps the jobpilot package to src/ *per package* instead of
+# rerooting the whole distribution at src/ — that leaves the implicit root at
+# the repo root, which is where setuptools then finds matcher.py. Declaring it
+# under a `packages.find where = ["src"]` layout does NOT work: py-modules
+# would be resolved as src/matcher.py and silently dropped from the wheel,
+# which is the `ModuleNotFoundError: No module named 'matcher'` bug.
+py-modules = ["matcher"]
+packages = ["jobpilot", "jobpilot.sources"]
+
+[tool.setuptools.package-dir]
+jobpilot = "src/jobpilot"
 
 [tool.setuptools.package-data]
 jobpilot = ["templates/*.html"]
