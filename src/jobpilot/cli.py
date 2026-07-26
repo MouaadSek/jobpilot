@@ -102,18 +102,30 @@ def backfill_descriptions_cmd(
     source: str | None = typer.Option(
         None, "--source", "-s", help="Restrict to one source name. Default: all sources.",
     ),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Also re-compose descriptions already synthesised, from the offer's "
+             "current title/company/city. Use after reparse-alerts fixed those "
+             "fields, so the stored text stops quoting the old wrong values.",
+    ),
 ) -> None:
     """Synthesise descriptions for stored offers whose text is too thin to score.
 
     Composes a paragraph from the fields the offer already has (title, company,
     location, contract keywords, any snippet). Invents nothing, leaves richer
     descriptions untouched, and is safe to re-run.
+
+    With --force, rows that already carry the synthesis marker are re-composed
+    from their current field values instead of being skipped; offers that already
+    have an application are left alone, and a row whose fields no longer carry
+    anything to compose from keeps its stored text. Re-run `rescore` + `score`
+    afterwards so the new text is what gets embedded.
     """
     settings = get_settings()
     conn = connect()
     try:
         result = backfill_descriptions(
-            conn, source, min_chars=settings.alert_min_description_chars
+            conn, source, min_chars=settings.alert_min_description_chars, force=force
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--source") from exc
@@ -122,7 +134,9 @@ def backfill_descriptions_cmd(
     typer.echo(
         f"{result.source}: scanned={result.scanned} updated={result.updated} "
         f"unchanged={result.unchanged} "
-        f"already_synthesized={result.already_synthesized}"
+        f"already_synthesized={result.already_synthesized} "
+        f"skipped_with_application={result.skipped_with_application} "
+        f"skipped_degraded={result.skipped_degraded}"
     )
 
 

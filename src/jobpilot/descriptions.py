@@ -133,6 +133,8 @@ class BackfillResult:
     updated: int = 0
     unchanged: int = 0
     already_synthesized: int = 0
+    skipped_with_application: int = 0
+    skipped_degraded: int = 0
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -141,6 +143,8 @@ class BackfillResult:
             "updated": self.updated,
             "unchanged": self.unchanged,
             "already_synthesized": self.already_synthesized,
+            "skipped_with_application": self.skipped_with_application,
+            "skipped_degraded": self.skipped_degraded,
         }
 
 
@@ -172,6 +176,8 @@ def backfill_descriptions(
     db: sqlite3.Connection,
     source: str | None = None,
     min_chars: int = DEFAULT_MIN_DESCRIPTION_CHARS,
+    *,
+    force: bool = False,
 ) -> BackfillResult:
     """Regenerate synthesised descriptions for stored offers whose text is thin.
 
@@ -179,31 +185,85 @@ def backfill_descriptions(
     prefix and are no longer thin) and updates nothing. `content_hash` is left
     untouched on purpose — it is the dedup key of the row as it was ingested,
     and alert offers dedup on (source_id, external_id) anyway.
+
+    `force` additionally re-composes rows that already carry the prefix, from the
+    row's CURRENT title / company / city. That is the repair path for synthesised
+    text written before `reparse-alerts` fixed those fields: the stored paragraph
+    still quotes the old wrong values ("Lieu : Recrutement actif."), the backfill
+    normally skips it because it carries the prefix, and that stale text is what
+    the semantic score embeds. Forcing changes nothing about how the text is
+    built — still field assembly, no LLM, no scraping, nothing invented.
     """
     clause, params = source_filter(db, source)
-    rows = db.execute(
-        "SELECT o.id, o.title, o.description, o.city, c.name AS company_name "
-        "FROM offers o LEFT JOIN companies c ON c.id = o.company_id "
-        "WHERE length(coalesce(o.description, '')) < ?" + clause,
-        [min_chars, *params],
-    ).fetchall()
-
     result = BackfillResult(source=source or "all")
+
+    if not force:
+        rows = db.execute(
+            "SELECT o.id, o.title, o.description, o.city, c.name AS company_name "
+            "FROM offers o LEFT JOIN companies c ON c.id = o.company_id "
+            "WHERE length(coalesce(o.description, '')) < ?" + clause,
+            [min_chars, *params],
+        ).fetchall()
+    else:
+        # Already-synthesised rows are no longer thin, so length alone will not
+        # find them. Match the prefix the same way `is_synthesized` does.
+        prefix_test = "substr(ltrim(coalesce(o.description, '')), 1, ?) = ?"
+        prefix_params = [len(SYNTHESIZED_DESCRIPTION_PREFIX), SYNTHESIZED_DESCRIPTION_PREFIX]
+        # Rails, as in `rescore` / `reparse-alerts`: an offer that already has an
+        # application had its text read by a human whose decision the state
+        # machine now owns. Rewriting under that decision is not ours to do.
+        result.skipped_with_application = int(
+            db.execute(
+                "SELECT count(*) AS n FROM offers o "
+                "JOIN applications a ON a.offer_id = o.id "
+                f"WHERE (length(coalesce(o.description, '')) < ? OR {prefix_test})" + clause,
+                [min_chars, *prefix_params, *params],
+            ).fetchone()["n"]
+        )
+        rows = db.execute(
+            "SELECT o.id, o.title, o.description, o.city, c.name AS company_name "
+            "FROM offers o "
+            "LEFT JOIN companies c ON c.id = o.company_id "
+            "LEFT JOIN applications a ON a.offer_id = o.id "
+            "WHERE a.offer_id IS NULL "
+            f"  AND (length(coalesce(o.description, '')) < ? OR {prefix_test})" + clause,
+            [min_chars, *prefix_params, *params],
+        ).fetchall()
+
     for row in rows:
         result.scanned += 1
         current = row["description"]
-        if is_synthesized(current):
+        stale = is_synthesized(current)
+        if stale and not force:
             result.already_synthesized += 1
             continue
-        composed = synthesize_description(
-            row["title"],
-            company=row["company_name"],
-            city=row["city"],
-            snippet=current,
-        )
-        if len(composed) <= len(current or ""):
-            result.unchanged += 1
-            continue
+
+        if stale:
+            # No snippet: the tail of a synthesised paragraph is this module's own
+            # scaffolding plus the values it quoted when it ran. Re-quoting it
+            # would fold the stale company/city straight back into the new text.
+            if not (row["title"] or "").strip():
+                # Nothing left to anchor the offer on — the regenerated text
+                # cannot be better than what is stored, so keep what is stored.
+                result.skipped_degraded += 1
+                continue
+            composed = synthesize_description(
+                row["title"], company=row["company_name"], city=row["city"]
+            )
+            if composed == current:
+                result.unchanged += 1
+                continue
+        else:
+            composed = synthesize_description(
+                row["title"],
+                company=row["company_name"],
+                city=row["city"],
+                snippet=current,
+            )
+            if len(composed) <= len(current or ""):
+                result.unchanged += 1
+                continue
+
         db.execute("UPDATE offers SET description = ? WHERE id = ?", (composed, row["id"]))
         result.updated += 1
 

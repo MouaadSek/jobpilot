@@ -165,6 +165,7 @@ jobpilot ingest --source all     # fetch offers from every enabled source
 jobpilot ingest -s france_travail --since 7
 jobpilot score                   # score unscored offers; queue those above threshold
 jobpilot backfill-descriptions -s linkedin_alert   # compose descriptions for thin stored offers
+jobpilot backfill-descriptions -s linkedin_alert --force  # re-compose already-synthesised text from current fields
 jobpilot reparse-alerts -s linkedin_alert          # re-derive company/city/workplace from stored card text
 jobpilot rescore -s linkedin_alert                 # clear match_scores so `score` re-evaluates
 jobpilot queue                   # list queued applications, highest score first
@@ -194,11 +195,31 @@ strong matches cap around 0.45–0.50. The queue threshold is therefore
 offers already in the database whose text is too thin to embed; `rescore` then
 drops their `match_scores` rows so the next `jobpilot score` re-evaluates them.
 Both take an optional `--source`, both are idempotent, and neither touches the
-blend, the threshold, or any `applications` row — offers that already have an
-application are skipped outright. Measured on the 112 stored `linkedin_alert`
+blend, the threshold, or any `applications` row — `rescore` leaves the scores of
+offers that already have an application alone, and so does any backfill that
+rewrites existing text (`--force`, below). Measured on the 112 stored `linkedin_alert`
 offers, backfill + rescore + score lifted the mean semantic score of the
 scoreable ones from 0.143 to 0.207 and the mean final from 0.075 to 0.107,
 turning a flat near-zero cluster into a usable ranking.
+
+**`backfill-descriptions --force`** re-composes offers that already carry the
+`[synthèse-alerte]` marker. A synthesised paragraph quotes the field values as
+they stood when it was written, so the rows synthesised before `reparse-alerts`
+fixed `company` / `city` still read `Lieu : Recrutement actif.` — and that text
+is what the semantic score embeds. The plain backfill skips them (they carry the
+marker and are no longer thin), so nothing repairs them without this flag.
+Forcing rebuilds the paragraph from the row's *current* title, company and city;
+it deliberately does not re-quote the stored paragraph, whose tail is the old
+scaffolding and the values being replaced. It is still field assembly — no LLM,
+no scraping, nothing invented. Offers that already have an application are
+skipped, a row whose fields no longer carry a title keeps its stored text
+(counted as `skipped_degraded`), and a second run rewrites nothing. Measured on
+a copy of the live database, over the 112 stored `linkedin_alert` offers (111
+regenerated, 1 skipped for its application), mean semantic among the 67 that
+reach scoring went 0.284 → 0.295, mean final 0.169 → 0.175, median final
+0.189 → 0.203, and offers at or above a 0.30 final went 6 → 10. No offer crossed
+the 0.35 queue threshold that did not already. Run `rescore` then `score`
+afterwards.
 
 **Alert card fields.** LinkedIn and Indeed alert cards read
 `Company · City (Workplace)`, where the workplace is `Sur site` / `Hybride` /
