@@ -1,0 +1,25 @@
+From: "Indeed Job Alerts" <alert@indeed.evil.com>
+To: mouaad@example.com
+Subject: Nouvelles offres (phishing)
+Date: Sat, 25 Jul 2026 11:00:00 +0000
+Message-ID: <lookalike-alert@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<!doctype html>
+<html lang="fr">
+  <body>
+    <table role="presentation">
+      <tr class="job_seen_beacon">
+        <td>
+          <a href="https://fr.indeed.com/rc/clk?jk=deadbeefdeadbeef&amp;from=ja">
+            Alternance Fake Job
+          </a>
+          <span>Evil Corp</span>
+          <span>Nulle Part</span>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

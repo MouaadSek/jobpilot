@@ -6,6 +6,9 @@ ingest them as offers under the `linkedin_alert` / `indeed_alert` sources. Dedup
 is primarily on (source_id, external_id) via the job id in the link, so repeated
 alerts collapse to one row.
 
+Mail is selected by SENDER DOMAIN (see the constants block below), not by exact
+address: the providers rotate local parts freely.
+
 The HTML parsers are tolerant and covered by fixture tests; their selectors should
 be confirmed against a real forwarded alert (title/link/job-id are reliable;
 company/location are best-effort from the alert layout).
@@ -16,10 +19,11 @@ from __future__ import annotations
 import email
 import imaplib
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import Message
+from email.utils import parseaddr
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
@@ -36,19 +40,53 @@ class EmailAlertError(RuntimeError):
     """A redacted IMAP or alert-processing failure safe for CLI/log display."""
 
 
-LINKEDIN_SENDERS = [
-    "jobalerts-noreply@linkedin.com",
-    "jobs-noreply@linkedin.com",
-    "jobs-listings@linkedin.com",
-]
-INDEED_SENDERS = [
-    "alert@indeed.com",
-    "noreply@indeed.com",
-    "donotreply@indeed.com",
-    "invitetoapply@indeed.com",
-]
+# ---- provider sender domains (single source of truth) ----
+#
+# Job alerts arrive from a moving set of local parts (alert@, noreply@,
+# donotreply@, invitetoapply@, jobalerts-noreply@, and others the providers add
+# without notice), so an exact-address allowlist silently drops real alerts:
+# `ingest --source indeed_alert` reported emails_scanned=0 against a mailbox
+# full of them. We therefore allowlist DOMAINS and accept any address whose
+# domain equals one of these or is a subdomain of one.
+#
+# Matching is on domain boundaries, never substrings, so lookalikes such as
+# indeed.evil.com, notlinkedin.com or alert@indeed.com.evil.net are rejected.
+# Subdomains are covered implicitly: fr.indeed.com and e.linkedin.com match via
+# indeed.com / linkedin.com and need no entry of their own.
+LINKEDIN_DOMAINS: tuple[str, ...] = (
+    "linkedin.com",  # incl. e.linkedin.com, el.linkedin.com, bounce.linkedin.com
+    "linkedinmail.com",  # alternate notification domain; harmless when unused
+)
+INDEED_DOMAINS: tuple[str, ...] = (
+    "indeed.com",  # incl. fr.indeed.com and the other country subdomains
+    "indeedemail.com",  # Indeed's bulk-mail domain, not a subdomain of indeed.com
+)
 
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+def sender_domain(from_header: str | None) -> str:
+    """Return the lowercased domain of the address in a `From` header.
+
+    Parses the RFC 5322 address, so a spoofed display name ("Indeed"
+    <alerts@evil.com>) is ignored. Returns "" when no domain can be read.
+    """
+    _, address = parseaddr(from_header or "")
+    _, at, domain = address.rpartition("@")
+    if not at:
+        return ""
+    return domain.strip().strip(".").casefold()
+
+
+def sender_allowed(from_header: str | None, domains: Sequence[str]) -> bool:
+    """True when the From address sits on one of `domains` or a subdomain of it."""
+    domain = sender_domain(from_header)
+    if not domain:
+        return False
+    return any(
+        domain == allowed or domain.endswith(f".{allowed}")
+        for allowed in (d.casefold().strip(".") for d in domains)
+    )
 
 
 def _strip_tags(html: str) -> str:
@@ -77,7 +115,14 @@ class GmailIMAP:
         self._folder = folder
         self._redact = redact or (lambda text: text)
 
-    def fetch_from(self, senders: list[str], since_days: int) -> list[Message]:
+    def fetch_from(self, domains: Sequence[str], since_days: int) -> list[Message]:
+        """Fetch recent mail sent from `domains` (or any of their subdomains).
+
+        The IMAP `FROM` search is a substring match on the header, which both
+        over-matches (notlinkedin.com contains linkedin.com) and cannot express
+        "or a subdomain of", so every candidate is re-checked locally against
+        `sender_allowed` before it is returned.
+        """
         since = (datetime.now(UTC) - timedelta(days=since_days)).strftime("%d-%b-%Y")
         conn: imaplib.IMAP4_SSL | None = None
         try:
@@ -88,8 +133,8 @@ class GmailIMAP:
                 raise EmailAlertError(f"cannot select IMAP folder {self._folder!r}")
             messages: list[Message] = []
             fetched_ids: set[bytes] = set()
-            for sender in senders:
-                typ, data = conn.search(None, "FROM", f'"{sender}"', "SINCE", since)
+            for domain in domains:
+                typ, data = conn.search(None, "FROM", f'"{domain}"', "SINCE", since)
                 if typ != "OK" or not data or not data[0]:
                     continue
                 for num in data[0].split():
@@ -112,7 +157,15 @@ class GmailIMAP:
                     if raw is None:
                         log.warning("IMAP message %r had no RFC822 payload", num)
                         continue
-                    messages.append(email.message_from_bytes(raw))
+                    msg = email.message_from_bytes(raw)
+                    if not sender_allowed(msg.get("From"), domains):
+                        log.debug(
+                            "ignoring IMAP message %r: sender domain %r not allowed",
+                            num,
+                            sender_domain(msg.get("From")),
+                        )
+                        continue
+                    messages.append(msg)
             return messages
         except EmailAlertError:
             raise
@@ -367,7 +420,7 @@ def _card_fields(
 
 
 class _EmailAlertSource(Source):
-    senders: list[str] = []
+    sender_domains: tuple[str, ...] = ()
     provider = "unknown"
 
     def __init__(
@@ -394,7 +447,7 @@ class _EmailAlertSource(Source):
 
     def fetch_offers(self) -> Iterator[OfferRecord]:
         try:
-            messages = self._imap.fetch_from(self.senders, self._since_days)
+            messages = self._imap.fetch_from(self.sender_domains, self._since_days)
         except EmailAlertError:
             raise
         except Exception as exc:
@@ -416,8 +469,11 @@ class _EmailAlertSource(Source):
                 )
                 continue
             if not records:
+                # Expected, not exceptional: domain matching also lets through
+                # non-job mail from the provider ("Terms of Service Updates"),
+                # which simply yields nothing. Warn and move on.
                 log.warning(
-                    "skipping malformed %s alert: no job entries",
+                    "skipping %s email with no job entries",
                     self.provider,
                 )
                 continue
@@ -440,7 +496,7 @@ class _EmailAlertSource(Source):
 class LinkedInAlertSource(_EmailAlertSource):
     name = "linkedin_alert"
     provider = "linkedin"
-    senders = LINKEDIN_SENDERS
+    sender_domains = LINKEDIN_DOMAINS
 
     def _parse(self, html: str) -> list[OfferRecord]:
         return parse_linkedin(html)
@@ -449,7 +505,7 @@ class LinkedInAlertSource(_EmailAlertSource):
 class IndeedAlertSource(_EmailAlertSource):
     name = "indeed_alert"
     provider = "indeed"
-    senders = INDEED_SENDERS
+    sender_domains = INDEED_DOMAINS
 
     def _parse(self, html: str) -> list[OfferRecord]:
         return parse_indeed(html)

@@ -1,0 +1,25 @@
+From: Indeed <invitetoapply@fr.indeed.com>
+To: mouaad@example.com
+Subject: Nouvelles offres Cloud Security
+Date: Sat, 25 Jul 2026 09:00:00 +0000
+Message-ID: <indeed-alert-subdomain@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<!doctype html>
+<html lang="fr">
+  <body>
+    <table role="presentation">
+      <tr class="job_seen_beacon">
+        <td>
+          <a href="https://fr.indeed.com/rc/clk?jk=00aa11bb22cc33dd&amp;from=ja">
+            Alternance Ingénieur Cloud Security
+          </a>
+          <span>NordCloud SAS</span>
+          <span>Lille (59)</span>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
