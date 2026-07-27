@@ -181,6 +181,26 @@
     }
     iframe { width: 100%; height: 480px; border: 1px solid var(--line); margin-top: 10px; }
     .events td:nth-child(3) { white-space: normal; overflow-wrap: anywhere; }
+    .refresh-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .refresh-head h2 { margin: 0; }
+    .refresh-log { margin: 14px 0 0; padding: 0; list-style: none; }
+    .refresh-log li {
+      border-top: 1px solid var(--line);
+      padding: 7px 0;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .refresh-log li:first-child { border-top: 0; }
+    .refresh-log .name { font-weight: 650; }
+    .refresh-log .failed { color: var(--danger); }
+    .refresh-log .skipped { color: var(--muted); }
+    .refresh-log .done { color: var(--success); }
     @media (max-width: 760px) {
       .shell { width: min(100% - 18px, 1180px); margin-top: 14px; }
       .panel { padding: 14px; }
@@ -203,6 +223,16 @@
     </header>
 
     {% if view == "queue" %}
+      <section class="panel" id="refresh-panel"
+               data-status='{{ refresh_status|tojson }}'>
+        <div class="refresh-head">
+          <h2>Actualiser les offres</h2>
+          <button type="button" id="refresh-button">Actualiser les offres</button>
+        </div>
+        <p class="muted" id="refresh-stage">Aucune actualisation lancée.</p>
+        <ul class="refresh-log" id="refresh-log"></ul>
+      </section>
+
       <nav class="tabs" aria-label="Applications by status">
         {% for tab in tabs %}
           <a class="tab{% if tab.active %} active{% endif %}"
@@ -492,6 +522,94 @@
     {% endif %}
   </main>
   <script>
+    (() => {
+      const panel = document.getElementById("refresh-panel");
+      if (!panel) return;
+      const button = document.getElementById("refresh-button");
+      const stageLine = document.getElementById("refresh-stage");
+      const logList = document.getElementById("refresh-log");
+      const STAGES = {
+        ingesting: "Récupération des offres…",
+        loading_model: "Chargement du modèle…",
+        scoring: "Scoring des nouvelles offres…",
+        done: "Actualisation terminée.",
+      };
+      let polling = null;
+
+      const sourceLine = (source) => {
+        if (source.state === "done") {
+          return `récupérées ${source.fetched} · insérées ${source.inserted}` +
+                 ` · doublons ${source.duplicates}`;
+        }
+        if (source.state === "skipped") {
+          return `ignorée : ${source.message || "raison inconnue"}`;
+        }
+        if (source.state === "failed") {
+          return `échec : ${source.message || "erreur inconnue"}`;
+        }
+        return source.state === "running" ? "en cours…" : "en attente";
+      };
+
+      const render = (status) => {
+        const parts = [];
+        if (status.running) {
+          parts.push(STAGES[status.stage] || "Actualisation en cours…");
+        } else if (status.finished_at) {
+          parts.push(STAGES.done);
+        } else {
+          parts.push("Aucune actualisation lancée.");
+        }
+        if (status.queued !== null && status.queued !== undefined) {
+          parts.push(`${status.queued} offre(s) nouvellement en file.`);
+        }
+        if (status.error) parts.push(`Erreur : ${status.error}`);
+        stageLine.textContent = parts.join(" ");
+        stageLine.classList.toggle("error", Boolean(status.error));
+        logList.replaceChildren(...status.sources.map((source) => {
+          const item = document.createElement("li");
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = `${source.name} — `;
+          const detail = document.createElement("span");
+          detail.className = source.state;
+          detail.textContent = sourceLine(source);
+          item.append(name, detail);
+          return item;
+        }));
+        button.disabled = status.running;
+        button.textContent = status.running
+          ? "Actualisation en cours…"
+          : "Actualiser les offres";
+      };
+
+      const poll = async () => {
+        const response = await fetch("/refresh/status");
+        const status = await response.json();
+        render(status);
+        if (!status.running) {
+          clearInterval(polling);
+          polling = null;
+          // The queue itself is server-rendered, so reload to show new offers.
+          window.location.reload();
+        }
+      };
+
+      const startPolling = () => {
+        if (polling === null) polling = setInterval(poll, 1500);
+      };
+
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        const response = await fetch("/refresh", { method: "POST" });
+        render(await response.json());
+        startPolling();
+      });
+
+      const initial = JSON.parse(panel.dataset.status);
+      render(initial);
+      if (initial.running) startPolling();
+    })();
+
     document.querySelectorAll("form[data-busy]").forEach((form) => {
       form.addEventListener("submit", () => {
         document.querySelectorAll("button").forEach((button) => {

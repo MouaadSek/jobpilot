@@ -10,7 +10,13 @@ from typing import Annotated, Any
 from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.templating import Jinja2Templates
 
 from jobpilot.apply_assist import (
@@ -37,6 +43,7 @@ from jobpilot.mailer import (
     send_application_email,
     send_cold_email,
 )
+from jobpilot.refresh import RefreshAlreadyRunning, RefreshRunner
 from jobpilot.review import (
     TAB_STATUSES,
     application_detail,
@@ -134,6 +141,7 @@ def create_app(
     toolchain: Any | None = None,
     output_root: Path | None = None,
     sender: Any | None = None,
+    refresh_runner: RefreshRunner | None = None,
 ) -> FastAPI:
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
@@ -141,6 +149,7 @@ def create_app(
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)
+    refresher = refresh_runner or RefreshRunner()
 
     def detail_response(
         request: Request,
@@ -331,9 +340,29 @@ def create_app(
                 "status": status,
                 "applications": applications_by_status(db, status),
                 "tabs": status_tabs(db, status),
+                "refresh_status": refresher.status().as_dict(),
                 "error": None,
             },
         )
+
+    @app.post("/refresh")
+    def refresh_start() -> JSONResponse:
+        """Kick off ingest + score in the background; never run two at once."""
+
+        try:
+            snapshot = refresher.start()
+        except RefreshAlreadyRunning as exc:
+            return JSONResponse(
+                {"detail": str(exc), **refresher.status().as_dict()},
+                status_code=409,
+            )
+        return JSONResponse(snapshot.as_dict(), status_code=202)
+
+    @app.get("/refresh/status")
+    def refresh_status() -> JSONResponse:
+        """Poll target. Deliberately touches no database, so it never blocks."""
+
+        return JSONResponse(refresher.status().as_dict())
 
     @app.get("/outreach", response_class=HTMLResponse)
     def outreach_page(request: Request, db: Database) -> HTMLResponse:

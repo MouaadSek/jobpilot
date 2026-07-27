@@ -334,6 +334,22 @@ details and lets you approve or skip through the same state-machine paths as the
 CLI. Approval generates the CV, motivation letter, and tracker row synchronously
 for local review. The server always binds to loopback only.
 
+### Actualiser les offres (refresh from the page)
+
+The queue page carries an **Actualiser les offres** button that runs the same
+ingest and scoring functions as `jobpilot ingest` and `jobpilot score`, in a
+background thread, so the terminal is not needed for the daily loop. The request
+returns immediately and the page polls `/refresh/status`.
+
+Only one refresh runs at a time: while it is in flight the button is disabled and
+a second `POST /refresh` returns `409` instead of starting a parallel run (SQLite
+has a single writer). Progress is reported per source — fetched / inserted /
+duplicates, or the skip reason such as missing credentials — and a failing source
+is shown as failed without hiding the others' results. Scoring runs after
+ingestion and reports how many offers were newly queued. The first refresh of a
+process is slow because the embedding model loads lazily, exactly as on the CLI
+path; the page shows **Chargement du modèle…** while that happens.
+
 ### Cold outreach sending (disabled by default)
 
 The dashboard's **Outreach** tab lists unsent cold-email drafts. Selecting one
