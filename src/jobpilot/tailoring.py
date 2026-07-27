@@ -3259,7 +3259,7 @@ def resolve_variant(
         return keyword_decision(
             f"no template file for the selected variant '{selection.slug}'"
         )
-    return VariantDecision(
+    decision = VariantDecision(
         selection=selection,
         keyword_slug=keyword_slug,
         keyword_label=keyword_selection.label,
@@ -3267,6 +3267,18 @@ def resolve_variant(
         justification=choice.justification,
         runner_up=choice.runner_up,
     )
+    if not decision.agreed:
+        # Disagreement is the interesting signal: it is what tells us whether the
+        # keyword layer is worth keeping. Never let it pass silently.
+        log.info(
+            "application %d: variant disagreement — advisor chose %s, keywords "
+            "suggested %s; justification: %s",
+            application_id,
+            decision.base_slug,
+            keyword_slug,
+            choice.justification,
+        )
+    return decision
 
 
 def _advise_and_tailor(
@@ -3473,19 +3485,28 @@ def generate_application(
             rationale=plan.rationale,
             decision=decision,
         )
-        transition(
-            db,
-            application_id,
-            "ready",
-            detail={
-                "variant": selection.slug,
-                "routing_variant": selection.label,
-                "document_variant": document_label,
-                "cv_pdf_path": str(cv_pdf_path),
-                "letter_pdf_path": str(letter_pdf_path),
-                "tracker_path": str(tracker_path),
-            },
-        )
+        ready_detail: dict[str, Any] = {
+            "variant": selection.slug,
+            # The keyword router's suggestion, kept as the comparison point.
+            "routing_variant": decision.keyword_label,
+            "document_variant": document_label,
+            "variant_selected_by": decision.chosen_by,
+            "routing_agreed": decision.agreed,
+            "cv_pdf_path": str(cv_pdf_path),
+            "letter_pdf_path": str(letter_pdf_path),
+            "tracker_path": str(tracker_path),
+        }
+        if decision.justification:
+            ready_detail["routing_justification"] = decision.justification
+        if decision.runner_up:
+            ready_detail["routing_runner_up"] = decision.runner_up
+        if decision.fallback_reason:
+            ready_detail["routing_fallback_reason"] = _redact_secrets(
+                decision.fallback_reason,
+                settings.anthropic_api_key,
+                settings.openai_api_key,
+            )
+        transition(db, application_id, "ready", detail=ready_detail)
         log.info("application %d documents generated", application_id)
         return result
     except Exception as exc:

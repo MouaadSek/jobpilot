@@ -53,6 +53,7 @@ from jobpilot.review import (
     event_history,
     outreach_drafts,
     status_tabs,
+    variant_decision,
 )
 from jobpilot.scheduler import scheduler_status
 from jobpilot.state import IllegalTransition, current_status, transition
@@ -211,6 +212,7 @@ def create_app(
                 "application": detail,
                 "events": events,
                 "tracker_row": tracker_row,
+                "variant_decision": variant_decision(db, application_id),
                 "prefill_eligible": (
                     detail["status"] == "ready"
                     and detail["source"] == "ats"

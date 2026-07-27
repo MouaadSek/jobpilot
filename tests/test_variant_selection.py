@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -168,6 +169,19 @@ def _queued_application(
     return int(application_id)
 
 
+def _ready_detail(db: sqlite3.Connection, application_id: int) -> dict[str, Any]:
+    rows = db.execute(
+        "SELECT detail FROM events WHERE application_id = ? AND event = 'status_change' "
+        "ORDER BY id DESC",
+        (application_id,),
+    ).fetchall()
+    for row in rows:
+        parsed = json.loads(row["detail"])
+        if parsed.get("to") == "ready":
+            return parsed
+    raise AssertionError("no ready status_change event")
+
+
 def _decision(advisor: Any, offer: OfferContext) -> Any:
     return resolve_variant(
         advisor,
@@ -200,7 +214,18 @@ def test_advisor_pick_beats_the_keyword_misroute_on_the_real_offer(
         title=VILLENEUVE_TITLE,
         description=VILLENEUVE_MISSIONS,
     )
-    advisor = _SelectingAdvisor(_answer("cloudsec", runner_up="grc"))
+    # The answer a real gpt-5.4-mini call returned for this exact offer.
+    advisor = _SelectingAdvisor(
+        {
+            "slug": "grc",
+            "runner_up": "cybersecurite",
+            "justification": (
+                "Les missions portent surtout sur la gouvernance sécurité, "
+                "l'analyse de risques EBIOS RM, les exigences PSSI, les audits "
+                "et les KPI de conformité."
+            ),
+        }
+    )
     toolchain = _Toolchain()
 
     outcome = approve_application(
@@ -214,13 +239,13 @@ def test_advisor_pick_beats_the_keyword_misroute_on_the_real_offer(
 
     result = outcome.generation
     assert result is not None
-    assert result.selection.slug == "cloudsec"
+    assert result.selection.slug == "grc"
     assert result.selection.slug != "chef-de-projet-it"
     # The document really was tailored from the selected template, and the
     # tracker names the CV that was produced.
-    assert advisor.tailored_slugs == ["cloudsec"]
-    assert result.selection.template_name == "Mouaad_Sekkouri_-CloudSec__Alternance.html"
-    assert toolchain.tracker_fields["cv"] == "CV CloudSec"
+    assert advisor.tailored_slugs == ["grc"]
+    assert result.selection.template_name == "Mouaad_Sekkouri_-_GRC__Alternance.html"
+    assert toolchain.tracker_fields["cv"] == "CV GRC"
     assert current_status(db, application_id) == "ready"
 
     decision = result.decision
@@ -228,8 +253,99 @@ def test_advisor_pick_beats_the_keyword_misroute_on_the_real_offer(
     assert decision.chosen_by == "advisor"
     assert decision.keyword_slug == "chef-de-projet-it"
     assert decision.agreed is False
-    assert decision.runner_up == "grc"
-    assert "cloudsec" in decision.justification
+    assert decision.runner_up == "cybersecurite"
+    assert "EBIOS RM" in decision.justification
+
+
+def test_disagreement_is_recorded_in_the_event_detail_and_logged(
+    db: sqlite3.Connection,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    application_id = _queued_application(
+        db,
+        suffix="villeneuve-audit",
+        title=VILLENEUVE_TITLE,
+        description=VILLENEUVE_MISSIONS,
+    )
+    advisor = _SelectingAdvisor(_answer("grc", runner_up="cybersecurite"))
+
+    with caplog.at_level("INFO", logger="jobpilot.tailoring"):
+        approve_application(
+            db,
+            application_id,
+            via="test audit",
+            advisor=advisor,
+            toolchain=_Toolchain(),
+            output_root=tmp_path,
+        )
+
+    detail = _ready_detail(db, application_id)
+    assert detail["variant"] == "grc"
+    # The keyword suggestion is kept as the disagreeing comparison point.
+    assert detail["routing_variant"] == "Chef de Projet IT"
+    assert detail["document_variant"] != "Chef de Projet IT"
+    assert detail["variant_selected_by"] == "advisor"
+    assert detail["routing_agreed"] is False
+    assert "grc" in detail["routing_justification"]
+    assert detail["routing_runner_up"] == "cybersecurite"
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "variant disagreement" in logged
+    assert "grc" in logged and "chef-de-projet-it" in logged
+
+
+def test_agreement_is_recorded_without_a_fallback_reason(
+    db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    application_id = _queued_application(
+        db,
+        suffix="agreed",
+        title="Analyste SOC (H/F)",
+        description="Analyser les alertes SIEM et répondre aux incidents dès septembre 2026.",
+    )
+
+    approve_application(
+        db,
+        application_id,
+        via="test agreement",
+        advisor=_SelectingAdvisor(_answer("soc", runner_up="cybersecurite")),
+        toolchain=_Toolchain(),
+        output_root=tmp_path,
+    )
+
+    detail = _ready_detail(db, application_id)
+    assert detail["routing_agreed"] is True
+    assert detail["routing_variant"] == "SOC Analyst"
+    assert "routing_fallback_reason" not in detail
+
+
+def test_fallback_reason_is_recorded_when_the_keyword_pick_is_used(
+    db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    application_id = _queued_application(
+        db,
+        suffix="fallback-audit",
+        title=VILLENEUVE_TITLE,
+        description=VILLENEUVE_MISSIONS,
+    )
+
+    approve_application(
+        db,
+        application_id,
+        via="test fallback",
+        advisor=_SelectingAdvisor(_answer("nope"), _answer("still-nope")),
+        toolchain=_Toolchain(),
+        output_root=tmp_path,
+    )
+
+    detail = _ready_detail(db, application_id)
+    assert detail["variant_selected_by"] == "keywords"
+    assert detail["routing_agreed"] is True  # the keyword pick is what was used
+    assert "still-nope" in detail["routing_fallback_reason"]
+    assert "routing_justification" not in detail
 
 
 # ----- validation and the Task 22c retry path -----

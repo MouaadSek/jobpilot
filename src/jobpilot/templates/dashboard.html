@@ -210,6 +210,16 @@
     .refresh-log .failed { color: var(--danger); }
     .refresh-log .skipped { color: var(--muted); }
     .refresh-log .done { color: var(--success); }
+    .panel-inset {
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--primary);
+      border-radius: 7px;
+      background: #fbfcfd;
+      padding: 12px 14px;
+    }
+    .panel-inset p { margin: 0 0 6px; }
+    .panel-inset p:last-child { margin-bottom: 0; }
+    .panel-inset.disagreement { border-left-color: #b8860b; }
     @media (max-width: 760px) {
       .shell { width: min(100% - 18px, 1180px); margin-top: 14px; }
       .panel { padding: 14px; }
@@ -584,6 +594,40 @@
             <form method="post" action="/application/{{ application.id }}/mark-sent" data-busy>
               <button class="secondary" type="submit" data-label="Marquer comme envoyée">Marquer comme envoyée</button>
             </form>
+          </div>
+        {% endif %}
+
+        {% if variant_decision %}
+          <h3>Choix du CV</h3>
+          <div class="panel-inset{% if variant_decision.agreed is false %} disagreement{% endif %}">
+            <p>
+              <strong>{{ variant_decision.document_variant or variant_decision.variant }}</strong>
+              <span class="muted">
+                — choisi par
+                {% if variant_decision.variant_selected_by == "advisor" %}le modèle{% else %}le routage par mots-clés{% endif %}
+              </span>
+            </p>
+            {% if variant_decision.routing_justification %}
+              <p>{{ variant_decision.routing_justification }}</p>
+            {% endif %}
+            {% if variant_decision.routing_runner_up %}
+              <p class="muted">Second choix : {{ variant_decision.routing_runner_up }}</p>
+            {% endif %}
+            {% if variant_decision.agreed is false %}
+              <p class="muted">
+                Désaccord : le routage par mots-clés suggérait
+                <strong>{{ variant_decision.routing_variant }}</strong>.
+              </p>
+            {% elif variant_decision.agreed %}
+              <p class="muted">
+                Le routage par mots-clés suggérait le même CV.
+              </p>
+            {% endif %}
+            {% if variant_decision.routing_fallback_reason %}
+              <p class="muted">
+                Repli sur le routage par mots-clés : {{ variant_decision.routing_fallback_reason }}
+              </p>
+            {% endif %}
           </div>
         {% endif %}
 

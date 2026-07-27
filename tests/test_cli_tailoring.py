@@ -64,6 +64,14 @@ def test_apply_offer_generates_and_reports_outputs(
         letter_pdf_path=tmp_path / "letter.pdf",
         tracker_path=tmp_path / "tracker.tsv",
         tracker_row=tracker_row,
+        decision=SimpleNamespace(
+            chosen_by="advisor",
+            justification="Les missions décrivent surtout du SOC.",
+            runner_up="cybersecurite",
+            keyword_slug="soc",
+            agreed=True,
+            fallback_reason=None,
+        ),
     )
 
     def generate_application(connection, received_id: int):

@@ -117,6 +117,53 @@ def application_detail(
     return dict(row) if row is not None else None
 
 
+#: Written by tailoring.generate_application onto the ready status_change event.
+_DECISION_FIELDS = (
+    "variant",
+    "routing_variant",
+    "document_variant",
+    "variant_selected_by",
+    "routing_justification",
+    "routing_runner_up",
+    "routing_fallback_reason",
+)
+
+
+def variant_decision(
+    db: sqlite3.Connection,
+    application_id: int,
+) -> dict[str, Any] | None:
+    """Return how the CV variant was chosen, from the audit event that recorded it.
+
+    The events table is already the record of the decision, so reading it back
+    keeps the detail page truthful without duplicating the fields onto
+    ``applications``.
+    """
+
+    rows = db.execute(
+        "SELECT detail FROM events WHERE application_id = ? AND event = 'status_change' "
+        "ORDER BY id DESC",
+        (application_id,),
+    ).fetchall()
+    for row in rows:
+        try:
+            parsed = json.loads(row["detail"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, dict) or parsed.get("to") != "ready":
+            continue
+        decision = {
+            field: parsed[field] for field in _DECISION_FIELDS if parsed.get(field)
+        }
+        if not decision:
+            return None
+        # Written as a boolean by the generator; older events predate it, and a
+        # missing value must not be rendered as agreement.
+        decision["agreed"] = parsed.get("routing_agreed")
+        return decision
+    return None
+
+
 def event_history(
     db: sqlite3.Connection,
     application_id: int,

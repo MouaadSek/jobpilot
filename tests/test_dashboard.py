@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from jobpilot.apply_flow import APPLICATION_LOCK
 from jobpilot.dashboard import create_app, database_connection
-from jobpilot.state import current_status, log_event
+from jobpilot.state import current_status, log_event, transition
 from tests.test_tailoring import _Advisor, _Toolchain
 
 
@@ -725,6 +725,110 @@ def test_dashboard_mark_sent_transitions_ready_to_applied(
     assert current_status(dashboard_db, app_id) == "applied"
     detail = json.loads(_events(dashboard_db, app_id)[-1]["detail"])
     assert detail == {"via": "manual"}
+
+
+def _ready_with_decision(
+    db: sqlite3.Connection,
+    *,
+    suffix: str,
+    detail: dict[str, object],
+) -> int:
+    """A ready application whose variant decision was recorded on its event."""
+
+    application_id = _offer_application(
+        db, title="Ingénieur cyber sécurité", score=0.88, suffix=suffix
+    )
+    transition(db, application_id, "generating")
+    transition(db, application_id, "ready", detail=detail)
+    return application_id
+
+
+def test_detail_page_shows_the_variant_justification_and_runner_up(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    with APPLICATION_LOCK:
+        application_id = _ready_with_decision(
+            dashboard_db,
+            suffix="variant-disagreement",
+            detail={
+                "variant": "cloudsec",
+                "routing_variant": "Chef de Projet IT",
+                "document_variant": "CloudSec",
+                "variant_selected_by": "advisor",
+                "routing_agreed": False,
+                "routing_justification": "Les missions portent sur AWS/GCP et Docker.",
+                "routing_runner_up": "grc",
+            },
+        )
+
+    with _client(dashboard_db, tmp_path) as client:
+        page = client.get(f"/application/{application_id}")
+
+    assert page.status_code == 200
+    assert "Choix du CV" in page.text
+    assert "CloudSec" in page.text
+    assert "Les missions portent sur AWS/GCP et Docker." in page.text
+    assert "Second choix : grc" in page.text
+    # The disagreement is stated, not left for the reader to spot in the events.
+    assert "Désaccord" in page.text
+    assert "Chef de Projet IT" in page.text
+
+
+def test_detail_page_states_agreement_and_any_fallback(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    with APPLICATION_LOCK:
+        agreed_id = _ready_with_decision(
+            dashboard_db,
+            suffix="variant-agreed",
+            detail={
+                "variant": "soc",
+                "routing_variant": "SOC Analyst",
+                "document_variant": "SOC Analyst",
+                "variant_selected_by": "advisor",
+                "routing_agreed": True,
+                "routing_justification": "Missions SIEM.",
+                "routing_runner_up": "cybersecurite",
+            },
+        )
+        fallback_id = _ready_with_decision(
+            dashboard_db,
+            suffix="variant-fallback",
+            detail={
+                "variant": "chef-de-projet-it",
+                "routing_variant": "Chef de Projet IT",
+                "document_variant": "Chef de Projet IT",
+                "variant_selected_by": "keywords",
+                "routing_agreed": True,
+                "routing_fallback_reason": "OpenAI rate limit exceeded (429)",
+            },
+        )
+
+    with _client(dashboard_db, tmp_path) as client:
+        agreed = client.get(f"/application/{agreed_id}")
+        fallback = client.get(f"/application/{fallback_id}")
+
+    assert "suggérait le même CV" in agreed.text
+    assert "Désaccord" not in agreed.text
+    assert "le routage par mots-clés" in fallback.text
+    assert "429" in fallback.text
+
+
+def test_detail_page_omits_the_variant_panel_before_generation(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    with APPLICATION_LOCK:
+        application_id = _offer_application(
+            dashboard_db, title="Encore en file", score=0.7, suffix="variant-none"
+        )
+
+    with _client(dashboard_db, tmp_path) as client:
+        page = client.get(f"/application/{application_id}")
+
+    assert "Choix du CV" not in page.text
 
 
 def _no_advisor_client(

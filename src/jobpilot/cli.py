@@ -272,6 +272,23 @@ def apply_cmd(application_id: int = typer.Argument(..., help="Application id."))
 
     assert result is not None
     typer.echo(f"CV variant: {result.selection.label} ({result.selection.slug})")
+    decision = result.decision
+    if decision is not None:
+        chosen_by = "modèle" if decision.chosen_by == "advisor" else "mots-clés"
+        typer.echo(f"Sélection: {chosen_by} — {decision.justification or 'routage'}")
+        if decision.runner_up:
+            typer.echo(f"Second choix: {decision.runner_up}")
+        if not decision.agreed:
+            typer.secho(
+                f"Désaccord: le routage par mots-clés suggérait "
+                f"{decision.keyword_slug}",
+                fg=typer.colors.YELLOW,
+            )
+        if decision.fallback_reason:
+            typer.secho(
+                f"Repli sur le routage par mots-clés: {decision.fallback_reason}",
+                fg=typer.colors.YELLOW,
+            )
     typer.echo(f"Tailoring: {result.rationale}")
     typer.echo(f"CV HTML: {result.cv_html_path}")
     typer.echo(f"CV PDF: {result.cv_pdf_path}")

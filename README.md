@@ -138,6 +138,21 @@ be loaded, the chosen template file is missing, or an interactive human declines
 to choose, generation continues with the keyword pick and records that it was a
 fallback. A selection failure never blocks a generation.
 
+Both picks are always computed, and the disagreement is surfaced rather than
+swallowed. Every `ready` status-change event records `routing_variant` (the
+keyword suggestion), `document_variant` (the CV actually produced),
+`variant_selected_by`, `routing_agreed`, plus `routing_justification` and
+`routing_runner_up` from the model, and `routing_fallback_reason` when the
+keyword pick was used. A disagreement is also logged at INFO with both slugs and
+the justification. The application detail page shows the chosen variant, the
+justification, the runner-up, and — when they differ — what the keyword router
+would have picked instead; `jobpilot apply` prints the same summary.
+
+That record is the measurement: it is what will tell us whether the keyword layer
+is worth keeping. Its signal tables (`_PM_SIGNALS`, `_ROUTE_SIGNALS`,
+`_ROUTE_PRIORITY`) are deliberately left untuned so the two changes are not
+confounded.
+
 ### Validation-feedback retry
 
 Models tend to miss one mechanical rule at a time, and every rejection used to
