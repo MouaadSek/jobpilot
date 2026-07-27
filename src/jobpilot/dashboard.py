@@ -35,6 +35,7 @@ from jobpilot.apply_flow import (
 )
 from jobpilot.config import get_settings
 from jobpilot.db import connect
+from jobpilot.facts import FactBankError, load_fact_bank
 from jobpilot.mailer import (
     MailerError,
     SendBlocked,
@@ -53,6 +54,7 @@ from jobpilot.review import (
     outreach_drafts,
     status_tabs,
 )
+from jobpilot.scheduler import scheduler_status
 from jobpilot.state import IllegalTransition, current_status, transition
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -143,6 +145,7 @@ def create_app(
     output_root: Path | None = None,
     sender: Any | None = None,
     refresh_runner: RefreshRunner | None = None,
+    fact_bank_path: Path | None = None,
 ) -> FastAPI:
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
@@ -356,8 +359,28 @@ def create_app(
                 "applications": applications_by_status(db, status),
                 "tabs": status_tabs(db, status),
                 "refresh_status": refresher.status().as_dict(),
+                "scheduler": scheduler_status(db),
                 "error": None,
             },
+        )
+
+    @app.get("/facts", response_class=HTMLResponse)
+    def facts_page(request: Request) -> HTMLResponse:
+        """Read-only fact bank, same content and grouping as `jobpilot facts`."""
+
+        try:
+            bank = load_fact_bank(fact_bank_path)
+        except FactBankError as exc:
+            return templates.TemplateResponse(
+                request=request,
+                name="dashboard.html",
+                context={"view": "facts", "bank": None, "error": str(exc)},
+                status_code=500,
+            )
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={"view": "facts", "bank": bank, "error": None},
         )
 
     @app.post("/refresh")

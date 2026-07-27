@@ -350,6 +350,22 @@ ingestion and reports how many offers were newly queued. The first refresh of a
 process is slow because the embedding model loads lazily, exactly as on the CLI
 path; the page shows **Chargement du modèle…** while that happens.
 
+### Fact bank and scheduler status
+
+**Faits** in the header opens `/facts`, a read-only rendering of the fact bank
+with the same content and grouping as `jobpilot facts`: experience with its
+claims, projects, education, certifications, languages, skills with their
+verified flags, and the locked identity block. Editing stays in
+`config/fact_bank.yaml`; the page submits nothing.
+
+The queue page also carries a **Planification** panel: the last run time
+recorded in `sources.last_run_at` for every enabled source, and the daemon's
+state. Only the run time is stored, so the per-cycle result is reported as
+`inconnu (non enregistré)` rather than invented. Each completed daemon cycle
+writes `logs/scheduler.heartbeat`; the panel reports `actif` while beats are
+within two cycle intervals, `inactif` once they are older, and `inconnu` when no
+readable heartbeat exists at all.
+
 ### Tailoring mode and web approval
 
 The dashboard header shows the tailoring mode resolved from `.env`
