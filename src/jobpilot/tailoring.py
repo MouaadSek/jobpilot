@@ -2620,8 +2620,13 @@ class InteractiveTailoringAdvisor:
         )
 
 
-def build_advisor() -> TailoringAdvisor:
-    """Select the configured provider without silently bypassing missing keys."""
+def resolve_provider() -> str:
+    """Resolve TAILORING_PROVIDER to a concrete mode, without building anything.
+
+    Callers that must not reach the terminal (the dashboard) check this before
+    approving, so an `interactive` resolution can be refused up front instead of
+    blocking a request on keyboard input.
+    """
 
     settings = get_settings()
     provider = settings.tailoring_provider.strip().casefold()
@@ -2632,13 +2637,20 @@ def build_advisor() -> TailoringAdvisor:
             f"TAILORING_PROVIDER must be one of: {choices}"
         )
 
-    if provider == "auto":
-        if settings.anthropic_api_key:
-            provider = "anthropic"
-        elif settings.openai_api_key:
-            provider = "openai"
-        else:
-            provider = "interactive"
+    if provider != "auto":
+        return provider
+    if settings.anthropic_api_key:
+        return "anthropic"
+    if settings.openai_api_key:
+        return "openai"
+    return "interactive"
+
+
+def build_advisor() -> TailoringAdvisor:
+    """Select the configured provider without silently bypassing missing keys."""
+
+    settings = get_settings()
+    provider = resolve_provider()
 
     if provider == "interactive":
         return InteractiveTailoringAdvisor()

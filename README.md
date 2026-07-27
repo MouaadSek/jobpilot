@@ -350,6 +350,20 @@ ingestion and reports how many offers were newly queued. The first refresh of a
 process is slow because the embedding model loads lazily, exactly as on the CLI
 path; the page shows **Chargement du modèle…** while that happens.
 
+### Tailoring mode and web approval
+
+The dashboard header shows the tailoring mode resolved from `.env`
+(`anthropic` / `openai` / `interactive`), so it is visible at a glance whether
+headless tailoring is configured.
+
+**Approve** in the browser never falls back to terminal prompts. If the resolved
+mode is `interactive` — typically because no API key is set — the approval is
+refused before anything is recorded: the detail page explains that
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is required, the status stays `queued`,
+and no `human_approved` event is written for an approval that could not proceed.
+Interactive tailoring remains available on the CLI with `jobpilot apply`, which
+is unchanged.
+
 ### Cold outreach sending (disabled by default)
 
 The dashboard's **Outreach** tab lists unsent cold-email drafts. Selecting one

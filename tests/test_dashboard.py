@@ -727,6 +727,115 @@ def test_dashboard_mark_sent_transitions_ready_to_applied(
     assert detail == {"via": "manual"}
 
 
+def _no_advisor_client(
+    db: sqlite3.Connection,
+    output_root: Path,
+) -> TestClient:
+    """A dashboard with no injected advisor, so the configured one is resolved."""
+
+    app = create_app(output_root=output_root)
+
+    def in_memory_connection() -> Iterator[sqlite3.Connection]:
+        with APPLICATION_LOCK:
+            yield db
+
+    app.dependency_overrides[database_connection] = in_memory_connection
+    return TestClient(app)
+
+
+def test_web_approve_refuses_interactive_advisor_without_touching_state(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No API key configured must not drop a browser request into terminal prompts."""
+
+    from jobpilot import tailoring
+
+    with APPLICATION_LOCK:
+        application_id = _offer_application(
+            dashboard_db,
+            title="Analyste SOC",
+            score=0.90,
+            suffix="interactive-refused",
+        )
+
+    monkeypatch.setattr(tailoring, "resolve_provider", lambda: "interactive")
+    monkeypatch.setattr(
+        tailoring,
+        "build_advisor",
+        lambda: pytest.fail("no advisor may be constructed for a web approval"),
+    )
+    monkeypatch.setattr(
+        tailoring,
+        "generate_application",
+        lambda *args, **kwargs: pytest.fail("generation must not start"),
+    )
+
+    with _no_advisor_client(dashboard_db, tmp_path) as client:
+        response = client.post(f"/application/{application_id}/approve")
+
+    assert response.status_code == 409
+    assert "OPENAI_API_KEY" in response.text
+    assert "jobpilot apply" in response.text
+    assert current_status(dashboard_db, application_id) == "queued"
+    # The audit trail must not show an approval that did nothing.
+    assert _events(dashboard_db, application_id) == []
+
+
+def test_dashboard_shows_the_resolved_advisor_mode(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jobpilot import tailoring
+
+    monkeypatch.setattr(tailoring, "resolve_provider", lambda: "anthropic")
+    with _no_advisor_client(dashboard_db, tmp_path) as client:
+        page = client.get("/")
+
+    assert "tailoring : anthropic" in page.text
+
+
+def test_approve_with_configured_api_advisor_is_unaffected(
+    dashboard_db: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard only fires on `interactive`; a resolved API provider still runs."""
+
+    from jobpilot import tailoring
+
+    with APPLICATION_LOCK:
+        application_id = _offer_application(
+            dashboard_db,
+            title="Analyste SOC",
+            score=0.93,
+            suffix="api-advisor-ok",
+        )
+    monkeypatch.setattr(tailoring, "resolve_provider", lambda: "anthropic")
+    monkeypatch.setattr(tailoring, "build_advisor", _Advisor)
+
+    app = create_app(toolchain=_Toolchain(), output_root=tmp_path)
+
+    def in_memory_connection() -> Iterator[sqlite3.Connection]:
+        with APPLICATION_LOCK:
+            yield dashboard_db
+
+    app.dependency_overrides[database_connection] = in_memory_connection
+    with TestClient(app) as client:
+        response = client.post(
+            f"/application/{application_id}/approve",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert current_status(dashboard_db, application_id) == "ready"
+    assert "human_approved" in {
+        row["event"] for row in _events(dashboard_db, application_id)
+    }
+
+
 def test_approve_wrong_state_returns_clean_conflict(
     dashboard_db: sqlite3.Connection,
     tmp_path: Path,

@@ -220,6 +220,27 @@ def test_provider_selection_matrix(
     assert isinstance(tailoring.build_advisor(), expected_type)
 
 
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    (
+        (_settings(), "interactive"),
+        (_settings(openai_key="openai-key"), "openai"),
+        (_settings(anthropic_key="anthropic-key"), "anthropic"),
+        (_settings(provider="interactive", openai_key="openai-key"), "interactive"),
+    ),
+)
+def test_resolve_provider_names_the_mode_without_constructing_an_advisor(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: SimpleNamespace,
+    expected: str,
+) -> None:
+    """The dashboard needs the resolved mode before it commits to an approval."""
+
+    monkeypatch.setattr(tailoring, "get_settings", lambda: settings)
+
+    assert tailoring.resolve_provider() == expected
+
+
 def test_explicit_openai_without_key_is_a_clear_configuration_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

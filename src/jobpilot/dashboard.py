@@ -30,6 +30,7 @@ from jobpilot.apply_flow import (
     ApplicationGenerationError,
     ApplicationNotFoundError,
     ApplicationNotQueuedError,
+    InteractiveAdvisorRequired,
     approve_application,
 )
 from jobpilot.config import get_settings
@@ -150,6 +151,20 @@ def create_app(
     templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)
     refresher = refresh_runner or RefreshRunner()
+
+    def advisor_mode() -> str:
+        """Name the advisor a web approval would actually use, or why it can't."""
+
+        if advisor is not None:
+            return "injected"
+        from jobpilot.tailoring import TailoringError, resolve_provider
+
+        try:
+            return resolve_provider()
+        except TailoringError:
+            return "non configuré"
+
+    templates.env.globals["advisor_mode"] = advisor_mode
 
     def detail_response(
         request: Request,
@@ -399,9 +414,19 @@ def create_app(
                     advisor=advisor,
                     toolchain=toolchain,
                     output_root=artifacts_root,
+                    # No terminal is attached to a browser request.
+                    allow_interactive_advisor=False,
                 )
             except ApplicationNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except InteractiveAdvisorRequired as exc:
+                return detail_response(
+                    request,
+                    db,
+                    application_id,
+                    error=str(exc),
+                    status_code=409,
+                )
             except ApplicationNotQueuedError as exc:
                 return detail_response(
                     request,

@@ -99,6 +99,15 @@
     .back { text-decoration: none; }
     .top-nav { display: flex; gap: 14px; align-items: center; }
     .top-nav a { font-weight: 650; text-decoration: none; }
+    .advisor-mode {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      padding: 4px 11px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
     .checkbox-row {
       display: flex; gap: 9px; align-items: flex-start; margin: 12px 0;
       color: var(--ink);
@@ -219,6 +228,9 @@
       <nav class="top-nav" aria-label="Main navigation">
         <a href="/">Applications</a>
         <a href="/outreach">Outreach</a>
+        <span class="advisor-mode" title="Mode de tailoring résolu depuis .env">
+          tailoring : {{ advisor_mode() }}
+        </span>
       </nav>
     </header>
 
