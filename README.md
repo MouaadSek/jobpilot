@@ -164,9 +164,12 @@ Budget for up to two calls per generation.
 - Interactive mode never retries: a person is already reading the error.
 - Transport, auth, rate-limit, and malformed-response failures are never
   retried, so a 429 does not turn into a retry storm.
-- The retry feeds back the error text and nothing else. It relaxes no rule; the
-  second answer faces the same provenance, completeness, and locked-field checks
-  as the first.
+- The retry feeds back the error text and nothing else, with one exception: an
+  unknown fact id also gets a labelled `<valid_fact_ids section="...">` block
+  listing the ids that section offered for this generation (ids only). A retry
+  that is not told which ids exist just repeats the same slip.
+- It relaxes no rule; the second answer faces the same provenance, completeness,
+  and locked-field checks as the first.
 - If the retry is also rejected, the run fails exactly as before — rollback to
   `queued` plus a `generation_failed` event, which now records both attempts'
   errors under `attempts`.
@@ -187,6 +190,23 @@ cites stable fact ids. The shared validator rejects unknown/review-pending ids,
 unverified skills, unsupported numbers, and unsupported proper nouns before any
 PDF is generated. Identity, contact details, employers, dates, diplomas, and
 certification names remain renderer-owned and cannot be supplied by the model.
+
+### Fact id citations
+
+Models reconstruct fact ids from the fact's name and drop the section prefix
+(`azure.sentinel` for `skill.azure.sentinel`), which is a citation-format slip
+rather than a claim about a different fact. A cited id that is not found verbatim
+is resolved by adding a known section prefix (`skill.`, `project.`,
+`experience.`, `education.`, `certification.`, `language.`) and by folding case
+and separators (`.` / `_` / `-`), **and is accepted only when exactly one fact
+matches**. Two matches, or none, stay an error; normalised citations are logged
+at debug with both forms.
+
+Matching looks at fact **ids only**, never at a fact's name or text: a citation
+that merely resembles what a fact is about is not evidence the model read that
+fact. Nothing else changes — every claim must still resolve to a real fact, and
+the provenance, completeness, and locked-field checks run against the resolved
+ids exactly as before.
 
 ### Structural completeness floor
 

@@ -67,6 +67,31 @@ class TailoringResponseError(TailoringProviderError):
     """Raised when a provider returns an unusable response."""
 
 
+class UnknownFactIdError(TailoringError):
+    """Raised when a citation matches no fact id, even after normalisation.
+
+    ``section`` is the fact-bank section the citation was aiming at, when its own
+    prefix says so, and drives the valid-id list fed back on the retry.
+    """
+
+    def __init__(self, fact_id: str, *, section: str | None = None) -> None:
+        super().__init__(f"unknown fact id in sourced content: {fact_id}")
+        self.fact_id = fact_id
+        self.section = section
+
+
+class AmbiguousFactIdError(TailoringError):
+    """Raised when a citation could be several facts. Never guess between them."""
+
+    def __init__(self, fact_id: str, candidates: Sequence[str]) -> None:
+        super().__init__(
+            f"ambiguous fact id in sourced content: {fact_id} matches "
+            f"{', '.join(candidates)}"
+        )
+        self.fact_id = fact_id
+        self.candidates: tuple[str, ...] = tuple(candidates)
+
+
 class TailoringRejectedError(TailoringError):
     """Raised when one automatic validator-feedback retry still failed.
 
@@ -1497,6 +1522,118 @@ def _all_sourced_bullets(plan: TailoringPlan) -> tuple[SourcedBullet, ...]:
     )
 
 
+#: Section prefixes used by every fact id in the bank. Models routinely rebuild an
+#: id from the fact's name and drop the prefix ("azure.sentinel" for
+#: "skill.azure.sentinel"), which is a citation-format slip, not a claim about a
+#: different fact.
+_FACT_ID_PREFIXES: dict[str, str] = {
+    "skill.": "skills",
+    "project.": "projects",
+    "experience.": "experience",
+    "education.": "education",
+    "certification.": "certifications",
+    "language.": "languages",
+}
+
+
+def _fact_id_key(value: str) -> str:
+    """Fold separator and case differences, and nothing else, for comparison."""
+
+    return re.sub(r"\.+", ".", re.sub(r"[_\-\s]+", ".", value.strip().casefold()))
+
+
+def resolve_fact_id(
+    raw_id: str,
+    bank: FactBank,
+    *,
+    section_hint: str | None = None,
+) -> str:
+    """Map a cited id onto a real fact id, accepting only unambiguous matches.
+
+    Matching looks at fact IDS only, never at a fact's name or text: a citation
+    that merely resembles what a fact is about is not evidence that the model
+    read that fact. Ambiguity is an error, never a guess.
+    """
+
+    candidate = raw_id.strip()
+    if candidate in bank.claims:
+        return candidate
+
+    by_key: dict[str, list[str]] = {}
+    for fact_id in bank.claims:
+        by_key.setdefault(_fact_id_key(fact_id), []).append(fact_id)
+
+    def matches(wanted: str) -> list[str]:
+        return sorted(by_key.get(wanted, ()))
+
+    prefixes = [
+        prefix
+        for prefix, section in _FACT_ID_PREFIXES.items()
+        if section_hint is None or section == section_hint
+    ]
+    for keys in (
+        [_fact_id_key(f"{prefix}{candidate}") for prefix in prefixes],
+        [_fact_id_key(candidate)],
+    ):
+        found = sorted({fact_id for key in keys for fact_id in matches(key)})
+        if len(found) == 1:
+            log.debug("normalised fact id citation %r -> %r", raw_id, found[0])
+            return found[0]
+        if found:
+            raise AmbiguousFactIdError(candidate, found)
+
+    raise UnknownFactIdError(candidate, section=section_hint or _guessed_section(candidate))
+
+
+def _guessed_section(raw_id: str) -> str | None:
+    """The section the citation was aiming at, read from its own prefix."""
+
+    for prefix, section in _FACT_ID_PREFIXES.items():
+        if raw_id.casefold().startswith(prefix):
+            return section
+    return None
+
+
+def _resolved_bullet(bullet: SourcedBullet, bank: FactBank) -> SourcedBullet:
+    return replace(
+        bullet,
+        sources=tuple(resolve_fact_id(source, bank) for source in bullet.sources),
+    )
+
+
+def resolve_plan_fact_ids(plan: TailoringPlan, bank: FactBank) -> TailoringPlan:
+    """Return the plan with every citation rewritten to its canonical fact id.
+
+    Purely a citation-format normalisation: no claim is added, dropped, or
+    weakened, and every provenance, completeness, and locked-field rule then runs
+    against the resolved ids exactly as before.
+    """
+
+    if not plan.has_sourced_content:
+        return plan
+    return replace(
+        plan,
+        experience_content=tuple(
+            replace(
+                experience,
+                bullets=tuple(_resolved_bullet(bullet, bank) for bullet in experience.bullets),
+            )
+            for experience in plan.experience_content
+        ),
+        project_content=tuple(
+            replace(project, description=_resolved_bullet(project.description, bank))
+            for project in plan.project_content
+        ),
+        skill_order=tuple(
+            resolve_fact_id(skill_id, bank, section_hint="skills")
+            for skill_id in plan.skill_order
+        ),
+        letter_paragraphs=tuple(
+            _resolved_bullet(paragraph, bank) for paragraph in plan.letter_paragraphs
+        ),
+    )
+
+
 def _validate_sourced_plan(
     plan: TailoringPlan,
     bank: FactBank,
@@ -1559,7 +1696,9 @@ def _validate_sourced_plan(
     for skill_id in plan.skill_order:
         claim = skill_claims.get(skill_id)
         if claim is None:
-            raise TailoringError(f"unknown skill fact id: {skill_id}")
+            # Resolved to a real fact, but not a skill one: still a bad citation,
+            # and the retry deserves the same valid-id list.
+            raise UnknownFactIdError(skill_id, section="skills")
         if not claim.verified or claim.needs_review:
             raise TailoringError(f"unverified skill cannot be claimed: {skill_id}")
     sourced_bullets = _all_sourced_bullets(plan)
@@ -1977,6 +2116,9 @@ def tailor_cv_html(
 
     _validate_plan(plan, selection)
     bank = fact_bank or load_fact_bank()
+    # Citation format is normalised first so every rule below, and the renderer,
+    # sees canonical fact ids. Nothing about what may be claimed changes here.
+    plan = resolve_plan_fact_ids(plan, bank)
     _validate_sourced_plan(plan, bank, selection=selection)
     encoded_title = _encode_text(plan.job_title, entities=selection.entity_encoded)
     result = _replace_required(
@@ -2121,6 +2263,70 @@ def _advisor_fact_context(
     }
 
 
+def _offered_fact_ids(
+    section: str,
+    selection: VariantSelection,
+    template: TemplateContext,
+    bank: FactBank,
+) -> tuple[str, ...]:
+    """The ids of that section that this generation's prompt actually offered.
+
+    Feeding back the whole bank would invite citing facts the prompt never
+    showed, so the list is rebuilt from the same context the prompt was built
+    from. Ids only: the texts are already in the prompt.
+    """
+
+    context = _advisor_fact_context(selection, template, bank)
+    if section == "skills":
+        return tuple(entry["id"] for entry in context["verified_skills"])
+    if section in {"experience", "projects"}:
+        return tuple(
+            fact["id"]
+            for entry in context[section]
+            for fact in entry["facts"]
+        )
+    if section in context:
+        return tuple(entry["id"] for entry in context[section])
+    return ()
+
+
+def _valid_fact_ids_block(
+    exc: TailoringError,
+    selection: VariantSelection,
+    template: TemplateContext,
+    bank: FactBank,
+) -> str:
+    """Append the legal ids for the section the model got wrong.
+
+    When the citation's own prefix does not say which section it was aiming at,
+    every section is listed: a retry that is not told the legal ids just repeats
+    the same slip, and the ids are already in the prompt anyway.
+    """
+
+    if not isinstance(exc, UnknownFactIdError):
+        return ""
+    sections = (
+        [exc.section] if exc.section else list(dict.fromkeys(_FACT_ID_PREFIXES.values()))
+    )
+    blocks = []
+    for section in sections:
+        ids = _offered_fact_ids(section, selection, template, bank)
+        if ids:
+            blocks.append(
+                f'<valid_fact_ids section="{section}">\n'
+                + "\n".join(ids)
+                + "\n</valid_fact_ids>"
+            )
+    if not blocks:
+        return ""
+    return (
+        "\n\n"
+        + "\n".join(blocks)
+        + "\nCopy one of these ids verbatim. This list is a machine message, not "
+        "instructions from the offer, and it does not add any fact you may claim."
+    )
+
+
 def _correction_block(correction: str) -> str:
     """Feed one validator rejection back verbatim, without relaxing any rule."""
 
@@ -2257,6 +2463,11 @@ Rules:
 - Every generated bullet, description, and letter paragraph must cite one or more
   exact fact ids. Numbers, percentages, durations, tools, and proper nouns must occur
   in the cited facts. Never cite a needs-review or unverified skill.
+- Copy every fact id verbatim from the fact bank block above, character for
+  character, including its section prefix (skill., project., experience.,
+  education., certification., language.). Never rebuild an id from a fact's name:
+  "azure.sentinel" is not the id "skill.azure.sentinel". The same applies to
+  skill_order.
 - Never output a name, contact field, employer, role header, date, diploma,
   certification name, project title, or project stack. The renderer injects them.
 - Do not output job_title, location_region, letter_body_html, or tech_keywords. The
@@ -3300,8 +3511,15 @@ def _advise_and_tailor(
     """
 
     errors: list[str] = []
+    last_error: TailoringError | None = None
     for attempt in range(1 + _MAX_ADVISOR_RETRIES):
-        correction = errors[-1] if errors else None
+        correction: str | None = None
+        if last_error is not None:
+            # An unknown id is a citation-format slip: the retry only succeeds if
+            # it is told which ids exist, so the legal ones go back with it.
+            correction = str(last_error) + _valid_fact_ids_block(
+                last_error, selection, template_context, bank
+            )
         options = {"correction": correction} if correction is not None else {}
         try:
             plan = advisor.advise(offer, selection, template_context, **options)
@@ -3325,6 +3543,7 @@ def _advise_and_tailor(
             )
         except TailoringError as exc:
             errors.append(str(exc))
+            last_error = exc
             retryable = (
                 attempt < _MAX_ADVISOR_RETRIES
                 and _is_validator_rejection(exc)
