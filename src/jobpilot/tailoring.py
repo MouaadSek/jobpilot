@@ -1367,8 +1367,96 @@ _GENERIC_CAPITALIZED = {
 }
 
 
+# Standard, certification, and protocol designations whose digits name a thing
+# rather than measure one: "ISO 27001" is vocabulary, "1 500 incidents" is a
+# claim. Recognised by shape, never by a list of accepted values \u2014 a match here
+# only decides WHICH rule applies, and the designation must still be found
+# somewhere in the fact bank to be allowed at all.
+#
+# Extend by adding a (name, pattern) pair; the name appears in the debug log.
+_DESIGNATION_PATTERNS: tuple[tuple[str, str], ...] = (
+    # ISO 27001, ISO/IEC 27002, ISO 27001:2022, ISO 27001/27002
+    ("iso", r"ISO(?:/IEC)?\s*\d{4,5}(?::\d{4})?(?:\s*/\s*\d{4,5})*"),
+    # NIS2, NIS 2
+    ("nis", r"NIS\s?\d"),
+    # RGPD art. 32, GDPR article 32, and the bare article reference
+    ("data_protection_article", r"(?:RGPD|GDPR)\s*(?:art\.?|article)\s*\d+"),
+    ("article", r"art\.\s*\d+"),
+    # Microsoft role-based certifications: AZ-900, SC-200
+    ("certification_code", r"\b[A-Z]{2}-\d{3}\b"),
+    # IEEE protocol families: 802.1X, 802.11ac
+    ("ieee", r"\b802\.\d+[A-Za-z]*\b"),
+    ("cvss", r"CVSS\s*v?\d+(?:\.\d+)?"),
+    ("owasp_top", r"(?:OWASP\s*)?Top\s*\d+(?:\s*OWASP)?"),
+    ("itil", r"ITIL\s*v?\d+"),
+    # OSI layer shorthand: L2/L3
+    ("osi_layer", r"\bL[1-7](?:\s*/\s*L[1-7])+\b"),
+    # ANSSI guides and references: ANSSI-BP-028, ANSSI 40
+    ("anssi", r"ANSSI(?:[- ][A-Z]{2,3})*[- ]?\d+"),
+)
+_DESIGNATION_RE = re.compile(
+    "|".join(f"(?P<{name}>{pattern})" for name, pattern in _DESIGNATION_PATTERNS),
+    re.IGNORECASE,
+)
+
+
 def _normalized_number(value: str) -> str:
     return re.sub(r"[ .\u00a0]", "", value).replace(",", ".").casefold()
+
+
+def _designation_corpus(bank: FactBank) -> str:
+    """Every reviewed word in the bank, as the vocabulary a designation may use.
+
+    Only verified, non-review content counts: an unverified skill named after a
+    standard must not become a licence to cite that standard.
+    """
+
+    parts = [claim.text for claim in bank.claims.values() if not claim.needs_review]
+    parts.extend(
+        skill.name for skill in bank.skills if skill.verified and not skill.needs_review
+    )
+    for project in bank.projects:
+        parts.append(project.title)
+        parts.extend(project.stack)
+    parts.extend(entry.role for entry in bank.experience)
+    parts.extend(bank.locked.certification_names)
+    return _normalize(" ".join(parts))
+
+
+def _designation_spans(text: str, corpus: str) -> list[tuple[int, int]]:
+    """Check every designation against the whole bank; return what it covers.
+
+    The returned spans are excluded from the number, skill, and proper-noun
+    checks below, which judge a token against the ONE cited fact: a designation
+    has already been judged, against the whole bank, as a unit.
+    """
+
+    spans: list[tuple[int, int]] = []
+    for match in _DESIGNATION_RE.finditer(text):
+        token = match.group(0).strip()
+        if _normalize(token) not in corpus:
+            raise TailoringError(
+                f"unsupported designation '{token}' in sourced content"
+            )
+        log.debug(
+            "accepted designation %r as bank-wide vocabulary (pattern %s), "
+            "not as a metric of the cited fact",
+            token,
+            match.lastgroup,
+        )
+        spans.append(match.span())
+    return spans
+
+
+def _without_designations(text: str, spans: Sequence[tuple[int, int]]) -> str:
+    """Blank out validated designations, keeping every other offset intact."""
+
+    if not spans:
+        return text
+    characters = list(text)
+    for start, end in spans:
+        characters[start:end] = " " * (end - start)
+    return "".join(characters)
 
 
 def _proper_nouns(value: str, bank: FactBank) -> set[str]:
@@ -1393,8 +1481,16 @@ def validate_provenance(
     bullets: Sequence[SourcedBullet],
     bank: FactBank,
 ) -> None:
-    """Reject unsupported ids, numbers, proper nouns, and unverified skills."""
+    """Reject unsupported ids, numbers, proper nouns, and unverified skills.
 
+    Digits are read in two ways. A quantitative claim ("1 500 incidents", "85 %")
+    must appear in the facts that bullet cites: that is the anti-fabrication
+    guarantee and it is not relaxed here. A designation ("ISO 27001", "AZ-900")
+    names a standard instead of measuring anything, so it is checked against the
+    whole bank, and rejected outright when the bank never mentions it.
+    """
+
+    corpus = _designation_corpus(bank)
     for bullet_index, bullet in enumerate(bullets):
         if not bullet.sources:
             raise TailoringError(
@@ -1413,15 +1509,20 @@ def validate_provenance(
                 raise TailoringError(f"fact id requires review before use: {source_id}")
             claims.append(claim)
         evidence = " ".join(claim.text for claim in claims)
+        # Designations are validated bank-wide, then removed so the token-level
+        # checks below see only text still owed to the cited fact.
+        text = _without_designations(
+            bullet.text, _designation_spans(bullet.text, corpus)
+        )
         evidence_numbers = {_normalized_number(value) for value in _NUMBER_RE.findall(evidence)}
-        for number in _NUMBER_RE.findall(bullet.text):
+        for number in _NUMBER_RE.findall(text):
             normalized_number = _normalized_number(number)
             if normalized_number not in evidence_numbers:
                 raise TailoringError(
                     f"unsupported number '{number.strip()}' in sourced content"
                 )
         normalized_evidence = _normalize(evidence)
-        normalized_bullet = _normalize(bullet.text)
+        normalized_bullet = _normalize(text)
         for skill in bank.skills:
             if not _contains(normalized_bullet, skill.name):
                 continue
@@ -1431,7 +1532,7 @@ def validate_provenance(
                 raise TailoringError(
                     f"unsupported tool or skill '{skill.name}' in sourced content"
                 )
-        for proper_noun in _proper_nouns(bullet.text, bank):
+        for proper_noun in _proper_nouns(text, bank):
             if proper_noun not in normalized_evidence:
                 raise TailoringError(
                     f"unsupported proper noun '{proper_noun}' in sourced content"

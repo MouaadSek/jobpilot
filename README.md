@@ -191,6 +191,32 @@ unverified skills, unsupported numbers, and unsupported proper nouns before any
 PDF is generated. Identity, contact details, employers, dates, diplomas, and
 certification names remain renderer-owned and cannot be supplied by the model.
 
+### Numbers: metrics vs designations
+
+Digits are read two ways in generated content.
+
+A **quantitative claim** — a bare number, percentage, count, or duration
+("1 500", "85 %", "40", "8 mois") — must appear in the facts that bullet cites.
+This is the anti-fabrication guarantee and it is unchanged: a number carried by
+some *other* fact in the bank is still rejected.
+
+A **designation** — digits that name a standard, certification, or protocol
+(`ISO 27001`, `ISO/IEC 27002:2022`, `NIS2`, `RGPD art. 32`, `AZ-900`, `802.1X`,
+`CVSS v3`, `OWASP Top 10`, `ITIL v4`, `L2/L3`, ANSSI references) — is matched by
+**shape**, in one extendable constants block (`_DESIGNATION_PATTERNS`), never by
+a list of accepted values. Matching the shape only decides which rule applies:
+the designation is then accepted **only if it appears somewhere in the fact
+bank**, proving it belongs to the real vocabulary, and rejected outright when it
+does not. `ISO 31000` is refused precisely because no fact mentions it. Only
+verified, non-review content counts as vocabulary. Each acceptance is logged at
+debug with the token and the pattern that matched, so over-permissiveness stays
+auditable.
+
+A validated designation's own span is then excluded from the number, skill, and
+proper-noun checks, which judge a token against the single cited fact — it has
+already been judged, against the whole bank, as a unit. Text outside that span is
+untouched, so "ISO 27001 sur 42 applications" still fails on the 42.
+
 ### Fact id citations
 
 Models reconstruct fact ids from the fact's name and drop the section prefix
