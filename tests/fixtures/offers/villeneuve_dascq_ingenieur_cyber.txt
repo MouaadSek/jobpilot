@@ -1,0 +1,13 @@
+Description du poste :
+
+Ton rôle ? T'assurer que chaque nouveau projet de l'entreprise (nouvelle app, migration cloud, outil logistique) intègre la sécurité dès sa conception (Security by Design).
+
+Tes missions GOUVERNANCE : Tu pilotes la sécurité des projets de A à Z. Tu analyses les besoins des équipes métiers, tu rédiges les analyses de risques techniques (EBIOS RM) et tu imposes les exigences de sécurité (chiffrement, protocoles d'authentification comme OAuth/SAML, gestion des flux). Tu t'assures que les choix d'architecture respectent la PSSI du groupe.***AUDIT & TECH : Tu passes les projets sous les rayons X. Avant chaque mise en production, tu lances et analyses des scans de vulnérabilités. Tu passes au crible les architectures (Cloud AWS/GCP, API, containers Docker) pour détecter les failles logiques ou de configuration, et tu coordonnes la remédiation technique avec les équipes de développeurs et d'ingénieurs système.***PILOTAGE DE PROJETS : Tu es le bras droit du RSSI. Tu participes au suivi des incidents de sécurité liés aux projets, tu analyses les rapports d'audits ou de bug bounty , et tu crées des dashboards de conformité cyber (KPIs) pour donner une visibilité claire de l'état de sécurité des applications au management.
+
+Cette liste est non exhaustive et pourra faire l'objet de modification en fonction de tes compétences et de ton projet.
+
+Description du profil :
+
+Titulaire ou en préparation d'un Bac+3 informatique, tu souhaites poursuivre tes études dans le monde de l'IT et de la cybersécurité.
+
+Tu rejoindras Nexa Digital School Dans le cadre d'un Mastère Cybersécurité - Option Ingénieur (Titre RNCP Ingénieur systèmes, réseaux et cybersécurité) durant 24 mois.***Tu as un bon bagage technique de base : tu comprends les architectures web, les concepts réseau (firewalling, routage), la sécurité des API et les environnements Cloud.***Tu es un(e) excellent(e) communicant(e) : tu sais faire preuve de diplomatie pour convaincre les chefs de projet que la sécurité n'est pas un frein, mais un accélérateur

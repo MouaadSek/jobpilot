@@ -111,6 +111,33 @@ dropped with a debug log line instead of failing the run. Normalization is
 shape-only — provenance, structural completeness, and locked-field rules still
 apply in full to the sourced content.
 
+### CV variant selection
+
+Choosing **which** of the 21 CVs to use is a judgement call, so the advisor makes
+it, mirroring the skill's "Step 1 — CV Selection" then tailoring flow. It is a
+separate, small request: offer text plus the catalogue, answered with a chosen
+`slug`, a one-sentence `justification`, and a `runner_up`. All three are
+required, and a slug outside the catalogue is rejected and rides the same
+one-retry validation-feedback path as tailoring. Budget one extra call per
+generation.
+
+**`skill/SKILL.md` remains the source of truth for the selection criteria.** The
+catalogue is parsed out of its "Step 1 — CV Selection" table and its shortcut
+list at load time and combined with the slugs and labels in
+`config/variants.yaml`; nothing is paraphrased into a second copy, and a
+mismatch between the two files is a loud error rather than a silent drift.
+
+These stay mechanical, applied in code after the model's pick: stage vs
+alternance resolution and the dedicated stage templates, the adapted-for-stage
+fallback, entity-encoded template handling, and template file existence.
+
+Keyword routing (`matcher`-style signal scoring in `tailoring._route_slug`) is
+**not** deleted — it still runs, as a sanity check and as the fallback. If the
+selection call fails after its retry, the provider errors, the catalogue cannot
+be loaded, the chosen template file is missing, or an interactive human declines
+to choose, generation continues with the keyword pick and records that it was a
+fallback. A selection failure never blocks a generation.
+
 ### Validation-feedback retry
 
 Models tend to miss one mechanical rule at a time, and every rejection used to

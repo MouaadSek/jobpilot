@@ -263,7 +263,9 @@ def test_provider_failures_are_not_retried(
             output_root=tmp_path,
         )
 
-    assert route.call_count == 1
+    # One selection call and one tailoring call, neither of them retried. The
+    # selection failure alone is not fatal: it falls back to the keyword pick.
+    assert route.call_count == 2
     assert current_status(db, application_id) == "queued"
     assert "attempts" not in _generation_failed_detail(db, application_id)
 
