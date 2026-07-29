@@ -312,7 +312,7 @@ def test_structured_plan_renders_tailored_claims_and_injects_locked_headers() ->
         (
             "Analyse des alertes avec CrowdStrike.",
             "experience.concentrix.incidents",
-            "proper noun",
+            "capability",
         ),
     ],
 )

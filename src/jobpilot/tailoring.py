@@ -14,7 +14,7 @@ import sqlite3
 import subprocess
 import sys
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from html.entities import codepoint2name
@@ -39,6 +39,7 @@ from jobpilot.variant_catalogue import (
     VariantCatalogueError,
     default_catalogue,
 )
+from jobpilot.vocabulary import GENERIC_VOCABULARY, rejection_message
 
 log = get_logger("tailoring")
 
@@ -1368,10 +1369,10 @@ _GENERIC_CAPITALIZED = {
 
 
 # Standard, certification, and protocol designations whose digits name a thing
-# rather than measure one: "ISO 27001" is vocabulary, "1 500 incidents" is a
-# claim. Recognised by shape, never by a list of accepted values \u2014 a match here
-# only decides WHICH rule applies, and the designation must still be found
-# somewhere in the fact bank to be allowed at all.
+# rather than measure one: "ISO 27001" is a capability claim, "1 500 incidents"
+# is an attribution claim. Recognised by shape, never by a list of accepted
+# values \u2014 a match here only decides WHICH tier applies, and the designation must
+# still be found somewhere in the verified bank to be allowed at all.
 #
 # Extend by adding a (name, pattern) pair; the name appears in the debug log.
 _DESIGNATION_PATTERNS: tuple[tuple[str, str], ...] = (
@@ -1404,11 +1405,14 @@ def _normalized_number(value: str) -> str:
     return re.sub(r"[ .\u00a0]", "", value).replace(",", ".").casefold()
 
 
-def _designation_corpus(bank: FactBank) -> str:
-    """Every reviewed word in the bank, as the vocabulary a designation may use.
+def _capability_corpus(bank: FactBank) -> str:
+    """Everything the verified bank says the candidate has actually touched.
 
-    Only verified, non-review content counts: an unverified skill named after a
-    standard must not become a licence to cite that standard.
+    This is the whole answer to a Tier 2 question: not "did the cited fact say
+    Wazuh" but "does this person do Wazuh at all". Only verified, non-review
+    content counts — an unverified skill named after a standard must not become
+    a licence to cite that standard. The offer text is never part of it: a
+    posting is untrusted input and may not legitimise a claim.
     """
 
     parts = [claim.text for claim in bank.claims.values() if not claim.needs_review]
@@ -1423,21 +1427,39 @@ def _designation_corpus(bank: FactBank) -> str:
     return _normalize(" ".join(parts))
 
 
+def _organisation_names(bank: FactBank) -> tuple[str, ...]:
+    """The names the bank knows structurally: employers, schools, diplomas.
+
+    Naming one of these is an attribution, so it is judged against the cited
+    fact and never against the bank as a whole. Recognition is structural: an
+    organisation that exists only inside a fact's prose (a client mentioned in
+    passing) is not in this set and falls through to the capability tier.
+    """
+
+    names = {
+        *bank.locked.employer_names,
+        *bank.locked.diplomas,
+        *(entry.employer for entry in bank.experience),
+        *(entry.institution for entry in bank.education),
+    }
+    return tuple(sorted(names))
+
+
 def _designation_spans(text: str, corpus: str) -> list[tuple[int, int]]:
     """Check every designation against the whole bank; return what it covers.
 
-    The returned spans are excluded from the number, skill, and proper-noun
-    checks below, which judge a token against the ONE cited fact: a designation
-    has already been judged, against the whole bank, as a unit.
+    Designations are capability claims that happen to contain digits, so they
+    are judged here, as a unit, against the corpus. The returned spans are then
+    excluded from the tiers below, which read what is left of the bullet: the
+    span of "ISO 27001" is neither a quantity owed to the cited fact nor a
+    proper noun still to be justified.
     """
 
     spans: list[tuple[int, int]] = []
     for match in _DESIGNATION_RE.finditer(text):
         token = match.group(0).strip()
         if _normalize(token) not in corpus:
-            raise TailoringError(
-                f"unsupported designation '{token}' in sourced content"
-            )
+            raise TailoringError(rejection_message("designation", token))
         log.debug(
             "accepted designation %r as bank-wide vocabulary (pattern %s), "
             "not as a metric of the cited fact",
@@ -1459,9 +1481,15 @@ def _without_designations(text: str, spans: Sequence[tuple[int, int]]) -> str:
     return "".join(characters)
 
 
-def _proper_nouns(value: str, bank: FactBank) -> set[str]:
+def _proper_nouns(value: str, bank: FactBank) -> dict[str, str]:
+    """Named things in the text, as {matched form: as written}.
+
+    The written form is kept so a rejection names the token the way the reader
+    will search for it, and the way it would be typed into the vocabulary file.
+    """
+
     skill_names = {_normalize(skill.name) for skill in bank.skills}
-    candidates: set[str] = set()
+    candidates: dict[str, str] = {}
     for match in _PROPER_NOUN_RE.finditer(value):
         token = match.group(0)
         normalized = _normalize(token)
@@ -1473,24 +1501,94 @@ def _proper_nouns(value: str, bank: FactBank) -> set[str]:
         previous = value[: match.start()].rstrip()
         starts_sentence = not previous or previous[-1:] in ".!?;:"
         if has_internal_upper or is_acronym or known_skill or not starts_sentence:
-            candidates.add(normalized)
+            candidates.setdefault(normalized, token)
     return candidates
+
+
+def _reject_borrowed_quantities(text: str, evidence: str) -> None:
+    """Tier 1. A measurement belongs to the job it was measured in."""
+
+    evidence_numbers = {
+        _normalized_number(value) for value in _NUMBER_RE.findall(evidence)
+    }
+    for number in _NUMBER_RE.findall(text):
+        if _normalized_number(number) not in evidence_numbers:
+            raise TailoringError(rejection_message("number", number.strip()))
+
+
+def _reject_borrowed_attributions(
+    text: str,
+    evidence: str,
+    organisations: Sequence[str],
+) -> None:
+    """Tier 1. A bullet may not name an organisation its facts do not name."""
+
+    normalized_text = _normalize(text)
+    normalized_evidence = _normalize(evidence)
+    for name in organisations:
+        if _contains(normalized_text, name) and not _contains(
+            normalized_evidence, name
+        ):
+            raise TailoringError(rejection_message("organisation", name))
+
+
+def _reject_unverified_skills(text: str, bank: FactBank) -> None:
+    """A skill the bank has not verified may not be claimed at all, ever."""
+
+    normalized_text = _normalize(text)
+    for skill in bank.skills:
+        if not _contains(normalized_text, skill.name):
+            continue
+        if not skill.verified or skill.needs_review:
+            raise TailoringError(f"unverified skill cannot be claimed: {skill.id}")
+
+
+def _reject_unsupported_capabilities(
+    text: str,
+    bank: FactBank,
+    corpus: str,
+    generic: Container[str],
+    organisations: Sequence[str],
+) -> None:
+    """Tiers 2 and 3. Named things must be in the bank; category words need not.
+
+    Anything left capitalised in the bullet is either a thing the candidate is
+    claiming to have worked with, which the bank must confirm, or a word that
+    names the industry rather than the candidate, which confirms nothing and is
+    allowed. Tokens already judged as attributions are not re-judged here.
+    """
+
+    attributions = {_normalize(name) for name in organisations}
+    for token, as_written in _proper_nouns(text, bank).items():
+        if token in generic or token in attributions:
+            continue
+        if _contains(corpus, token):
+            continue
+        raise TailoringError(rejection_message("capability", as_written))
 
 
 def validate_provenance(
     bullets: Sequence[SourcedBullet],
     bank: FactBank,
 ) -> None:
-    """Reject unsupported ids, numbers, proper nouns, and unverified skills.
+    """Reject unsupported ids and tokens, in three tiers of increasing freedom.
 
-    Digits are read in two ways. A quantitative claim ("1 500 incidents", "85 %")
-    must appear in the facts that bullet cites: that is the anti-fabrication
-    guarantee and it is not relaxed here. A designation ("ISO 27001", "AZ-900")
-    names a standard instead of measuring anything, so it is checked against the
-    whole bank, and rejected outright when the bank never mentions it.
+    Tier 1, attribution: quantities and the names of employers, clients and
+    schools must appear in the facts the bullet cites. This is the
+    anti-fabrication and anti-misattribution guarantee and it is never relaxed.
+
+    Tier 2, capability: named products, tools, standards and certifications must
+    appear somewhere in the verified bank, because they claim what the candidate
+    can do rather than what one job produced.
+
+    Tier 3, vocabulary: category words and industry acronyms assert nothing
+    about the candidate and are allowed. The bank names products, not
+    categories, so no bank-wide rule could ever have covered these.
     """
 
-    corpus = _designation_corpus(bank)
+    corpus = _capability_corpus(bank)
+    organisations = _organisation_names(bank)
+    generic = {_normalize(term) for term in GENERIC_VOCABULARY}
     for bullet_index, bullet in enumerate(bullets):
         if not bullet.sources:
             raise TailoringError(
@@ -1509,34 +1607,17 @@ def validate_provenance(
                 raise TailoringError(f"fact id requires review before use: {source_id}")
             claims.append(claim)
         evidence = " ".join(claim.text for claim in claims)
-        # Designations are validated bank-wide, then removed so the token-level
-        # checks below see only text still owed to the cited fact.
+        # Designations are judged bank-wide, then blanked out so the tiers below
+        # read only the text still owed to the cited fact.
         text = _without_designations(
             bullet.text, _designation_spans(bullet.text, corpus)
         )
-        evidence_numbers = {_normalized_number(value) for value in _NUMBER_RE.findall(evidence)}
-        for number in _NUMBER_RE.findall(text):
-            normalized_number = _normalized_number(number)
-            if normalized_number not in evidence_numbers:
-                raise TailoringError(
-                    f"unsupported number '{number.strip()}' in sourced content"
-                )
-        normalized_evidence = _normalize(evidence)
-        normalized_bullet = _normalize(text)
-        for skill in bank.skills:
-            if not _contains(normalized_bullet, skill.name):
-                continue
-            if not skill.verified or skill.needs_review:
-                raise TailoringError(f"unverified skill cannot be claimed: {skill.id}")
-            if not _contains(normalized_evidence, skill.name):
-                raise TailoringError(
-                    f"unsupported tool or skill '{skill.name}' in sourced content"
-                )
-        for proper_noun in _proper_nouns(text, bank):
-            if proper_noun not in normalized_evidence:
-                raise TailoringError(
-                    f"unsupported proper noun '{proper_noun}' in sourced content"
-                )
+        # Tier 1 runs first and is never reachable through the others: a token
+        # that is both a quantity and a category word is still a quantity.
+        _reject_borrowed_quantities(text, evidence)
+        _reject_borrowed_attributions(text, evidence, organisations)
+        _reject_unverified_skills(text, bank)
+        _reject_unsupported_capabilities(text, bank, corpus, generic, organisations)
 
 
 _FRENCH_MONTHS = {

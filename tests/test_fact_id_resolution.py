@@ -233,14 +233,21 @@ def test_provenance_still_rejects_a_fabricated_number_on_a_normalised_citation(
 
 
 def test_provenance_still_rejects_a_fabricated_tool_through_the_full_path() -> None:
+    """A tool absent from the bank, not merely absent from the cited fact.
+
+    Splunk used to serve here, but Splunk is a verified skill: since Task 27 a
+    tool is judged against the whole bank, so only a tool the candidate has
+    never touched is still refused.
+    """
+
     payload = copy.deepcopy(_payload())
     payload["skill_order"] = ["wazuh", "python"]
     payload["experience_content"][1]["bullets"][0]["text"] = (
         "Résolution de 1 500+ incidents avec 85 % de résolution au premier "
-        "contact via Splunk."
+        "contact via CrowdStrike."
     )
 
-    with pytest.raises(TailoringError, match="Splunk"):
+    with pytest.raises(TailoringError, match="CrowdStrike"):
         _tailor(payload)
 
 
