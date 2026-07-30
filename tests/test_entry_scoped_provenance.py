@@ -50,6 +50,19 @@ def _check(text: str, bank, *, cited: tuple[str, ...], entry: str) -> None:
     )
 
 
+def _facts(bank, entry_id: str):
+    """The facts of one entry, whichever section it lives in."""
+
+    for entry in (*bank.experience, *bank.projects):
+        if entry.id == entry_id:
+            return entry.facts
+    raise AssertionError(f"no such entry: {entry_id}")
+
+
+def _in_bank_corpus(bank, token: str) -> bool:
+    return token.casefold() in whole_bank_scope(bank).normalized
+
+
 # ----- the reproduction this task exists for -----
 
 
@@ -179,6 +192,101 @@ def test_the_letter_scope_is_genuinely_looser_and_that_is_deliberate(bank) -> No
         [SourcedBullet(text=text, sources=CONCENTRIX_FACTS[:1])],
         bank,
         scope=whole_bank_scope(bank),
+    )
+
+
+# ----- capability claims are scoped to the entry too, which is a tightening -----
+
+
+#: Tools the candidate genuinely has, learned on personal projects. Task 27 let
+#: them appear anywhere, including under a support desk that never used them.
+PROJECT_TOOLS = (
+    ("ELK", "project.soc.alternance.1"),
+    ("Terraform", "project.devops.sre.alternance.2"),
+    ("Kubernetes", "project.devsecops.alternance.2"),
+)
+
+
+@pytest.mark.parametrize(("tool", "owner"), PROJECT_TOOLS)
+def test_a_projects_tool_is_refused_under_an_employer_that_never_used_it(
+    bank,
+    tool: str,
+    owner: str,
+) -> None:
+    """Truthful, and stricter than Task 27: the tool is real, the context is not."""
+
+    assert _in_bank_corpus(bank, tool)  # the candidate does have it
+
+    with pytest.raises(
+        TailoringError,
+        match=f"unsupported capability '{tool}' for entry 'Concentrix'",
+    ):
+        _check(
+            f"Supervision de l'infrastructure avec {tool}.",
+            bank,
+            cited=CONCENTRIX_FACTS[:1],
+            entry=CONCENTRIX,
+        )
+
+
+@pytest.mark.parametrize(("tool", "owner"), PROJECT_TOOLS)
+def test_the_same_tool_passes_under_the_entry_that_owns_it(
+    bank,
+    tool: str,
+    owner: str,
+) -> None:
+    _check(
+        f"Mise en oeuvre de {tool} sur le périmètre du projet.",
+        bank,
+        cited=(_facts(bank, owner)[0].id,),
+        entry=owner,
+    )
+
+
+def test_a_standard_is_refused_under_an_entry_that_does_not_carry_it(bank) -> None:
+    """ISO 27001 is in the bank, and not in a network support desk's facts."""
+
+    with pytest.raises(
+        TailoringError,
+        match="unsupported designation 'ISO 27001' for entry 'Concentrix'",
+    ):
+        _check(
+            "Cadrage des exigences ISO 27001 sur le périmètre.",
+            bank,
+            cited=CONCENTRIX_FACTS[:1],
+            entry=CONCENTRIX,
+        )
+
+
+def test_the_same_standard_passes_under_the_project_that_carries_it(bank) -> None:
+    project = "project.grc.alternance.2"
+    _check(
+        "Cadrage des exigences ISO 27001 sur le périmètre.",
+        bank,
+        cited=(_facts(bank, project)[0].id,),
+        entry=project,
+    )
+
+
+def test_a_tool_the_entry_does_use_is_still_accepted(bank) -> None:
+    """Concentrix escalated through Salesforce, so its bullets may say so."""
+
+    _check(
+        "Escalade des incidents via Salesforce selon la criticité.",
+        bank,
+        cited=("experience.concentrix.resolution_time",),
+        entry=CONCENTRIX,
+    )
+
+
+def test_category_words_stay_free_under_the_tighter_scope(bank) -> None:
+    """Tier 3 is untouched: the tightening is about products, not vocabulary."""
+
+    _check(
+        "Supervision SIEM et qualification des alertes SOC via une API REST.",
+        bank,
+        cited=CONCENTRIX_FACTS[:1],
+        entry=CONCENTRIX,
     )
 
 

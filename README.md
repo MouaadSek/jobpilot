@@ -191,28 +191,56 @@ and unverified skills before any PDF is generated, and judges every other token
 in three tiers (below). Identity, contact details, employers, dates, diplomas,
 and certification names remain renderer-owned and cannot be supplied by the model.
 
+### Scope: what a claim is judged against
+
+A bullet is judged against its **entry** — the employer it is filed under in
+EXPÉRIENCE, or the project it describes in PROJETS — and everything that entry's
+facts say is true there. The entry comes from the plan's structure, never from the
+bullet's text.
+
+This replaced judging a bullet against the facts it happened to cite, which made
+the same true sentence pass or fail on bookkeeping alone. Concentrix has five
+facts and only two carry « 1 500+ »: « Triage de 1 500+ incidents » passed when
+either of those was cited and was refused as a fabricated number when one of the
+other three was. Good bullets naturally synthesise across an employer's facts, so
+the requirement was unnatural, not the model's failing.
+
+Citations stay **required** and still have to resolve to real, reviewed facts —
+they are the audit trail. They are no longer the boundary.
+
+Content with **no entry** — the motivation letter — is judged against the whole
+verified bank, because a career summary is not owed to any single employer. The
+scope there is genuinely looser: a small figure that exists anywhere in the bank
+passes, so attribution in the letter means "the bank knows this number" rather
+than "this employer produced it". Anything absent from the bank is refused
+everywhere. (The profile domain phrase carries no citations at all; it is governed
+by its own 3-to-7-word rule and the locked-field checks.)
+
 ### The three provenance tiers
 
-A bullet mixes tokens that are wrong in very different ways, so they are not held
-to the same standard. Classification is deterministic — no model call — and
-tier 1 always runs first, so nothing below can reach it.
+Within a scope, tokens that are wrong in very different ways are not held to the
+same standard. Classification is deterministic — no model call — and tier 1 always
+runs first, so nothing below can reach it.
 
-**Tier 1 — attribution: must appear in the CITED facts.** Quantitative claims
-(`1 500`, `85 %`, `8 mois`, `3 VMs`) and the names of organisations the bank
-knows structurally — employers, schools, diplomas. This is the anti-fabrication
-and anti-misattribution guarantee: a number carried by some *other* fact is still
-rejected, and a bullet under one employer may not name another. It never weakens.
-(An organisation that exists only inside a fact's prose, such as a client
-mentioned in passing, is not recognised structurally and falls through to tier 2.)
+**Tier 1 — attribution: must appear in the scope.** Quantitative claims (`1 500`,
+`85 %`, `8 mois`, `3 VMs`) and the names of organisations the bank knows
+structurally — employers, schools, diplomas. This is the anti-fabrication and
+anti-misattribution guarantee and it never weakens: Baïfall's « 93 mesures » under
+a Concentrix bullet is refused because no Concentrix fact carries 93, Lionbridge's
+« 200 000+ » is refused under Testronic, and a bullet under one employer may not
+name another. (An organisation that exists only inside a fact's prose, such as a
+client mentioned in passing, is not recognised structurally and falls through to
+tier 2.)
 
-**Tier 2 — capability: must appear ANYWHERE in the verified bank.** Named
-products, tools, standards and certifications (`Wazuh`, `Terraform`, `ISO 27001`,
-`AZ-900`, `EBIOS RM`). These claim what the candidate can do, which the bank as a
-whole answers rather than one fact. `Splunk` passes because it is genuinely a
-verified skill; `CrowdStrike` is refused because nothing in the bank mentions it.
-The corpus is built from verified, non-`needs_review` content only, and **never
-from the offer text** — a posting is untrusted input (Task 16) and must not be
-able to license a claim.
+**Tier 2 — capability: must appear in the scope.** Named products, tools,
+standards and certifications (`Wazuh`, `Terraform`, `ISO 27001`, `AZ-900`,
+`EBIOS RM`). Claiming a tool under an employer says that employer's work involved
+it, so `Terraform` and `Kubernetes` — real skills, learned on personal projects —
+are refused in a support-desk bullet and accepted under the projects that own
+them. `CrowdStrike` is refused everywhere, because nothing in the bank mentions
+it. The corpus is verified, non-`needs_review` content only, and **never the offer
+text** — a posting is untrusted input (Task 16) and must not be able to license a
+claim.
 
 Designations are the digit-shaped corner of this tier: `ISO 27001`,
 `ISO/IEC 27002:2022`, `NIS2`, `RGPD art. 32`, `AZ-900`, `802.1X`, `CVSS v3`,
@@ -226,10 +254,15 @@ rest of the bullet, so `ISO 27001 sur 42 applications` still fails on the 42.
 **Tier 3 — generic vocabulary: free.** Category words and industry acronyms that
 assert nothing about the candidate: SIEM, SOC, EDR, PKI, MFA, API, REST, CI/CD,
 RGPD, ITIL, DevSecOps… The bank names *products* (Azure Sentinel, ELK, Wazuh,
-règles Sigma), so SIEM and SOC appear in no fact at all and no bank-wide rule
-could ever have reached them. Being on this list is never permission to claim a
-skill: SIEM says the bullet is about log supervision, `Wazuh` says the candidate
-has run one.
+règles Sigma), so SIEM and SOC appear in no fact at all and no corpus rule could
+ever have reached them. Being on this list is never permission to claim a skill:
+SIEM says the bullet is about log supervision, `Wazuh` says the candidate has run
+one.
+
+A refusal names the scope that could not support the token —
+`unsupported number '93' for entry 'Concentrix'` — so it explains itself, and so
+that a token refused under one employer and accepted under another reads as a
+scope problem rather than a vocabulary one.
 
 ### Maintaining the vocabulary
 
@@ -239,10 +272,11 @@ rather than a release. Terms are matched case- and accent-insensitively, and a
 term that is only digits is refused at load time — tier 1 must never be reachable
 through tier 3.
 
-Every refusal is logged at INFO with the token, its tier, and the bullet's cited
-fact ids. For runs nobody was watching, `jobpilot vocab-misses [--limit N]` reads
-the same information back out of the `generation_failed` events and counts the
-tokens that keep tripping generations:
+Every refusal is logged at INFO with the token, its tier, the scope it was judged
+against, and the bullet's cited fact ids. For runs nobody was watching,
+`jobpilot vocab-misses [--limit N]` reads the same information back out of the
+`generation_failed` events and counts the tokens that keep tripping generations,
+with the entries that could not support them:
 
 ```bash
 jobpilot vocab-misses

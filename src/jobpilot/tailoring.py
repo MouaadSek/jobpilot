@@ -1425,10 +1425,6 @@ def _bank_parts(bank: FactBank) -> list[str]:
     return parts
 
 
-def _capability_corpus(bank: FactBank) -> str:
-    return _normalize(" ".join(_bank_parts(bank)))
-
-
 def _organisation_names(bank: FactBank) -> tuple[str, ...]:
     """The names the bank knows structurally: employers, schools, diplomas.
 
@@ -1542,11 +1538,10 @@ def entry_scope(bank: FactBank, entry_id: str) -> ProvenanceScope:
 
 def _designation_spans(
     text: str,
-    corpus: str,
     cited: Sequence[str],
     scope: ProvenanceScope,
 ) -> list[tuple[int, int]]:
-    """Check every designation against the corpus; return what it covers.
+    """Check every designation against the scope; return what it covers.
 
     Designations are capability claims that happen to contain digits, so they
     are judged here, as a unit. The returned spans are then excluded from the
@@ -1558,7 +1553,7 @@ def _designation_spans(
     spans: list[tuple[int, int]] = []
     for match in _DESIGNATION_RE.finditer(text):
         token = match.group(0).strip()
-        if _normalize(token) not in corpus:
+        if _normalize(token) not in scope.normalized:
             raise _refuse("designation", token, cited, scope)
         log.debug(
             "accepted designation %r as vocabulary of %s (pattern %s), "
@@ -1673,25 +1668,29 @@ def _reject_unverified_skills(text: str, bank: FactBank) -> None:
 def _reject_unsupported_capabilities(
     text: str,
     bank: FactBank,
-    corpus: str,
     generic: Container[str],
     organisations: Sequence[str],
     cited: Sequence[str],
     scope: ProvenanceScope,
 ) -> None:
-    """Tiers 2 and 3. Named things must be in the bank; category words need not.
+    """Tiers 2 and 3. Named things must be in the scope; category words need not.
 
     Anything left capitalised in the bullet is either a thing the candidate is
-    claiming to have worked with, which the bank must confirm, or a word that
+    claiming to have worked with, which the scope must confirm, or a word that
     names the industry rather than the candidate, which confirms nothing and is
     allowed. Tokens already judged as attributions are not re-judged here.
+
+    The scope is the entry, not the bank: naming a tool under an employer says
+    that employer's work involved it, so Terraform learned on a personal project
+    does not belong in a support-desk bullet. Wider than the cited fact, narrower
+    than the bank.
     """
 
     attributions = {_normalize(name) for name in organisations}
     for token, as_written in _proper_nouns(text, bank).items():
         if token in generic or token in attributions:
             continue
-        if _contains(corpus, token):
+        if _contains(scope.normalized, token):
             continue
         raise _refuse("capability", as_written, cited, scope)
 
@@ -1726,7 +1725,6 @@ def validate_provenance(
     this class.
     """
 
-    corpus = _capability_corpus(bank)
     organisations = _organisation_names(bank)
     generic = {_normalize(term) for term in load_generic_vocabulary(vocabulary_path)}
     for bullet_index, bullet in enumerate(bullets):
@@ -1748,7 +1746,7 @@ def validate_provenance(
         # only the text still owed to the scope.
         cited = bullet.sources
         text = _without_designations(
-            bullet.text, _designation_spans(bullet.text, corpus, cited, scope)
+            bullet.text, _designation_spans(bullet.text, cited, scope)
         )
         # Tier 1 runs first and is never reachable through the others: a token
         # that is both a quantity and a category word is still a quantity.
@@ -1756,7 +1754,7 @@ def validate_provenance(
         _reject_borrowed_attributions(text, scope, organisations, cited)
         _reject_unverified_skills(text, bank)
         _reject_unsupported_capabilities(
-            text, bank, corpus, generic, organisations, cited, scope
+            text, bank, generic, organisations, cited, scope
         )
 
 
