@@ -24,7 +24,7 @@ def _settings() -> Settings:
         embed_model="x", queue_threshold=0.6, ft_client_id=None,
         ft_client_secret=None, ft_token_url="", ft_search_url="", ft_scope="",
         ft_published_since=31,
-        lba_api_key=None, lba_search_url="", lba_caller_email=None,
+        lba_api_key=None,
         gmail_address=None, gmail_app_password=None, email_alert_since_days=7,
         wttj_app_id="APP", wttj_api_key=None, wttj_index="idx",
     )

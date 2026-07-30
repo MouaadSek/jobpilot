@@ -60,10 +60,8 @@ class Settings:
     ft_scope: str
     ft_published_since: int  # days; FT allows 1, 3, 7, 14, 31
 
-    # La Bonne Alternance (current API needs a Bearer key; caller email is legacy)
+    # La Bonne Alternance through the API Apprentissage (Bearer key)
     lba_api_key: str | None
-    lba_search_url: str
-    lba_caller_email: str | None
 
     # Gmail (IMAP) for LinkedIn/Indeed job-alert ingestion
     gmail_address: str | None
@@ -111,6 +109,9 @@ class Settings:
 
     # WTTJ request ceiling per search query.
     wttj_max_pages: int = 5
+    #: The search endpoint has no pagination, so this caps how many search calls
+    #: one ingest run may issue (one per department group).
+    lba_max_pages: int = 5
     # WTTJ inline apply remains a fill/upload-only dry run unless explicitly enabled.
     wttj_auto_submit_enabled: bool = False
 
@@ -187,11 +188,6 @@ def get_settings() -> Settings:
         ft_scope=os.getenv("FRANCE_TRAVAIL_SCOPE", "api_offresdemploiv2 o2dsoffre"),
         ft_published_since=int(os.getenv("FRANCE_TRAVAIL_PUBLISHED_SINCE", "31")),
         lba_api_key=os.getenv("LBA_API_KEY") or None,
-        lba_search_url=os.getenv(
-            "LBA_SEARCH_URL",
-            "https://api.apprentissage.beta.gouv.fr/api/job/v1/search",
-        ),
-        lba_caller_email=os.getenv("LBA_CALLER_EMAIL") or None,
         gmail_address=os.getenv("GMAIL_ADDRESS") or None,
         gmail_app_password=os.getenv("GMAIL_APP_PASSWORD") or None,
         email_alert_since_days=int(os.getenv("EMAIL_ALERT_SINCE_DAYS", "7")),
@@ -224,5 +220,6 @@ def get_settings() -> Settings:
             )
         ),
         wttj_max_pages=int(os.getenv("WTTJ_MAX_PAGES", "5")),
+        lba_max_pages=int(os.getenv("LBA_MAX_PAGES", "5")),
         wttj_auto_submit_enabled=_env_bool("WTTJ_AUTO_SUBMIT_ENABLED"),
     )

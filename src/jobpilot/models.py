@@ -34,6 +34,9 @@ class CompanyRecord:
     city: str | None = None
     country: str = "FR"
     notes: str | None = None
+    #: Which ingestion source sourced this company, when it was sourced rather
+    #: than created as a side effect of an offer's employer name.
+    source: str | None = None
 
 
 @dataclass(slots=True)

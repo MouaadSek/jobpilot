@@ -128,8 +128,6 @@ def _settings(tmp_path: Path) -> Settings:
         ft_scope="",
         ft_published_since=31,
         lba_api_key=None,
-        lba_search_url="",
-        lba_caller_email=None,
         gmail_address=None,
         gmail_app_password=None,
         email_alert_since_days=7,

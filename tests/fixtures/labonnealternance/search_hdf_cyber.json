@@ -1,0 +1,341 @@
+{
+ "jobs": [
+  {
+   "identifier": {
+    "id": "6a595c64dea3d72aa2349621",
+    "partner_label": "France Travail",
+    "partner_job_id": "5023500"
+   },
+   "workplace": {
+    "siret": null,
+    "brand": null,
+    "legal_name": null,
+    "website": null,
+    "name": "Défi RH",
+    "description": "Défi RH est un cabinet de recrutement et de conseil spécialisé dans l'emploi des travailleurs handicapés diplômés.",
+    "size": null,
+    "location": {
+     "address": "62680 Méricourt",
+     "geopoint": {
+      "coordinates": [
+       2.86982,
+       50.405452
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": null,
+     "naf": null
+    }
+   },
+   "apply": {
+    "url": "https://app.beetween.com/WeaselWeb/p/#/apply/job/hk29f5t74h8/alternance-ingenieur-methode-h-f",
+    "phone": null,
+    "recipient_id": null
+   },
+   "contract": {
+    "start": null,
+    "duration": 12,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Alternance Ingénieur Méthode (H/F)",
+    "rome_codes": [
+     "M1802"
+    ],
+    "description": "RESPONSABILITÉS : \n\nDéfi RH, cabinet de recrutement dédié à l'emploi des travailleurs handicapés, recherche pour son client spécialisé dans les services énergétiques et la transition bas carbone, un(e) :\nAlternance Ingénieur d'étude (H/F)\nA ce titre vos missions sont les suivantes :\n·         Assister l'équipe dans les activités commerciales et le suivi des dossiers.\n·         Participer à la préparation des réponses aux appels d'offres.\n·         Contribuer à l'analyse technique et au montage des offres.\n·         Collaborer avec les partenaires et prestataires dans le suivi des consultations.\n·         Accompagner les projets d'optimisation de la performance énergétique.\nParticiper aux visites de sites, réunions techniques et présentations clients.\n\nPROFIL RECHERCHÉ : \n\nNotre cabinet de recrutement est dédié à l'emploi des travailleurs handicapés.\nTitulaire d'une formation supérieure dans le domaine de l'énergie (Bac+4/5), vous disposez de bonnes connaissances techniques et d'une appétence pour les enjeux liés à la performance énergétique. Vous maîtrisez les outils bureautiques, notamment Excel et Google Sheets. Une première expérience dans le secteur de l'énergie ou des énergies renouvelables constitue un atout.\nRigoureux(se) et curieux(se), vous disposez d'une bonne capacité d'analyse et d'un sens du détail développé. Vous êtes reconnu(e) pour votre esprit d'équipe, votre autonomie et votre capacité à vous adapter à différents sujets.\nCe poste en Alternance est à pourvoir à Méricourt (62).\n \nPour postuler, merci de nous envoyer CV, lettre de motivation et copie de votre Reconnaissance en Qualité de Travailleur Handicapé (ou autre document attestant de votre situation de handicap) sous la Réf. 5012 sur notre site internet :  www.defirh.fr",
+    "target_diploma": null,
+    "desired_skills": [],
+    "to_be_acquired_skills": [],
+    "access_conditions": [],
+    "publication": {
+     "creation": "2026-07-16T04:31:29.000Z",
+     "expiration": "2026-09-16T04:31:29.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": false
+  },
+  {
+   "identifier": {
+    "id": "6a459669dd20b527ab65aa73",
+    "partner_label": "France Travail",
+    "partner_job_id": "4443425"
+   },
+   "workplace": {
+    "siret": null,
+    "brand": null,
+    "legal_name": null,
+    "website": null,
+    "name": null,
+    "description": "Dans un monde en évolution permanente, VINCI Energies accélère la transition environnementale en concrétisant deux mutations majeures, numérique et énergétique. Ses équipes déploient des technologies et des solutions multitechniques sur mesure, de la conception à la réalisation, l'exploitation et la maintenance. Ancrées dans leurs territoires, agiles et innovantes, ses plus 2 100 entreprises sont au cœur des choix énergétiques de leurs clients, de leurs infrastructures et de leurs process pou...",
+    "size": null,
+    "location": {
+     "address": "59000 Lille",
+     "geopoint": {
+      "coordinates": [
+       3.045449,
+       50.630993
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": null,
+     "naf": null
+    }
+   },
+   "apply": {
+    "url": "https://emploi.batiactu.com/offre-emploi/vinci-energies-france-tertiaire-nord-est-alternant-technicien-automation-et-informatique-f--lomme-924960.php?utm_source=candidat.francetravail.fr&utm_medium=referral&utm_path=/candidat/rechercheoffres/detail/idBA/924960",
+    "phone": null,
+    "recipient_id": null
+   },
+   "contract": {
+    "start": null,
+    "duration": 24,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Alternant Technicien Automation et Informatique F/H",
+    "rome_codes": [
+     "M1810"
+    ],
+    "description": "VINCI Energies\n\nConnexion, performance, efficience énergétique, datas : dans un monde en évolution permanente, VINCI Energies accélère le déploiement des nouvelles technologies pour concrétiser deux mutations majeures : la transformation numérique et la transition énergétique.\n\nAncrées dans les territoires, agiles et innovantes, les entreprises de VINCI Energies rendent les infrastructures d'énergie, de transport et de communication, les usines, les bâtiments et les systèmes d'information chaque jour plus fiables, plus sûrs, plus durables et plus efficients.\n\nL'une de ses entreprises, SBE, basée à EuraTechnologies Lomme, accompagne ses clients tertiaires et industriels en France et à l'International, dans la conception, le développement et la maintenance de solutions digitales et d'automatismes à forte valeur ajoutée.\n\nDans le cadre du renforcement de son équipe dédiée à la digitalisation des procédés, SBE s'engage sur l'accompagnement et la montée en compétence d'un\n\nAlternant Technicien Automation et Informatique (F/H)\n\nEn tant qu'alternant, vous évoluerez sur des projets IoT innovants au cœur des enjeux de performance énergétique et de transformation numérique.\n\nVos missions\n\nEncadré(e) par un Responsable d'Affaires et des ingénieurs expérimentés, vous interviendrez progressivement sur les missions suivantes :\n\n1. Développement &amp; intégration\n\nParticiper à l'évolution de la plateforme WAVE\n\nDévelopper et intégrer de nouvelles fonctionnalités\n\nConnecter des équipements (capteurs, actionneurs, passerelles IoT)\n\nContribuer aux tests, validations et mises en service\n\n\n\n2. Projets IoT &amp; performance\n\nParticiper à des projets liés à :\n\nla gestion énergétique\n\nla gestion technique des bâtiments\n\nles systèmes connectés et automatisés\n\nContribuer à l'analyse et à la valorisation des données\n\n\n\n3. Projets et environnement international\n\nInteragir ponctuellement avec des clients en France et à l'international\n\nParticiper aux démonstrations, tests et support technique\n\n\n\n4. Relation client &amp; support technique\n\nParticiper à la compréhension des besoins clients\n\nContribuer à la conception de solutions techniques\n\nAider à la rédaction de livrables (spécifications, documents techniques)\n\nAssister aux échanges techniques et ateliers\n\n\n\nFormation en cours Bac +3 à Bac +5 (Licence, BUT, école d'ingénieur) en Electrotechnique, Génie Electrique, Automatisme, Informatique industrielle ou équivalent\n\nAppétence pour la programmation et les systèmes connectés\n\nIntérêt pour les environnements techniques et projets complexes\n\nEsprit d'équipe, curiosité et bon relationnel\n\nAnglais technique apprécié\nMission :\nVINCI Energies \nConnexion, performance, efficience énergétique, datas : dans un monde en évolution permanente, VINCI Energies accélère le déploiement des nouvelles technologies pour concrétiser deux mutations majeures : la transformation numérique et la transition énergétique.\nAncrées dans les territoires, agiles et innovantes, les entreprises de VINCI Energies rendent les infrastructures d'énergie, de transport et de communication, les usines, les bâtiments et les systèmes d'information chaque jour plus fiables, plus sûrs, plus durables et plus efficients.\nL'une de ses entreprises, SBE, basée à EuraTechnologies Lomme, accompagne ses clients tertiaires et industriels en France et à l'International, dans la conception, le développement et la maintenance de solutions digitales et d'automatismes à forte valeur ajoutée.\nDans le cadre du renforcement de son équipe dédiée à la digitalisation des procédés, SBE s'engage sur l'accompagnement et la montée en compétence d'un\nAlternant Technicien Automation et Informatique (F/H)\nEn tant qu'alternant, vous évoluerez sur des projets IoT innovants au cœur des enjeux de performance énergétique et de transformation numérique.\nVos missions\nEncadré(e) par un Responsable d'Affaires et des ingénieurs expérimentés, vous interviendrez progressivement sur les missions suivantes :\n1. Développement &amp; intégration\nParticiper à l'évolution de la plateforme WAVE\nDévelopper et intégrer de nouvelles fonctionnalités\nConnecter des équipements (capteurs, actionneurs, passerelles IoT)\nContribuer aux tests, validations et mises en service\n \n2. Projets IoT &amp; performance\nParticiper à des projets liés à :\nla gestion énergétique\nla gestion technique des bâtiments\nles systèmes connectés et automatisés\nContribuer à l'analyse et à la valorisation des données\n \n3. Projets et environnement international\nInteragir ponctuellement avec des clients en France et à l'international\nP...",
+    "target_diploma": null,
+    "desired_skills": [],
+    "to_be_acquired_skills": [],
+    "access_conditions": [],
+    "publication": {
+     "creation": "2026-07-01T12:11:57.000Z",
+     "expiration": "2026-09-01T12:11:57.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": false
+  },
+  {
+   "identifier": {
+    "id": "6a595c64dea3d72aa2349621",
+    "partner_label": "France Travail",
+    "partner_job_id": "5023500"
+   },
+   "workplace": {
+    "siret": null,
+    "brand": null,
+    "legal_name": null,
+    "website": null,
+    "name": "Défi RH",
+    "description": "Défi RH est un cabinet de recrutement et de conseil spécialisé dans l'emploi des travailleurs handicapés diplômés.",
+    "size": null,
+    "location": {
+     "address": "62680 Méricourt",
+     "geopoint": {
+      "coordinates": [
+       2.86982,
+       50.405452
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": null,
+     "naf": null
+    }
+   },
+   "apply": {
+    "url": "https://app.beetween.com/WeaselWeb/p/#/apply/job/hk29f5t74h8/alternance-ingenieur-methode-h-f",
+    "phone": null,
+    "recipient_id": null
+   },
+   "contract": {
+    "start": null,
+    "duration": 12,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Alternance Ingénieur Méthode (H/F)",
+    "rome_codes": [
+     "M1802"
+    ],
+    "description": "RESPONSABILITÉS : \n\nDéfi RH, cabinet de recrutement dédié à l'emploi des travailleurs handicapés, recherche pour son client spécialisé dans les services énergétiques et la transition bas carbone, un(e) :\nAlternance Ingénieur d'étude (H/F)\nA ce titre vos missions sont les suivantes :\n·         Assister l'équipe dans les activités commerciales et le suivi des dossiers.\n·         Participer à la préparation des réponses aux appels d'offres.\n·         Contribuer à l'analyse technique et au montage des offres.\n·         Collaborer avec les partenaires et prestataires dans le suivi des consultations.\n·         Accompagner les projets d'optimisation de la performance énergétique.\nParticiper aux visites de sites, réunions techniques et présentations clients.\n\nPROFIL RECHERCHÉ : \n\nNotre cabinet de recrutement est dédié à l'emploi des travailleurs handicapés.\nTitulaire d'une formation supérieure dans le domaine de l'énergie (Bac+4/5), vous disposez de bonnes connaissances techniques et d'une appétence pour les enjeux liés à la performance énergétique. Vous maîtrisez les outils bureautiques, notamment Excel et Google Sheets. Une première expérience dans le secteur de l'énergie ou des énergies renouvelables constitue un atout.\nRigoureux(se) et curieux(se), vous disposez d'une bonne capacité d'analyse et d'un sens du détail développé. Vous êtes reconnu(e) pour votre esprit d'équipe, votre autonomie et votre capacité à vous adapter à différents sujets.\nCe poste en Alternance est à pourvoir à Méricourt (62).\n \nPour postuler, merci de nous envoyer CV, lettre de motivation et copie de votre Reconnaissance en Qualité de Travailleur Handicapé (ou autre document attestant de votre situation de handicap) sous la Réf. 5012 sur notre site internet :  www.defirh.fr",
+    "target_diploma": null,
+    "desired_skills": [],
+    "to_be_acquired_skills": [],
+    "access_conditions": [],
+    "publication": {
+     "creation": "2026-07-16T04:31:29.000Z",
+     "expiration": "2026-09-16T04:31:29.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": false
+  }
+ ],
+ "recruiters": [
+  {
+   "identifier": {
+    "id": "6a003c2d9a6be614e48a2831"
+   },
+   "workplace": {
+    "siret": "48772276100060",
+    "brand": "ALTERA CONSEIL",
+    "legal_name": "ALTERA CONSEIL",
+    "website": null,
+    "name": "ALTERA CONSEIL",
+    "description": null,
+    "size": "20-49",
+    "location": {
+     "address": "28 rue Parmentier 59650 VILLENEUVE-D'ASCQ",
+     "geopoint": {
+      "coordinates": [
+       3.135121999999999,
+       50.64250799998989
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6202A",
+      "label": "Conseil en systèmes et logiciels informatiques"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/48772276100060/altera-conseil",
+    "phone": "0320392925",
+    "recipient_id": null
+   }
+  },
+  {
+   "identifier": {
+    "id": "6a003c3f9a6be614e48b28bd"
+   },
+   "workplace": {
+    "siret": "79362754800035",
+    "brand": "IDEINE",
+    "legal_name": "IDEINE",
+    "website": null,
+    "name": "IDEINE",
+    "description": null,
+    "size": "6-9",
+    "location": {
+     "address": "75B boulevard d Armentieres 59100 ROUBAIX",
+     "geopoint": {
+      "coordinates": [
+       3.1611929999999995,
+       50.70011599999001
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6201Z",
+      "label": "Programmation informatique"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/79362754800035/ideine",
+    "phone": "0621400837",
+    "recipient_id": null
+   }
+  },
+  {
+   "identifier": {
+    "id": "6a003bf49a6be614e48794e1"
+   },
+   "workplace": {
+    "siret": "39402693400700",
+    "brand": "EXPERIS",
+    "legal_name": "EXPERIS",
+    "website": null,
+    "name": "EXPERIS",
+    "description": null,
+    "size": "250-499",
+    "location": {
+     "address": "2 rue de l Epine 59650 VILLENEUVE-D'ASCQ",
+     "geopoint": {
+      "coordinates": [
+       3.1385139924770735,
+       50.60180503246621
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6202A",
+      "label": "Conseil en systèmes et logiciels informatiques"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/39402693400700/experis",
+    "phone": null,
+    "recipient_id": null
+   }
+  },
+  {
+   "identifier": {
+    "id": "6a003c7c9a6be614e48e4c8f"
+   },
+   "workplace": {
+    "siret": "88975313300020",
+    "brand": "DAKA-TEAM",
+    "legal_name": "DAKA-TEAM",
+    "website": null,
+    "name": "DAKA-TEAM",
+    "description": null,
+    "size": "20-49",
+    "location": {
+     "address": "192 rue du General De Gaulle 59110 LA MADELEINE",
+     "geopoint": {
+      "coordinates": [
+       3.0739209999999995,
+       50.656481999989914
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6202A",
+      "label": "Conseil en systèmes et logiciels informatiques"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/88975313300020/daka-team",
+    "phone": null,
+    "recipient_id": null
+   }
+  }
+ ],
+ "warnings": []
+}

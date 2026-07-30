@@ -1,18 +1,36 @@
-"""La Bonne Alternance API client (current API: api.apprentissage.beta.gouv.fr).
+"""La Bonne Alternance ingestion through the API Apprentissage.
 
-The legacy public /api/v1/jobs endpoint (caller-email auth) was decommissioned
-(HTTP 404). The current job search API requires a Bearer API key (register free
-at https://api.apprentissage.beta.gouv.fr/inscription) and returns, per set of
-ROME codes around a location:
-  - `jobs`:       alternance offers (partners + LBA) -> offers table
-  - `recruiters`: companies statistically likely to hire -> companies table
+Built against the live OpenAPI document at
+``https://api.apprentissage.beta.gouv.fr/api/documentation/json`` (spec version
+1c12a0c, read 2026-07-30), not against the retired endpoints this module used to
+call:
 
-Response fields are defensively mapped and covered by fixture-based tests.
+- base URL ``https://api.apprentissage.beta.gouv.fr/api`` (the spec's only server)
+- auth ``Authorization: Bearer <LBA_API_KEY>`` (security scheme ``api-key``,
+  ``http`` / ``bearer``)
+- ``GET /job/v1/search`` -> ``{"jobs": [...], "recruiters": [...], "warnings": [...]}``
+- documented rate limit: 60 calls per minute per consumer, reported through
+  ``x-ratelimit-*`` headers with ``retry-after`` on 429
+
+Two things the endpoint does NOT have, which shape the code below:
+
+- **No pagination.** There is no page or limit parameter; one call returns the
+  whole result set for its filters. ``LBA_MAX_PAGES`` therefore caps the number
+  of *search calls* a run may issue, which is the volume knob that exists here.
+- **No contract-type filter and no email.** The whole API is apprenticeship, so
+  every offer is an alternance and stage cannot be requested. ``apply`` exposes a
+  URL and sometimes a phone number, never an address, so ``contact_email`` stays
+  None.
+
+``recruiters`` is the second capability: companies the service considers likely
+to hire an alternant. They are companies, not offers, and are yielded through
+``fetch_companies()`` so they never reach the review queue.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import re
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 import httpx
@@ -25,171 +43,332 @@ from jobpilot.sources.base import Source
 
 log = get_logger("labonnealternance")
 
-# ROME codes closest to IT / cybersecurity (LBA filters by ROME, not free text).
-# M1802 expertise/support SI (incl. security), M1810 exploitation SI,
-# M1805 études/dev, M1806 conseil/MOA SI.
-DEFAULT_ROMES = ["M1802", "M1810", "M1805", "M1806"]
+BASE_URL = "https://api.apprentissage.beta.gouv.fr/api"
+SEARCH_PATH = "/job/v1/search"
 
-# (label, latitude, longitude, radius_km) — search points near target cities.
-DEFAULT_GEOS: list[tuple[str, float, float, int]] = [
-    ("Lille", 50.6292, 3.0573, 60),
-    ("Paris", 48.8566, 2.3522, 40),
-]
+# ---- Tunable search block ---------------------------------------------------
+# Changing what we look for should not require touching HTTP, mapping or
+# persistence code. `romes` takes a comma-separated list; `departements` an array
+# of department numbers. Both are optional, and omitting them searches the whole
+# of France, which is far more than this pipeline wants.
+#
+# ROME codes (France Travail's job reference) covering IT work. There is no
+# cyber-only ROME, so this is the systems-information family; relevance is then
+# decided by scoring, not by the query.
+ROME_CODES: tuple[str, ...] = (
+    "M1802",  # Expertise et support en systèmes d'information (incl. sécurité)
+    "M1810",  # Production et exploitation de systèmes d'information
+    "M1801",  # Administration de systèmes d'information
+    "M1805",  # Études et développement informatique
+    "M1806",  # Conseil et maîtrise d'ouvrage en systèmes d'information
+)
+#: Hauts-de-France and Île-de-France, the two target regions, by department.
+#: One search call per group keeps each query readable in the logs.
+DEPARTEMENT_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("hauts-de-france", ("02", "59", "60", "62", "80")),
+    ("ile-de-france", ("75", "77", "78", "91", "92", "93", "94", "95")),
+)
+#: Remote work has no filter parameter; it is read back off each offer instead.
+_REMOTE_MAP = {
+    "onsite": "onsite",
+    "hybrid": "hybrid",
+    "remote": "full_remote",
+}
+#: Every contract label this endpoint publishes is a form of work-study.
+_ALTERNANCE_CONTRACTS = ("apprentissage", "professionnalisation")
+
+_POSTCODE_CITY_RE = re.compile(r"\b\d{5}\s+(?P<city>[^,]+)$")
+
+
+class LaBonneAlternanceError(RuntimeError):
+    """API Apprentissage refused or failed a request."""
+
+
+class LaBonneAlternanceAuthError(LaBonneAlternanceError):
+    """The key was rejected (401/403). Retrying will not help."""
+
+
+class LaBonneAlternanceRateLimited(LaBonneAlternanceError):
+    """The documented 60 calls/minute quota was exhausted and backoff gave up."""
 
 
 class LaBonneAlternanceSource(Source):
+    """Offers and likely-to-hire companies from the API Apprentissage."""
+
     name = "labonnealternance"
 
     def __init__(
         self,
         settings: Settings,
         *,
-        romes: list[str] | None = None,
-        geos: list[tuple[str, float, float, int]] | None = None,
-        search_url: str | None = None,
         api_key: str | None = None,
+        romes: Sequence[str] | None = None,
+        departement_groups: Sequence[tuple[str, Sequence[str]]] | None = None,
         client: httpx.Client | None = None,
         rate_limiter: RateLimiter | None = None,
+        max_pages: int | None = None,
     ) -> None:
         key = api_key or settings.lba_api_key
         if not key:
             raise MissingCredentialError(
-                "La Bonne Alternance requires LBA_API_KEY in .env. The legacy "
-                "caller-email API is retired; register for a key at "
-                "https://api.apprentissage.beta.gouv.fr/inscription."
+                "La Bonne Alternance requires LBA_API_KEY in .env. Register at "
+                "https://api.apprentissage.beta.gouv.fr and generate a token from "
+                "your profile page."
             )
-        self._key = key
-        self._search_url = search_url or settings.lba_search_url
-        self._romes = romes if romes is not None else DEFAULT_ROMES
-        self._geos = geos if geos is not None else DEFAULT_GEOS
-        self._client = client or httpx.Client(
-            timeout=30.0,
-            headers={"User-Agent": "JobPilot/0.1 (personal job pipeline)",
-                     "Accept": "application/json"},
+        self._settings = settings
+        self._api_key = key
+        self._romes = tuple(romes) if romes is not None else ROME_CODES
+        self._groups = (
+            tuple((label, tuple(codes)) for label, codes in departement_groups)
+            if departement_groups is not None
+            else DEPARTEMENT_GROUPS
         )
+        self._max_calls = settings.lba_max_pages if max_pages is None else max_pages
+        if self._max_calls < 1:
+            raise ValueError("LBA_MAX_PAGES must be at least 1")
+        self._client = client or httpx.Client(
+            base_url=BASE_URL,
+            timeout=45.0,
+            headers={
+                "User-Agent": "JobPilot/0.1 (personal job pipeline)",
+                "Authorization": f"Bearer {self._api_key}",
+                "Accept": "application/json",
+            },
+        )
+        # The documented quota is 60/minute; one call per second stays well under
+        # it even when every group runs back to back.
         self._rl = rate_limiter or RateLimiter(min_interval_s=1.0)
-        self._last_payloads: list[dict[str, Any]] = []
+        #: Filled by whichever of fetch_offers/fetch_companies runs first, so a
+        #: full ingest costs one set of calls rather than two.
+        self._pages: list[dict[str, Any]] | None = None
 
-    # ----- HTTP -----
+    # ----- fetching -----
 
-    def _get_jobs(self, lat: float, lon: float, radius: int) -> dict[str, Any]:
+    def _search_all(self) -> list[dict[str, Any]]:
+        if self._pages is not None:
+            return self._pages
+        pages: list[dict[str, Any]] = []
+        for label, departements in self._groups[: self._max_calls]:
+            body = self._search(departements)
+            for warning in body.get("warnings") or []:
+                log.warning(
+                    "labonnealternance %s: %s", label, warning.get("message", warning)
+                )
+            log.info(
+                "labonnealternance %s: %d offer(s), %d recruiter(s)",
+                label,
+                len(body.get("jobs") or []),
+                len(body.get("recruiters") or []),
+            )
+            pages.append(body)
+        if len(self._groups) > self._max_calls:
+            log.info(
+                "labonnealternance: stopped after %d search call(s) (LBA_MAX_PAGES)",
+                self._max_calls,
+            )
+        self._pages = pages
+        return pages
+
+    def _search(self, departements: Sequence[str]) -> dict[str, Any]:
         params = {
-            "latitude": f"{lat}",
-            "longitude": f"{lon}",
-            "radius": str(radius),
             "romes": ",".join(self._romes),
+            "departements": list(departements),
         }
 
         def _do() -> httpx.Response:
-            resp = self._client.get(
-                self._search_url, params=params,
-                headers={"Authorization": f"Bearer {self._key}"},
-            )
+            resp = self._client.get(SEARCH_PATH, params=params)
             resp.raise_for_status()
             return resp
 
         self._rl.wait("api.apprentissage.beta.gouv.fr")
-        return with_backoff(_do).json()
+        try:
+            response = with_backoff(_do)
+        except httpx.HTTPStatusError as exc:
+            raise self._error(exc) from None
+        except httpx.HTTPError as exc:
+            detail = self._settings.redact(str(exc))
+            raise LaBonneAlternanceError(
+                f"API Apprentissage request failed: {detail}"
+            ) from None
+        remaining = response.headers.get("x-ratelimit-remaining")
+        if remaining is not None:
+            log.debug("labonnealternance quota remaining: %s", remaining)
+        return response.json()
 
-    def _fetch_all(self) -> list[dict[str, Any]]:
-        payloads = []
-        for label, lat, lon, radius in self._geos:
-            log.info("LBA fetch %s (r=%dkm)", label, radius)
-            payloads.append(self._get_jobs(lat, lon, radius))
-        self._last_payloads = payloads
-        return payloads
+    def _error(self, exc: httpx.HTTPStatusError) -> LaBonneAlternanceError:
+        """Turn an HTTP failure into a typed error, with the key removed."""
 
-    # ----- Source interface -----
+        status = exc.response.status_code
+        detail = self._settings.redact((exc.response.text or str(exc)).strip()[:400])
+        if status in (401, 403):
+            return LaBonneAlternanceAuthError(
+                f"API Apprentissage rejected LBA_API_KEY (HTTP {status}): {detail}"
+            )
+        if status == 429:
+            retry_after = exc.response.headers.get("retry-after", "?")
+            return LaBonneAlternanceRateLimited(
+                "API Apprentissage rate limit reached (HTTP 429); retry-after="
+                f"{retry_after}s: {detail}"
+            )
+        return LaBonneAlternanceError(
+            f"API Apprentissage request failed (HTTP {status}): {detail}"
+        )
 
     def fetch_offers(self) -> Iterator[OfferRecord]:
         seen: set[str] = set()
-        for payload in self._fetch_all():
-            for raw in payload.get("jobs", []) or []:
-                rec = map_offer(raw)
-                if rec is None:
+        for body in self._search_all():
+            for job in body.get("jobs") or []:
+                record = map_offer(job)
+                if record is None:
                     continue
-                key = rec.external_id or rec.hash
+                # Groups do not overlap, but a partner can publish the same offer
+                # into more than one of them.
+                key = record.external_id or record.url
                 if key in seen:
                     continue
                 seen.add(key)
-                yield rec
+                yield record
 
     def fetch_companies(self) -> Iterator[CompanyRecord]:
-        payloads = self._last_payloads or self._fetch_all()
         seen: set[str] = set()
-        for payload in payloads:
-            for raw in payload.get("recruiters", []) or []:
-                rec = map_company(raw)
-                if rec is None:
+        for body in self._search_all():
+            for recruiter in body.get("recruiters") or []:
+                record = map_company(recruiter)
+                if record is None:
                     continue
-                key = (rec.siren or rec.name).lower()
+                key = record.siren or record.name.lower()
                 if key in seen:
                     continue
                 seen.add(key)
-                yield rec
+                yield record
 
 
-# ----- mapping (pure, unit-tested) -----
-
-def _dig(node: Any, *path: str) -> Any:
-    cur: Any = node
-    for p in path:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(p)
-    return cur
+# ----- mapping (pure, fixture-tested) -----
 
 
-def _is_alternance(contract_types: Any) -> bool:
-    if not isinstance(contract_types, list):
-        return False
-    blob = " ".join(str(t).lower() for t in contract_types)
-    return any(k in blob for k in ("apprentiss", "professionnalis", "alternance"))
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
-def map_offer(node: dict[str, Any]) -> OfferRecord | None:
-    title = _dig(node, "offer", "title")
-    url = _dig(node, "apply", "url")
+def _first(*values: Any) -> str | None:
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return None
+
+
+def _city(address: Any) -> str | None:
+    """Pull the commune out of a French postal address.
+
+    Addresses arrive either as "62680 Méricourt" or as a full street line ending
+    in "92300 LEVALLOIS-PERRET", so the postcode is the reliable anchor.
+    """
+
+    text = _text(address)
+    if not text:
+        return None
+    match = _POSTCODE_CITY_RE.search(text)
+    city = match.group("city").strip() if match else text
+    # Some partners upper-case the whole address; title-case only those.
+    return city.title() if city.isupper() else city
+
+
+def _workplace(entry: dict[str, Any]) -> dict[str, Any]:
+    workplace = entry.get("workplace")
+    return workplace if isinstance(workplace, dict) else {}
+
+
+def _company_name(workplace: dict[str, Any]) -> str | None:
+    return _first(
+        workplace.get("name"), workplace.get("brand"), workplace.get("legal_name")
+    )
+
+
+def _contract_type(contract: dict[str, Any]) -> str:
+    kinds = " ".join(str(value).lower() for value in contract.get("type") or [])
+    if any(signal in kinds for signal in _ALTERNANCE_CONTRACTS):
+        return "alternance"
+    # This endpoint only publishes work-study offers, so an unrecognised label is
+    # still an alternance; "unknown" would drop it out of contract-aware scoring.
+    return "alternance"
+
+
+def map_offer(job: dict[str, Any]) -> OfferRecord | None:
+    """Map one `jobs[]` entry. Returns None when it cannot be applied to."""
+
+    if not isinstance(job, dict):
+        return None
+    offer = job.get("offer") if isinstance(job.get("offer"), dict) else {}
+    apply_block = job.get("apply") if isinstance(job.get("apply"), dict) else {}
+    identifier = job.get("identifier") if isinstance(job.get("identifier"), dict) else {}
+    contract = job.get("contract") if isinstance(job.get("contract"), dict) else {}
+    workplace = _workplace(job)
+
+    title = _text(offer.get("title"))
+    url = _text(apply_block.get("url"))
     if not title or not url:
         return None
 
-    skills = _dig(node, "offer", "desired_skills") or []
-    tags = [s for s in skills if isinstance(s, str)]
-    if not tags:  # sometimes rome codes are the only structured tags
-        tags = [c for c in (_dig(node, "offer", "rome_codes") or [])
-                if isinstance(c, str)]
-
-    rec = OfferRecord(
-        external_id=_first(_dig(node, "identifier", "id"),
-                           _dig(node, "identifier", "partner_job_id")),
-        url=str(url),
-        title=str(title),
-        company_name=_first(_dig(node, "workplace", "name")),
-        description=_dig(node, "offer", "description"),
-        contract_type="alternance"
-        if _is_alternance(_dig(node, "contract", "type")) else "unknown",
-        city=_first(_dig(node, "workplace", "location", "address")),
-        posted_at=_first(_dig(node, "offer", "publication", "creation")),
-        stack_tags=tags,
+    publication = (
+        offer.get("publication") if isinstance(offer.get("publication"), dict) else {}
     )
-    return rec.normalized()
+    location = workplace.get("location") if isinstance(workplace.get("location"), dict) else {}
+    duration = contract.get("duration")
+    return OfferRecord(
+        external_id=_first(identifier.get("id"), identifier.get("partner_job_id")),
+        url=url,
+        title=title,
+        company_name=_company_name(workplace),
+        description=_text(offer.get("description")),
+        contract_type=_contract_type(contract),
+        duration_months=duration if isinstance(duration, int) else None,
+        city=_city(location.get("address")),
+        remote_policy=_REMOTE_MAP.get(
+            str(contract.get("remote") or "").lower(), "unknown"
+        ),
+        stack_tags=[str(code) for code in offer.get("rome_codes") or []],
+        posted_at=_text(publication.get("creation")),
+        # The API exposes an apply URL and sometimes a phone, never an address.
+        contact_email=None,
+    ).normalized()
 
 
-def map_company(node: dict[str, Any]) -> CompanyRecord | None:
-    name = _dig(node, "workplace", "name")
+def map_company(recruiter: dict[str, Any]) -> CompanyRecord | None:
+    """Map one `recruiters[]` entry into a cold-outreach target."""
+
+    if not isinstance(recruiter, dict):
+        return None
+    workplace = _workplace(recruiter)
+    name = _company_name(workplace)
     if not name:
         return None
+    siret = _text(workplace.get("siret"))
+    domain = workplace.get("domain") if isinstance(workplace.get("domain"), dict) else {}
+    naf = domain.get("naf") if isinstance(domain.get("naf"), dict) else {}
+    apply_block = recruiter.get("apply") if isinstance(recruiter.get("apply"), dict) else {}
+    location = workplace.get("location") if isinstance(workplace.get("location"), dict) else {}
     return CompanyRecord(
-        name=str(name),
-        siren=_first(_dig(node, "workplace", "siret")),
-        city=_first(_dig(node, "workplace", "location", "address")),
-        sector=_first(_dig(node, "workplace", "domain", "naf", "label")),
-        size_bucket=_first(_dig(node, "workplace", "size")),
+        name=name,
+        # SIRET is establishment-level; its first nine digits are the SIREN the
+        # companies table keys on.
+        siren=siret[:9] if siret and len(siret) >= 9 else None,
+        domain=_domain(_text(workplace.get("website"))),
+        size_bucket=_text(workplace.get("size")),
+        sector=_text(naf.get("label")),
+        city=_city(location.get("address")),
+        notes=_first(apply_block.get("url")),
+        source="labonnealternance",
     )
 
 
-def _first(*vals: Any) -> str | None:
-    for v in vals:
-        if v:
-            return str(v)
-    return None
+def _domain(website: str | None) -> str | None:
+    """Reduce a site URL to a bare domain, which is what contacts.py expects."""
+
+    if not website:
+        return None
+    host = re.sub(r"^https?://", "", website).split("/")[0].strip()
+    return host.removeprefix("www.").lower() or None

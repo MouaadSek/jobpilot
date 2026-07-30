@@ -17,7 +17,7 @@ sources:
   # Welcome to the Jungle via Algolia (needs WTTJ_API_KEY). Skipped until set.
   wttj:
     enabled: true
-  # LBA's legacy API is retired; the current API Apprentissage needs an account
-  # + token (LBA_API_KEY). Disabled until that is registered. See README.
+  # La Bonne Alternance through the API Apprentissage (needs LBA_API_KEY).
+  # Skipped gracefully until that is set, like the other keyed sources.
   labonnealternance:
-    enabled: false
+    enabled: true

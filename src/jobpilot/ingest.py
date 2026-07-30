@@ -50,14 +50,22 @@ def get_or_create_company(
     row = db.execute(
         "SELECT id FROM companies WHERE lower(name) = ? LIMIT 1", (key,)
     ).fetchone()
+    if row is None and company.siren:
+        # companies.siren is UNIQUE, and one firm trades under several names, so
+        # a name miss is not proof it is new. Checking the identifier keeps the
+        # insert below from raising on a company we already hold.
+        row = db.execute(
+            "SELECT id FROM companies WHERE siren = ? LIMIT 1", (company.siren,)
+        ).fetchone()
     if row is not None:
         cache[key] = row["id"]
         return row["id"], False
     cur = db.execute(
         "INSERT INTO companies (name, siren, domain, size_bucket, sector, city, "
-        "country, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "country, notes, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (company.name, company.siren, company.domain, company.size_bucket,
-         company.sector, company.city, company.country, company.notes),
+         company.sector, company.city, company.country, company.notes,
+         company.source),
     )
     cid = int(cur.lastrowid)
     cache[key] = cid

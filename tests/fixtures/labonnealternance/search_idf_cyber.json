@@ -1,0 +1,446 @@
+{
+ "jobs": [
+  {
+   "identifier": {
+    "id": "6a67661b8bbc3358a678e074",
+    "partner_label": "offres_emploi_lba",
+    "partner_job_id": "6a67661b8bbc3358a678e074"
+   },
+   "workplace": {
+    "siret": "48430660000038",
+    "brand": null,
+    "legal_name": "ASSOCIATION IMC ALTERNANCE",
+    "website": null,
+    "name": "ASSOCIATION IMC ALTERNANCE",
+    "description": null,
+    "size": "500 à 999 salariés",
+    "location": {
+     "address": "276 Avenue du Président Wilson 93210 Saint-Denis",
+     "geopoint": {
+      "coordinates": [
+       2.357796,
+       48.921599
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": "AKTO / Opco entreprises et salariés des services à forte intensité de main d'oeuvre",
+     "naf": {
+      "code": "70.10Z",
+      "label": "Activités des sièges sociaux"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/offres_emploi_lba/6a67661b8bbc3358a678e074/data-analyst-bts-sio-f-h-alternance",
+    "phone": "0603121672",
+    "recipient_id": "partners_6a67661b8bbc3358a678e074"
+   },
+   "contract": {
+    "start": "2026-07-27T14:07:23.822Z",
+    "duration": 24,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Data Analyst – BTS SIO (F/H) – Alternance",
+    "rome_codes": [
+     "M1810"
+    ],
+    "description": "Le Technicien d'exploitation informatique assure le bon fonctionnement des systèmes informatiques. Supervise et maintient l'infrastructure informatique en condition opérationnelle Assure l'installation, la configuration et la mise à jour des systèmes et logiciels Gère les sauvegardes et la sécurité des données Fournit un support technique aux utilisateurs et résout les incidents Optimise les performances des systèmes informatiques Documente les procédures techniques et forme les utilisateurs aux nouveaux outils",
+    "target_diploma": {
+     "european": "5",
+     "label": "BTS, DEUST (Bac+2)"
+    },
+    "desired_skills": [
+     "Faire preuve d'autonomie",
+     "Faire preuve de rigueur et de précision",
+     "Organiser son travail selon les priorités et les objectifs"
+    ],
+    "to_be_acquired_skills": [
+     "Conseil, Transmission\tFormer les utilisateurs aux nouvelles technologies",
+     "Recherche, Innovation\tAssurer la veille technologique pour rester à jour sur les innovations",
+     "Data et Nouvelles technologies\tAdministrer un système d'informations",
+     "Data et Nouvelles technologies\tDévelopper des scripts pour automatiser les tâches",
+     "Data et Nouvelles technologies\tGérer et déployer des logiciels à distance",
+     "Data et Nouvelles technologies\tGérer les droits d'accès des utilisateurs",
+     "Data et Nouvelles technologies\tGérer une base de données numériques",
+     "Data et Nouvelles technologies\tInstaller et intégrer le matériel (station, équipement réseau, périphériques, ...) dans l'environnement de production et configurer les ressources logistiques et physiques",
+     "Data et Nouvelles technologies\tMettre en place des solutions de sauvegarde et de récupération des données",
+     "Data et Nouvelles technologies\tPlanifier les mises à jour systèmes sans interruption de service",
+     "Production, Fabrication\tRésoudre les problèmes techniques de niveau avancé",
+     "Maintenance, Réparation\tAgir rapidement en cas de panne pour minimiser les interruptions",
+     "Maintenance, Réparation\tDiagnostiquer la nature et l'origine des incidents et mettre en oeuvre les mesures correctives",
+     "Maintenance, Réparation\tGérer un parc informatique",
+     "Prévention des risques\tAssurer la conformité des opérations de maintenance",
+     "Prévention des risques\tAssurer la sécurité des réseaux informatiques",
+     "Prévention des risques\tSurveiller le fonctionnement d'applicatifs et logiciels",
+     "Prévention des risques\tSurveiller les systèmes de réseau pour garantir leur fonctionnement optimal",
+     "Relation client\tAnalyser les besoins des utilisateurs pour le système informatique",
+     "Relation client\tApporter une assistance technique aux équipes",
+     "Stratégie de développement\tOptimiser les performances des systèmes informatiques",
+     "Stratégie de développement\tSuperviser et organiser les travaux d'exploitation/production informatique"
+    ],
+    "access_conditions": [
+     "Cet emploi est accessible avec un diplôme de niveau Bac+2. Les formations possibles incluent un BTS, un DUT."
+    ],
+    "publication": {
+     "creation": "2026-07-27T14:07:23.822Z",
+     "expiration": "2026-09-27T00:00:00.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": true
+  },
+  {
+   "identifier": {
+    "id": "6a2fcc775d74f81b70393ec2",
+    "partner_label": "offres_emploi_lba",
+    "partner_job_id": "6a2fcc775d74f81b70393ec2"
+   },
+   "workplace": {
+    "siret": "48430660000038",
+    "brand": null,
+    "legal_name": "ASSOCIATION IMC ALTERNANCE",
+    "website": null,
+    "name": "ASSOCIATION IMC ALTERNANCE",
+    "description": "Pourquoi rejoindre notre CFA ? \n\nL’ IMC Alternance t’offre l’opportunité de transformer ta formation en une expérience concrète et valorisante ! En collaboration avec notre partenaire nous recherchons un futur talent qui saura relever tous les défis et être le bras droit du responsable IT.",
+    "size": "500 à 999 salariés",
+    "location": {
+     "address": "276 Avenue du Président Wilson 93210 Saint-Denis",
+     "geopoint": {
+      "coordinates": [
+       2.357796,
+       48.921599
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": "AKTO / Opco entreprises et salariés des services à forte intensité de main d'oeuvre",
+     "naf": {
+      "code": "70.10Z",
+      "label": "Activités des sièges sociaux"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/offres_emploi_lba/6a2fcc775d74f81b70393ec2/technicien-it-réseaux-en-alternance-h-f",
+    "phone": "0603121672",
+    "recipient_id": "partners_6a2fcc775d74f81b70393ec2"
+   },
+   "contract": {
+    "start": "2026-07-27T08:57:31.515Z",
+    "duration": 12,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Technicien IT / Réseaux en alternance (H/F) ",
+    "rome_codes": [
+     "M1810"
+    ],
+    "description": "Le Technicien d'exploitation informatique assure le bon fonctionnement des systèmes informatiques. Supervise et maintient l'infrastructure informatique en condition opérationnelle Assure l'installation, la configuration et la mise à jour des systèmes et logiciels Gère les sauvegardes et la sécurité des données Fournit un support technique aux utilisateurs et résout les incidents Optimise les performances des systèmes informatiques Documente les procédures techniques et forme les utilisateurs aux nouveaux outils",
+    "target_diploma": {
+     "european": "6",
+     "label": "Licence, BUT, Licence Pro (Bac+3)"
+    },
+    "desired_skills": [
+     "Faire preuve d'autonomie",
+     "Faire preuve de rigueur et de précision",
+     "Organiser son travail selon les priorités et les objectifs"
+    ],
+    "to_be_acquired_skills": [
+     "Conseil, Transmission\tFormer les utilisateurs aux nouvelles technologies",
+     "Recherche, Innovation\tAssurer la veille technologique pour rester à jour sur les innovations",
+     "Data et Nouvelles technologies\tAdministrer un système d'informations",
+     "Data et Nouvelles technologies\tDévelopper des scripts pour automatiser les tâches",
+     "Data et Nouvelles technologies\tGérer et déployer des logiciels à distance",
+     "Data et Nouvelles technologies\tGérer les droits d'accès des utilisateurs",
+     "Data et Nouvelles technologies\tGérer une base de données numériques",
+     "Data et Nouvelles technologies\tInstaller et intégrer le matériel (station, équipement réseau, périphériques, ...) dans l'environnement de production et configurer les ressources logistiques et physiques",
+     "Data et Nouvelles technologies\tMettre en place des solutions de sauvegarde et de récupération des données",
+     "Data et Nouvelles technologies\tPlanifier les mises à jour systèmes sans interruption de service",
+     "Production, Fabrication\tRésoudre les problèmes techniques de niveau avancé",
+     "Maintenance, Réparation\tAgir rapidement en cas de panne pour minimiser les interruptions",
+     "Maintenance, Réparation\tDiagnostiquer la nature et l'origine des incidents et mettre en oeuvre les mesures correctives",
+     "Maintenance, Réparation\tGérer un parc informatique",
+     "Prévention des risques\tAssurer la conformité des opérations de maintenance",
+     "Prévention des risques\tAssurer la sécurité des réseaux informatiques",
+     "Prévention des risques\tSurveiller le fonctionnement d'applicatifs et logiciels",
+     "Prévention des risques\tSurveiller les systèmes de réseau pour garantir leur fonctionnement optimal",
+     "Relation client\tAnalyser les besoins des utilisateurs pour le système informatique",
+     "Relation client\tApporter une assistance technique aux équipes",
+     "Stratégie de développement\tOptimiser les performances des systèmes informatiques",
+     "Stratégie de développement\tSuperviser et organiser les travaux d'exploitation/production informatique"
+    ],
+    "access_conditions": [
+     "Cet emploi est accessible avec un diplôme de niveau Bac+2. Les formations possibles incluent un BTS, un DUT."
+    ],
+    "publication": {
+     "creation": "2026-06-15T09:57:11.129Z",
+     "expiration": "2026-09-27T00:00:00.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": true
+  },
+  {
+   "identifier": {
+    "id": "6a217d4e3838e57211310c2e",
+    "partner_label": "offres_emploi_lba",
+    "partner_job_id": "6a217d4e3838e57211310c2e"
+   },
+   "workplace": {
+    "siret": "48430660000038",
+    "brand": null,
+    "legal_name": "ASSOCIATION IMC ALTERNANCE",
+    "website": null,
+    "name": "ASSOCIATION IMC ALTERNANCE",
+    "description": null,
+    "size": "500 à 999 salariés",
+    "location": {
+     "address": "276 Avenue du Président Wilson 93210 Saint-Denis",
+     "geopoint": {
+      "coordinates": [
+       2.357796,
+       48.921599
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": null,
+     "opco": "AKTO / Opco entreprises et salariés des services à forte intensité de main d'oeuvre",
+     "naf": {
+      "code": "70.10Z",
+      "label": "Activités des sièges sociaux"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/offres_emploi_lba/6a217d4e3838e57211310c2e/alternance-technicien-ne-réseaux-et-infrastructures-entreprises-f-h",
+    "phone": "0603121672",
+    "recipient_id": "partners_6a217d4e3838e57211310c2e"
+   },
+   "contract": {
+    "start": "2026-07-27T08:56:32.551Z",
+    "duration": 24,
+    "type": [
+     "Apprentissage"
+    ],
+    "remote": null
+   },
+   "offer": {
+    "title": "Alternance - Technicien(ne) Réseaux et Infrastructures Entreprises F/H",
+    "rome_codes": [
+     "M1810"
+    ],
+    "description": "Le Technicien d'exploitation informatique assure le bon fonctionnement des systèmes informatiques. Supervise et maintient l'infrastructure informatique en condition opérationnelle Assure l'installation, la configuration et la mise à jour des systèmes et logiciels Gère les sauvegardes et la sécurité des données Fournit un support technique aux utilisateurs et résout les incidents Optimise les performances des systèmes informatiques Documente les procédures techniques et forme les utilisateurs aux nouveaux outils",
+    "target_diploma": {
+     "european": "5",
+     "label": "BTS, DEUST (Bac+2)"
+    },
+    "desired_skills": [
+     "Faire preuve d'autonomie",
+     "Faire preuve de rigueur et de précision",
+     "Organiser son travail selon les priorités et les objectifs"
+    ],
+    "to_be_acquired_skills": [
+     "Conseil, Transmission\tFormer les utilisateurs aux nouvelles technologies",
+     "Recherche, Innovation\tAssurer la veille technologique pour rester à jour sur les innovations",
+     "Data et Nouvelles technologies\tAdministrer un système d'informations",
+     "Data et Nouvelles technologies\tDévelopper des scripts pour automatiser les tâches",
+     "Data et Nouvelles technologies\tGérer et déployer des logiciels à distance",
+     "Data et Nouvelles technologies\tGérer les droits d'accès des utilisateurs",
+     "Data et Nouvelles technologies\tGérer une base de données numériques",
+     "Data et Nouvelles technologies\tInstaller et intégrer le matériel (station, équipement réseau, périphériques, ...) dans l'environnement de production et configurer les ressources logistiques et physiques",
+     "Data et Nouvelles technologies\tMettre en place des solutions de sauvegarde et de récupération des données",
+     "Data et Nouvelles technologies\tPlanifier les mises à jour systèmes sans interruption de service",
+     "Production, Fabrication\tRésoudre les problèmes techniques de niveau avancé",
+     "Maintenance, Réparation\tAgir rapidement en cas de panne pour minimiser les interruptions",
+     "Maintenance, Réparation\tDiagnostiquer la nature et l'origine des incidents et mettre en oeuvre les mesures correctives",
+     "Maintenance, Réparation\tGérer un parc informatique",
+     "Prévention des risques\tAssurer la conformité des opérations de maintenance",
+     "Prévention des risques\tAssurer la sécurité des réseaux informatiques",
+     "Prévention des risques\tSurveiller le fonctionnement d'applicatifs et logiciels",
+     "Prévention des risques\tSurveiller les systèmes de réseau pour garantir leur fonctionnement optimal",
+     "Relation client\tAnalyser les besoins des utilisateurs pour le système informatique",
+     "Relation client\tApporter une assistance technique aux équipes",
+     "Stratégie de développement\tOptimiser les performances des systèmes informatiques",
+     "Stratégie de développement\tSuperviser et organiser les travaux d'exploitation/production informatique"
+    ],
+    "access_conditions": [
+     "Cet emploi est accessible avec un diplôme de niveau Bac+2. Les formations possibles incluent un BTS, un DUT."
+    ],
+    "publication": {
+     "creation": "2026-06-04T13:27:42.434Z",
+     "expiration": "2026-09-27T00:00:00.000Z"
+    },
+    "opening_count": 1,
+    "status": "Active"
+   },
+   "is_delegated": true
+  }
+ ],
+ "recruiters": [
+  {
+   "identifier": {
+    "id": "68f7bd8849b8c5a9668244e9"
+   },
+   "workplace": {
+    "siret": "42881555900037",
+    "brand": "KLINT",
+    "legal_name": "KLINT",
+    "website": null,
+    "name": "KLINT",
+    "description": null,
+    "size": "50-99",
+    "location": {
+     "address": "74 RUE ANATOLE FRANCE 92300 LEVALLOIS-PERRET",
+     "geopoint": {
+      "coordinates": [
+       2.2847059999999995,
+       48.89262599998641
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6202A",
+      "label": "Conseil en systèmes et logiciels informatiques"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/42881555900037/klint",
+    "phone": null,
+    "recipient_id": "partners_68f7bd8849b8c5a9668244e9"
+   }
+  },
+  {
+   "identifier": {
+    "id": "68f7bd9449b8c5a96682821b"
+   },
+   "workplace": {
+    "siret": "43928419100046",
+    "brand": "FASHION NETWORK",
+    "legal_name": "FASHION NETWORK",
+    "website": null,
+    "name": "FASHION NETWORK",
+    "description": null,
+    "size": "0-0",
+    "location": {
+     "address": "126 rue Reaumur 75002 PARIS",
+     "geopoint": {
+      "coordinates": [
+       2.3439409999999996,
+       48.86819899998634
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6311Z",
+      "label": "Traitement de données, hébergement et activités connexes"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/43928419100046/fashion-network",
+    "phone": "0175578940",
+    "recipient_id": null
+   }
+  },
+  {
+   "identifier": {
+    "id": "68f7bd6a49b8c5a966819c7f"
+   },
+   "workplace": {
+    "siret": "39847894100055",
+    "brand": "EMPREINTE MULTIMEDIA",
+    "legal_name": "EMPREINTE MULTIMEDIA",
+    "website": null,
+    "name": "EMPREINTE MULTIMEDIA",
+    "description": null,
+    "size": "6-9",
+    "location": {
+     "address": "8 PAS BRULON 75012 PARIS",
+     "geopoint": {
+      "coordinates": [
+       2.3800589999999997,
+       48.84969399998631
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "5829C",
+      "label": "Edition de logiciels applicatifs"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/39847894100055/empreinte-multimedia",
+    "phone": "0158700700",
+    "recipient_id": "partners_68f7bd6a49b8c5a966819c7f"
+   }
+  },
+  {
+   "identifier": {
+    "id": "68f7bdb449b8c5a9668331c5"
+   },
+   "workplace": {
+    "siret": "48445442600053",
+    "brand": "COURTANET",
+    "legal_name": "COURTANET",
+    "website": null,
+    "name": "COURTANET",
+    "description": null,
+    "size": "50-99",
+    "location": {
+     "address": "12 RUE MEDERIC 75017 PARIS",
+     "geopoint": {
+      "coordinates": [
+       2.30324,
+       48.88050699998638
+      ],
+      "type": "Point"
+     }
+    },
+    "domain": {
+     "idcc": 1486,
+     "opco": "ATLAS",
+     "naf": {
+      "code": "6312Z",
+      "label": "Portails Internet"
+     }
+    }
+   },
+   "apply": {
+    "url": "https://labonnealternance.apprentissage.beta.gouv.fr/emploi/recruteurs_lba/48445442600053/courtanet",
+    "phone": "0148784854",
+    "recipient_id": "partners_68f7bdb449b8c5a9668331c5"
+   }
+  }
+ ],
+ "warnings": []
+}
