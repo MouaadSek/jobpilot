@@ -437,42 +437,60 @@ def _plan(payload: dict) -> TailoringPlan:
     )
 
 
-def test_the_plan_path_judges_each_bullet_against_its_own_employer(bank) -> None:
-    """Filed under Concentrix, so judged as Concentrix, whatever it cites."""
+def test_any_of_an_entrys_facts_may_be_selected_for_it(bank) -> None:
+    """Which of Concentrix's five facts is chosen is a judgement, not an error."""
+
+    for fact_id in CONCENTRIX_FACTS:
+        payload = copy.deepcopy(_payload())
+        payload["experience_content"][1]["fact_ids"] = [
+            fact_id,
+            *(other for other in CONCENTRIX_FACTS if other != fact_id),
+        ][:2]
+
+        _render(payload)
+
+
+def test_the_plan_path_refuses_a_fact_belonging_to_another_employer(bank) -> None:
+    """Since Task 30 misattribution cannot be written, only mis-selected."""
 
     payload = copy.deepcopy(_payload())
-    payload["experience_content"][1]["bullets"][0]["text"] = (
-        "Triage de 1 500+ incidents réseau au premier niveau."
-    )
-    payload["experience_content"][1]["bullets"][0]["sources"] = [
-        "experience.concentrix.resolution_time"  # the fact WITHOUT the figure
+    payload["experience_content"][1]["fact_ids"] = [
+        "experience.concentrix.incidents",
+        "experience.lionbridge.traitement.et.validation.de.200",
     ]
 
-    validate_plan_provenance(_plan(payload), bank)
+    with pytest.raises(
+        TailoringError,
+        match="does not belong to entry experience.concentrix",
+    ):
+        _render(payload)
 
 
-def test_the_plan_path_refuses_a_figure_borrowed_from_another_employer(bank) -> None:
+def test_the_letter_is_still_judged_by_the_tiers(bank) -> None:
+    """The letter is the content the advisor still writes, so it still needs them."""
+
     payload = copy.deepcopy(_payload())
-    payload["experience_content"][1]["bullets"][0]["text"] = (
-        "Traitement de 200 000+ éléments avec 85 % de résolution au premier contact."
+    payload["letter_paragraphs"][0]["text"] = (
+        "Mon parcours couvre la résolution de 15 000 incidents."
     )
 
-    with pytest.raises(TailoringError, match="for entry 'Concentrix'"):
+    with pytest.raises(TailoringError, match="unsupported number '15 000'"):
         validate_plan_provenance(_plan(payload), bank)
 
 
-def test_the_committed_reference_payload_still_generates(bank) -> None:
-    """Entry scoping must not have broken the known-good plan."""
-
+def _render(payload: dict) -> str:
     offer = _offer()
     selection = pick_variant(offer.description, title=offer.title)
-
-    tailored = tailor_cv_html(
+    return tailor_cv_html(
         TEMPLATE_PATH.read_text(encoding="utf-8"),
-        _plan(copy.deepcopy(_payload())),
+        _plan(payload),
         selection,
         offer_description=offer.description,
         offer=offer,
     )
 
-    assert tailored
+
+def test_the_committed_reference_payload_still_generates(bank) -> None:
+    """Entry scoping must not have broken the known-good plan."""
+
+    assert _render(copy.deepcopy(_payload()))

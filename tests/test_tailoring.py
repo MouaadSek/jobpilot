@@ -350,9 +350,18 @@ class _Advisor:
 
 
 class _Toolchain:
-    def __init__(self, *, fail_orphans: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_orphans: bool = False,
+        orphan_selector: str = ".profile",
+    ) -> None:
         self.calls: list[str] = []
         self.fail_orphans = fail_orphans
+        # Which element the orphan report blames. Since Task 30 that decides
+        # whether the gate is hard: ".profile" holds the generated domain phrase,
+        # "li" and ".project-desc" hold verbatim fact text.
+        self.orphan_selector = orphan_selector
 
     def validate_cv(
         self,
@@ -370,7 +379,11 @@ class _Toolchain:
         self.calls.append("orphans")
         assert original_path.exists()
         if self.fail_orphans:
-            raise TailoringError("orphan quality gate failed")
+            raise TailoringError(
+                "orphan quality gate failed: ORPHAN REGRESSIONS: 1\n"
+                f"  [{self.orphan_selector}#0] 2 lines, last=18.0% width\n"
+                '    "du texte trop court..."'
+            )
 
     def generate_cv_pdf(self, tailored_path: Path, output_path: Path) -> None:
         self.calls.append("cv")
