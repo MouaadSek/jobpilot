@@ -12,16 +12,19 @@ from jobpilot.tailoring import (
     SourcedBullet,
     TailoringError,
     TailoringPlan,
+    entry_scope,
     pick_variant,
     tailor_cv_html,
     validate_provenance,
+    whole_bank_scope,
 )
 from tests.test_fact_id_resolution import TEMPLATE_PATH
 from tests.test_tailoring_provenance import _payload
 
 # A real fact with numbers of its own but no standard in it, so an accepted
-# designation can only have come from elsewhere in the bank.
+# designation can only have come from elsewhere in the scope.
 CITED = "experience.concentrix.incidents"
+ENTRY = "experience.concentrix"
 
 
 @pytest.fixture
@@ -29,19 +32,35 @@ def bank():
     return load_fact_bank()
 
 
-def _check(text: str, bank, *, cited: str = CITED) -> None:
-    validate_provenance([SourcedBullet(text=text, sources=(cited,))], bank)
+def _in_bank(text: str, bank, *, cited: str = CITED) -> None:
+    """Judge as the letter is judged: no entry, so the whole bank answers."""
+
+    validate_provenance(
+        [SourcedBullet(text=text, sources=(cited,))],
+        bank,
+        scope=whole_bank_scope(bank),
+    )
 
 
-def test_the_cited_fact_really_lacks_the_designations_under_test(bank) -> None:
+def _in_entry(text: str, bank, *, cited: str = CITED, entry: str = ENTRY) -> None:
+    """Judge as a CV bullet is judged: only this employer's facts answer."""
+
+    validate_provenance(
+        [SourcedBullet(text=text, sources=(cited,))],
+        bank,
+        scope=entry_scope(bank, entry),
+    )
+
+
+def test_the_entry_really_lacks_the_designations_under_test(bank) -> None:
     """Otherwise these tests would pass through the ordinary metric rule."""
 
-    evidence = bank.claims[CITED].text
-    for token in ("ISO", "27001", "NIS2", "AZ-900", "802.1X", "CVSS", "OWASP"):
+    evidence = entry_scope(bank, ENTRY).normalized
+    for token in ("iso", "27001", "nis2", "az-900", "802.1x", "cvss", "owasp"):
         assert token not in evidence
 
 
-# ----- designations are bank-wide vocabulary -----
+# ----- designations are vocabulary of their scope -----
 
 
 @pytest.mark.parametrize(
@@ -64,7 +83,7 @@ def test_a_designation_in_the_bank_is_accepted_from_any_cited_fact(
     bank,
     text: str,
 ) -> None:
-    _check(text, bank)
+    _in_bank(text, bank)
 
 
 @pytest.mark.parametrize(
@@ -80,12 +99,12 @@ def test_a_designation_absent_from_the_bank_is_rejected(bank, text: str) -> None
     """Looking like a standard is not evidence of holding one."""
 
     with pytest.raises(TailoringError, match="unsupported designation"):
-        _check(text, bank)
+        _in_bank(text, bank)
 
 
 def test_the_rejection_names_the_designation_not_the_bare_digits(bank) -> None:
     with pytest.raises(TailoringError, match="unsupported designation 'ISO 31000'"):
-        _check("Analyse de risques selon ISO 31000.", bank)
+        _in_bank("Analyse de risques selon ISO 31000.", bank)
 
 
 def test_acceptance_as_a_designation_is_logged_with_token_and_pattern(
@@ -95,13 +114,13 @@ def test_acceptance_as_a_designation_is_logged_with_token_and_pattern(
     """Over-permissiveness has to be auditable after the fact."""
 
     with caplog.at_level("DEBUG", logger="jobpilot.tailoring"):
-        _check("Cadrage des exigences ISO 27001 sur le périmètre.", bank)
+        _in_bank("Cadrage des exigences ISO 27001 sur le périmètre.", bank)
 
     logged = "\n".join(record.getMessage() for record in caplog.records)
     assert "accepted designation" in logged
     assert "ISO 27001" in logged
     assert "iso" in logged  # the pattern name that matched
-    assert "not as a metric" in logged
+    assert "not as one of its metrics" in logged
 
 
 # ----- quantitative claims are unchanged -----
@@ -122,13 +141,13 @@ def test_a_fabricated_metric_is_still_rejected(bank, text: str) -> None:
     """The anti-fabrication guarantee is not weakened by designation handling."""
 
     with pytest.raises(TailoringError, match="unsupported number"):
-        _check(text, bank)
+        _in_entry(text, bank)
 
 
 def test_a_metric_is_rejected_even_when_another_fact_carries_that_number(
     bank,
 ) -> None:
-    """Bank-wide tolerance is for designations only, never for quantities."""
+    """Wider-than-the-cited-fact tolerance is for designations, never quantities."""
 
     others = " ".join(
         claim.text for key, claim in bank.claims.items() if key != CITED
@@ -136,21 +155,21 @@ def test_a_metric_is_rejected_even_when_another_fact_carries_that_number(
     assert "93" in others  # "93 mesures ISO 27001:2022" lives on another fact
 
     with pytest.raises(TailoringError, match="unsupported number '93'"):
-        _check("Autoévaluation de 93 mesures de sécurité.", bank)
+        _in_entry("Autoévaluation de 93 mesures de sécurité.", bank)
 
 
-def test_the_cited_facts_own_numbers_are_still_accepted(bank) -> None:
-    _check(
+def test_the_entrys_own_numbers_are_still_accepted(bank) -> None:
+    _in_entry(
         "Résolution de 1 500+ incidents avec 85 % de résolution au premier contact.",
         bank,
     )
 
 
 def test_a_designation_does_not_smuggle_in_a_neighbouring_metric(bank) -> None:
-    """Only the designation's own span is exempt from the cited-fact rule."""
+    """Only the designation's own span is exempt from the number rule."""
 
     with pytest.raises(TailoringError, match="unsupported number '42'"):
-        _check("Mise en conformité ISO 27001 sur 42 applications.", bank)
+        _in_bank("Mise en conformité ISO 27001 sur 42 applications.", bank)
 
 
 # ----- the full generation path -----

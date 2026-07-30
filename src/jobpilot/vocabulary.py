@@ -70,28 +70,42 @@ _LEGACY_KIND_TIERS: Mapping[str, TokenTier] = {
 #: skill" is not shadowed by a shorter alternative that prefix-matches it.
 _READABLE_KIND_TIERS: Mapping[str, TokenTier] = {**_KIND_TIERS, **_LEGACY_KIND_TIERS}
 
+#: The scope a refusal blames. "in sourced content" is the pre-entry wording,
+#: still read because the events table outlives the code that wrote it.
+_SCOPE_RE = r"(?:in sourced content|for (?:entry '(?P<entry>[^']+)'|the whole bank))"
+
 _REJECTION_RE = re.compile(
     r"unsupported (?P<kind>"
     + "|".join(sorted(_READABLE_KIND_TIERS, key=len, reverse=True))
-    + r") '(?P<token>[^']+)' in sourced content"
+    + r") '(?P<token>[^']+)' "
+    + _SCOPE_RE
 )
 
 
 @dataclass(frozen=True, slots=True)
 class TokenRejection:
-    """One token a validator refused, and why."""
+    """One token a validator refused, why, and what it was judged against."""
 
     tier: TokenTier
     kind: str
     token: str
+    #: The entry that could not support the token, or None for the whole bank
+    #: (and for messages written before scopes were recorded).
+    entry: str | None = None
 
 
-def rejection_message(kind: str, token: str) -> str:
-    """The one wording for a refused token; every caller goes through here."""
+def rejection_message(kind: str, token: str, *, entry: str | None = None) -> str:
+    """The one wording for a refused token; every caller goes through here.
+
+    Naming the scope makes a rejection self-explanatory: "unsupported number
+    '93' for entry 'Concentrix'" says which claim was not supported and where,
+    which is what a reader needs in order to fix it.
+    """
 
     if kind not in _KIND_TIERS:
         raise KeyError(f"unknown rejection kind: {kind}")
-    return f"unsupported {kind} '{token}' in sourced content"
+    where = f"entry '{entry}'" if entry else "the whole bank"
+    return f"unsupported {kind} '{token}' for {where}"
 
 
 def tier_of(kind: str) -> TokenTier:
@@ -116,6 +130,7 @@ def parse_rejections(messages: Iterable[str]) -> tuple[TokenRejection, ...]:
                     tier=_READABLE_KIND_TIERS[kind],
                     kind=kind,
                     token=match.group("token"),
+                    entry=match.group("entry"),
                 )
             )
     return tuple(found)

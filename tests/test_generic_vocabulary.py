@@ -13,7 +13,12 @@ from jobpilot.cli import app
 from jobpilot.facts import load_fact_bank
 from jobpilot.review import vocabulary_misses
 from jobpilot.state import log_event
-from jobpilot.tailoring import SourcedBullet, TailoringError, validate_provenance
+from jobpilot.tailoring import (
+    SourcedBullet,
+    TailoringError,
+    entry_scope,
+    validate_provenance,
+)
 from jobpilot.vocabulary import (
     DEFAULT_VOCABULARY_PATH,
     GenericVocabularyError,
@@ -24,6 +29,7 @@ from jobpilot.vocabulary import (
 )
 
 CITED = "experience.concentrix.incidents"
+ENTRY = "experience.concentrix"
 
 
 @pytest.fixture
@@ -65,6 +71,7 @@ def _check(text: str, bank, *, vocabulary_path: Path | None = None) -> None:
     validate_provenance(
         [SourcedBullet(text=text, sources=(CITED,))],
         bank,
+        scope=entry_scope(bank, ENTRY),
         vocabulary_path=vocabulary_path,
     )
 

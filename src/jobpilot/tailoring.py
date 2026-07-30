@@ -1405,14 +1405,12 @@ def _normalized_number(value: str) -> str:
     return re.sub(r"[ .\u00a0]", "", value).replace(",", ".").casefold()
 
 
-def _capability_corpus(bank: FactBank) -> str:
+def _bank_parts(bank: FactBank) -> list[str]:
     """Everything the verified bank says the candidate has actually touched.
 
-    This is the whole answer to a Tier 2 question: not "did the cited fact say
-    Wazuh" but "does this person do Wazuh at all". Only verified, non-review
-    content counts — an unverified skill named after a standard must not become
-    a licence to cite that standard. The offer text is never part of it: a
-    posting is untrusted input and may not legitimise a claim.
+    Only verified, non-review content counts — an unverified skill named after a
+    standard must not become a licence to cite that standard. The offer text is
+    never part of it: a posting is untrusted input and may not legitimise a claim.
     """
 
     parts = [claim.text for claim in bank.claims.values() if not claim.needs_review]
@@ -1424,16 +1422,21 @@ def _capability_corpus(bank: FactBank) -> str:
         parts.extend(project.stack)
     parts.extend(entry.role for entry in bank.experience)
     parts.extend(bank.locked.certification_names)
-    return _normalize(" ".join(parts))
+    return parts
+
+
+def _capability_corpus(bank: FactBank) -> str:
+    return _normalize(" ".join(_bank_parts(bank)))
 
 
 def _organisation_names(bank: FactBank) -> tuple[str, ...]:
     """The names the bank knows structurally: employers, schools, diplomas.
 
-    Naming one of these is an attribution, so it is judged against the cited
-    fact and never against the bank as a whole. Recognition is structural: an
-    organisation that exists only inside a fact's prose (a client mentioned in
-    passing) is not in this set and falls through to the capability tier.
+    Naming one of these is an attribution, so it is judged against the scope the
+    bullet sits in and never against the bank as a whole. Recognition is
+    structural: an organisation that exists only inside a fact's prose (a client
+    mentioned in passing) is not in this set and falls through to the capability
+    tier.
     """
 
     names = {
@@ -1445,29 +1448,123 @@ def _organisation_names(bank: FactBank) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+@dataclass(frozen=True, slots=True)
+class ProvenanceScope:
+    """The context a bullet is read in, and everything true within it.
+
+    A bullet in EXPÉRIENCE or PROJETS sits under one entry, and everything that
+    entry's facts say is true there — whichever of them the model happened to
+    cite. Validating against the citation list instead made the same true
+    sentence pass or fail on bookkeeping alone: « Triage de 1 500+ incidents »
+    is true of Concentrix, but only two of its five facts carry the figure.
+
+    The letter has no entry. It legitimately summarises the whole career, so its
+    scope is the whole verified bank.
+    """
+
+    label: str
+    entry_id: str | None
+    #: Accent- and case-folded, for name and capability lookups.
+    normalized: str
+    #: Every quantity the scope actually contains, normalised for comparison.
+    numbers: frozenset[str]
+
+    @property
+    def is_entry(self) -> bool:
+        return self.entry_id is not None
+
+    @property
+    def entry_label(self) -> str | None:
+        """The name a rejection should blame, or None for the whole bank."""
+
+        return self.label if self.is_entry else None
+
+
+def _scope(label: str, entry_id: str | None, parts: Sequence[str]) -> ProvenanceScope:
+    text = " ".join(part for part in parts if part)
+    return ProvenanceScope(
+        label=label,
+        entry_id=entry_id,
+        normalized=_normalize(text),
+        numbers=frozenset(
+            _normalized_number(value) for value in _NUMBER_RE.findall(text)
+        ),
+    )
+
+
+def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
+    """The scope for content that has no entry: the profile and the letter.
+
+    Attribution still applies here — a quantity must exist somewhere in the bank
+    and an organisation must be one the bank really knows — but a career summary
+    is not owed to any single employer.
+    """
+
+    return _scope(
+        "the whole bank",
+        None,
+        [*_bank_parts(bank), *_organisation_names(bank)],
+    )
+
+
+def entry_scope(bank: FactBank, entry_id: str) -> ProvenanceScope:
+    """The scope for a bullet under one employer or one project.
+
+    Dates are deliberately left out: they are renderer-owned, and a scope is
+    about what was done, not when.
+    """
+
+    for experience in bank.experience:
+        if experience.id == entry_id:
+            return _scope(
+                experience.employer,
+                entry_id,
+                [
+                    *(fact.text for fact in experience.facts if not fact.needs_review),
+                    experience.employer,
+                    experience.role,
+                    experience.location,
+                ],
+            )
+    for project in bank.projects:
+        if project.id == entry_id:
+            return _scope(
+                project.title,
+                entry_id,
+                [
+                    *(fact.text for fact in project.facts if not fact.needs_review),
+                    project.title,
+                    *project.stack,
+                ],
+            )
+    raise TailoringError(f"unknown entry for provenance scope: {entry_id}")
+
+
 def _designation_spans(
     text: str,
     corpus: str,
     cited: Sequence[str],
+    scope: ProvenanceScope,
 ) -> list[tuple[int, int]]:
-    """Check every designation against the whole bank; return what it covers.
+    """Check every designation against the corpus; return what it covers.
 
     Designations are capability claims that happen to contain digits, so they
-    are judged here, as a unit, against the corpus. The returned spans are then
-    excluded from the tiers below, which read what is left of the bullet: the
-    span of "ISO 27001" is neither a quantity owed to the cited fact nor a
-    proper noun still to be justified.
+    are judged here, as a unit. The returned spans are then excluded from the
+    tiers below, which read what is left of the bullet: the span of "ISO 27001"
+    is neither a quantity owed to the scope nor a proper noun still to be
+    justified.
     """
 
     spans: list[tuple[int, int]] = []
     for match in _DESIGNATION_RE.finditer(text):
         token = match.group(0).strip()
         if _normalize(token) not in corpus:
-            raise _refuse("designation", token, cited)
+            raise _refuse("designation", token, cited, scope)
         log.debug(
-            "accepted designation %r as bank-wide vocabulary (pattern %s), "
-            "not as a metric of the cited fact",
+            "accepted designation %r as vocabulary of %s (pattern %s), "
+            "not as one of its metrics",
             token,
+            scope.label,
             match.lastgroup,
         )
         spans.append(match.span())
@@ -1509,57 +1606,57 @@ def _proper_nouns(value: str, bank: FactBank) -> dict[str, str]:
     return candidates
 
 
-def _refuse(kind: str, token: str, cited: Sequence[str]) -> TailoringError:
+def _refuse(
+    kind: str,
+    token: str,
+    cited: Sequence[str],
+    scope: ProvenanceScope,
+) -> TailoringError:
     """Build the rejection and record it, so the misses can be counted later.
 
     This log line is what makes the model self-correcting: a token that keeps
     tripping generations is either a category word missing from
-    config/generic_vocabulary.yaml or a claim the candidate genuinely cannot
-    make, and only the tier and the cited facts tell the two apart.
+    config/generic_vocabulary.yaml or a claim the entry genuinely cannot
+    support, and only the tier and the scope tell the two apart.
     ``jobpilot vocab-misses`` reads the same information back out of the events
     table for runs nobody was watching.
     """
 
     log.info(
-        "refused %s token %r (tier %s) cited by %s",
+        "refused %s token %r (tier %s) in scope %s, cited by %s",
         kind,
         token,
         tier_of(kind).value,
+        scope.label,
         ", ".join(cited) or "nothing",
     )
-    return TailoringError(rejection_message(kind, token))
+    return TailoringError(rejection_message(kind, token, entry=scope.entry_label))
 
 
 def _reject_borrowed_quantities(
     text: str,
-    evidence: str,
+    scope: ProvenanceScope,
     cited: Sequence[str],
 ) -> None:
-    """Tier 1. A measurement belongs to the job it was measured in."""
+    """Tier 1. A measurement belongs to the entry it was measured in."""
 
-    evidence_numbers = {
-        _normalized_number(value) for value in _NUMBER_RE.findall(evidence)
-    }
     for number in _NUMBER_RE.findall(text):
-        if _normalized_number(number) not in evidence_numbers:
-            raise _refuse("number", number.strip(), cited)
+        if _normalized_number(number) not in scope.numbers:
+            raise _refuse("number", number.strip(), cited, scope)
 
 
 def _reject_borrowed_attributions(
     text: str,
-    evidence: str,
+    scope: ProvenanceScope,
     organisations: Sequence[str],
     cited: Sequence[str],
 ) -> None:
-    """Tier 1. A bullet may not name an organisation its facts do not name."""
+    """Tier 1. A bullet may not name an organisation its scope does not name."""
 
     normalized_text = _normalize(text)
-    normalized_evidence = _normalize(evidence)
     for name in organisations:
-        if _contains(normalized_text, name) and not _contains(
-            normalized_evidence, name
-        ):
-            raise _refuse("organisation", name, cited)
+        if _contains(normalized_text, name) and not _contains(scope.normalized, name):
+            raise _refuse("organisation", name, cited, scope)
 
 
 def _reject_unverified_skills(text: str, bank: FactBank) -> None:
@@ -1580,6 +1677,7 @@ def _reject_unsupported_capabilities(
     generic: Container[str],
     organisations: Sequence[str],
     cited: Sequence[str],
+    scope: ProvenanceScope,
 ) -> None:
     """Tiers 2 and 3. Named things must be in the bank; category words need not.
 
@@ -1595,28 +1693,35 @@ def _reject_unsupported_capabilities(
             continue
         if _contains(corpus, token):
             continue
-        raise _refuse("capability", as_written, cited)
+        raise _refuse("capability", as_written, cited, scope)
 
 
 def validate_provenance(
     bullets: Sequence[SourcedBullet],
     bank: FactBank,
     *,
+    scope: ProvenanceScope,
     vocabulary_path: Path | None = None,
 ) -> None:
     """Reject unsupported ids and tokens, in three tiers of increasing freedom.
 
+    Everything is judged against ``scope`` — the entry the bullets sit under, or
+    the whole bank for content that has no entry. Citations are still required
+    and still have to resolve to real facts, because they are the audit trail;
+    they are no longer the validation boundary, because which of an entry's facts
+    a model happened to cite says nothing about whether the claim is true.
+
     Tier 1, attribution: quantities and the names of employers, clients and
-    schools must appear in the facts the bullet cites. This is the
-    anti-fabrication and anti-misattribution guarantee and it is never relaxed.
+    schools must appear in the scope. This is the anti-fabrication and
+    anti-misattribution guarantee and it is never relaxed.
 
     Tier 2, capability: named products, tools, standards and certifications must
-    appear somewhere in the verified bank, because they claim what the candidate
-    can do rather than what one job produced.
+    appear in the scope, because claiming a tool under an employer says that
+    employer's work involved it.
 
     Tier 3, vocabulary: category words and industry acronyms assert nothing
     about the candidate and are allowed. The bank names products, not
-    categories, so no bank-wide rule could ever have covered these. Their list
+    categories, so no corpus rule could ever have covered these. Their list
     lives in config/generic_vocabulary.yaml, which is the maintenance point for
     this class.
     """
@@ -1631,7 +1736,6 @@ def validate_provenance(
             )
         if "—" in bullet.text:
             raise TailoringError("sourced content must not contain em dashes")
-        claims = []
         for source_id in bullet.sources:
             claim = bank.claims.get(source_id)
             if claim is None:
@@ -1640,22 +1744,55 @@ def validate_provenance(
                 raise TailoringError(f"unverified skill cannot be claimed: {source_id}")
             if claim.needs_review:
                 raise TailoringError(f"fact id requires review before use: {source_id}")
-            claims.append(claim)
-        evidence = " ".join(claim.text for claim in claims)
-        # Designations are judged bank-wide, then blanked out so the tiers below
-        # read only the text still owed to the cited fact.
+        # Designations are judged first, then blanked out so the tiers below read
+        # only the text still owed to the scope.
         cited = bullet.sources
         text = _without_designations(
-            bullet.text, _designation_spans(bullet.text, corpus, cited)
+            bullet.text, _designation_spans(bullet.text, corpus, cited, scope)
         )
         # Tier 1 runs first and is never reachable through the others: a token
         # that is both a quantity and a category word is still a quantity.
-        _reject_borrowed_quantities(text, evidence, cited)
-        _reject_borrowed_attributions(text, evidence, organisations, cited)
+        _reject_borrowed_quantities(text, scope, cited)
+        _reject_borrowed_attributions(text, scope, organisations, cited)
         _reject_unverified_skills(text, bank)
         _reject_unsupported_capabilities(
-            text, bank, corpus, generic, organisations, cited
+            text, bank, corpus, generic, organisations, cited, scope
         )
+
+
+def validate_plan_provenance(
+    plan: TailoringPlan,
+    bank: FactBank,
+    *,
+    vocabulary_path: Path | None = None,
+) -> None:
+    """Validate every sourced bullet against the entry it belongs to.
+
+    The entry comes from the plan's structure, never from the bullet's text: an
+    experience bullet belongs to the employer it was filed under, a project
+    description to the project it describes. The letter has no entry.
+    """
+
+    for experience in plan.experience_content:
+        validate_provenance(
+            experience.bullets,
+            bank,
+            scope=entry_scope(bank, experience.experience_id),
+            vocabulary_path=vocabulary_path,
+        )
+    for project in plan.project_content:
+        validate_provenance(
+            (project.description,),
+            bank,
+            scope=entry_scope(bank, project.project_id),
+            vocabulary_path=vocabulary_path,
+        )
+    validate_provenance(
+        plan.letter_paragraphs,
+        bank,
+        scope=whole_bank_scope(bank),
+        vocabulary_path=vocabulary_path,
+    )
 
 
 _FRENCH_MONTHS = {
@@ -1940,7 +2077,7 @@ def _validate_sourced_plan(
                     f"locked field must be renderer-injected, not model-generated: "
                     f"{locked_value}"
                 )
-    validate_provenance(sourced_bullets, bank)
+    validate_plan_provenance(plan, bank)
     _validate_letter_body(plan.letter_body_html)
 
 

@@ -634,12 +634,13 @@ def vocab_misses_cmd(
     if not misses:
         typer.echo("no capability-tier rejections recorded")
         return
-    typer.echo(f"{'token':28} {'kind':12} {'count':>5}  applications")
+    typer.echo(f"{'token':24} {'kind':12} {'count':>5}  {'entries':28} applications")
     for miss in misses:
         applications = ", ".join(str(app_id) for app_id in miss["applications"][:6])
+        entries = ", ".join(miss["entries"][:3])
         typer.echo(
-            f"{miss['token'][:28]:28} {miss['kind']:12} {miss['count']:>5}  "
-            f"{applications}"
+            f"{miss['token'][:24]:24} {miss['kind']:12} {miss['count']:>5}  "
+            f"{entries[:28]:28} {applications}"
         )
     typer.echo(f"\nadd a category word to {DEFAULT_VOCABULARY_PATH}")
 

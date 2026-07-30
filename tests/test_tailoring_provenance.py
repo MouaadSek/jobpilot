@@ -22,6 +22,7 @@ from jobpilot.tailoring import (
     SourcedBullet,
     TailoringError,
     TailoringPlan,
+    entry_scope,
     extract_template_context,
     pick_variant,
     tailor_cv_html,
@@ -324,7 +325,12 @@ def test_provenance_rejects_fabricated_numbers_and_tools(
     bullet = SourcedBullet(text=text, sources=(source,))
 
     with pytest.raises(TailoringError, match=message):
-        validate_provenance((bullet,), load_fact_bank())
+        bank = load_fact_bank()
+        validate_provenance(
+            (bullet,),
+            bank,
+            scope=entry_scope(bank, "experience.concentrix"),
+        )
 
 
 def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
@@ -342,10 +348,12 @@ def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
         claims=claims,
     )
 
+    scope = entry_scope(bank, "experience.concentrix")
     with pytest.raises(TailoringError, match="unverified skill"):
         validate_provenance(
             (SourcedBullet(text="Zzztool", sources=("skill.zzztool",)),),
             bank,
+            scope=scope,
         )
     with pytest.raises(TailoringError, match="unverified skill"):
         validate_provenance(
@@ -356,11 +364,13 @@ def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
                 ),
             ),
             bank,
+            scope=scope,
         )
     with pytest.raises(TailoringError, match="unknown fact id"):
         validate_provenance(
             (SourcedBullet(text="Fait inventé", sources=("experience.unknown",)),),
             bank,
+            scope=scope,
         )
 
 

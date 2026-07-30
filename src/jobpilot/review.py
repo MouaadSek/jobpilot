@@ -226,21 +226,28 @@ def vocabulary_misses(
         for rejection in parse_rejections(messages):
             if rejection.tier is not TokenTier.CAPABILITY:
                 continue
-            entry = misses.setdefault(
+            miss = misses.setdefault(
                 rejection.token,
                 {
                     "token": rejection.token,
                     "kind": rejection.kind,
                     "count": 0,
+                    "entries": [],
                     "applications": [],
                     "last_seen": row["created_at"],
                 },
             )
-            entry["count"] += 1
-            if row["application_id"] not in entry["applications"]:
-                entry["applications"].append(row["application_id"])
+            miss["count"] += 1
+            # Which entries could not support it: the same token refused under
+            # one employer and accepted elsewhere is a scope problem, not a
+            # vocabulary one.
+            scope = rejection.entry or "whole bank"
+            if scope not in miss["entries"]:
+                miss["entries"].append(scope)
+            if row["application_id"] not in miss["applications"]:
+                miss["applications"].append(row["application_id"])
     ordered = sorted(
         misses.values(),
-        key=lambda entry: (-entry["count"], entry["token"]),
+        key=lambda miss: (-miss["count"], miss["token"]),
     )
     return ordered[:limit]

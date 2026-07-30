@@ -18,6 +18,7 @@ from jobpilot.tailoring import (
     TailoringPlan,
     UnknownFactIdError,
     _advise_and_tailor,
+    entry_scope,
     extract_template_context,
     pick_variant,
     resolve_fact_id,
@@ -229,7 +230,11 @@ def test_provenance_still_rejects_a_fabricated_number_on_a_normalised_citation(
     assert resolve_fact_id("concentrix.incidents", bank) == bullet.sources[0]
 
     with pytest.raises(TailoringError, match="unsupported number '9 000'"):
-        validate_provenance([bullet], bank)
+        validate_provenance(
+            [bullet],
+            bank,
+            scope=entry_scope(bank, "experience.concentrix"),
+        )
 
 
 def test_provenance_still_rejects_a_fabricated_tool_through_the_full_path() -> None:
