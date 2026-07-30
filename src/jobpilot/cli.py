@@ -611,6 +611,39 @@ def facts_cmd() -> None:
     typer.echo(format_fact_bank(load_fact_bank()))
 
 
+@app.command("vocab-misses")
+def vocab_misses_cmd(
+    limit: int = typer.Option(20, "--limit", help="Distinct tokens to show."),
+) -> None:
+    """Show the tokens that keep failing generations, most frequent first.
+
+    Each one is either a category word the validator has not met yet, which
+    belongs in config/generic_vocabulary.yaml, or a claim the fact bank does not
+    support, which belongs nowhere. The command counts them; the decision is
+    yours.
+    """
+
+    from jobpilot.review import vocabulary_misses
+    from jobpilot.vocabulary import DEFAULT_VOCABULARY_PATH
+
+    conn = connect()
+    try:
+        misses = vocabulary_misses(conn, limit=limit)
+    finally:
+        conn.close()
+    if not misses:
+        typer.echo("no capability-tier rejections recorded")
+        return
+    typer.echo(f"{'token':28} {'kind':12} {'count':>5}  applications")
+    for miss in misses:
+        applications = ", ".join(str(app_id) for app_id in miss["applications"][:6])
+        typer.echo(
+            f"{miss['token'][:28]:28} {miss['kind']:12} {miss['count']:>5}  "
+            f"{applications}"
+        )
+    typer.echo(f"\nadd a category word to {DEFAULT_VOCABULARY_PATH}")
+
+
 # ----- helpers -----
 
 def _csv(value: str) -> list[str]:

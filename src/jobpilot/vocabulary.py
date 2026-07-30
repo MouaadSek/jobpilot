@@ -18,6 +18,17 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+
+import yaml
+
+from jobpilot.config import PROJECT_ROOT
+
+DEFAULT_VOCABULARY_PATH = PROJECT_ROOT / "config" / "generic_vocabulary.yaml"
+
+
+class GenericVocabularyError(ValueError):
+    """Raised when the committed generic vocabulary is malformed."""
 
 
 class TokenTier(StrEnum):
@@ -46,9 +57,23 @@ _KIND_TIERS: Mapping[str, TokenTier] = {
     "capability": TokenTier.CAPABILITY,
 }
 
+#: Wordings retired by the tier model, kept readable because the events table
+#: outlives the code that wrote it. Both refused named things for a reason the
+#: capability tier now owns, so that is where their history belongs. Read-only:
+#: nothing may write these again, which is why they are not in _KIND_TIERS.
+_LEGACY_KIND_TIERS: Mapping[str, TokenTier] = {
+    "proper noun": TokenTier.CAPABILITY,
+    "tool or skill": TokenTier.CAPABILITY,
+}
+
+#: Every wording a stored message may carry. Longest kind first, so "tool or
+#: skill" is not shadowed by a shorter alternative that prefix-matches it.
+_READABLE_KIND_TIERS: Mapping[str, TokenTier] = {**_KIND_TIERS, **_LEGACY_KIND_TIERS}
+
 _REJECTION_RE = re.compile(
-    r"unsupported (?P<kind>" + "|".join(_KIND_TIERS) + r") "
-    r"'(?P<token>[^']+)' in sourced content"
+    r"unsupported (?P<kind>"
+    + "|".join(sorted(_READABLE_KIND_TIERS, key=len, reverse=True))
+    + r") '(?P<token>[^']+)' in sourced content"
 )
 
 
@@ -70,7 +95,9 @@ def rejection_message(kind: str, token: str) -> str:
 
 
 def tier_of(kind: str) -> TokenTier:
-    return _KIND_TIERS[kind]
+    """The tier that refused a token, current wordings and retired ones alike."""
+
+    return _READABLE_KIND_TIERS[kind]
 
 
 def parse_rejections(messages: Iterable[str]) -> tuple[TokenRejection, ...]:
@@ -86,7 +113,7 @@ def parse_rejections(messages: Iterable[str]) -> tuple[TokenRejection, ...]:
             kind = match.group("kind")
             found.append(
                 TokenRejection(
-                    tier=_KIND_TIERS[kind],
+                    tier=_READABLE_KIND_TIERS[kind],
                     kind=kind,
                     token=match.group("token"),
                 )
@@ -94,100 +121,52 @@ def parse_rejections(messages: Iterable[str]) -> tuple[TokenRejection, ...]:
     return tuple(found)
 
 
-#: Words that place a sentence in an industry without claiming anything in it.
-#: Being on this list is not permission to claim a skill: « SIEM » says the
-#: bullet is about log supervision, « Wazuh » says the candidate has run one.
-GENERIC_VOCABULARY: frozenset[str] = frozenset(
-    {
-        # security operations
-        "SIEM",
-        "SOC",
-        "SOAR",
-        "EDR",
-        "XDR",
-        "NDR",
-        "DLP",
-        "IDS",
-        "IPS",
-        "WAF",
-        "PKI",
-        "MFA",
-        "SSO",
-        "RBAC",
-        "IAM",
-        "GRC",
-        "CERT",
-        "CSIRT",
-        "threat intel",
-        "phishing",
-        "malware",
-        "firewall",
-        "pare-feu",
-        "proxy",
-        "endpoint",
-        "logs",
-        "journalisation",
-        "supervision",
-        "durcissement",
-        "hardening",
-        "pentest",
-        "forensics",
-        # networking and systems
-        "VPN",
-        "LAN",
-        "WAN",
-        "DMZ",
-        "DNS",
-        "DHCP",
-        "TCP",
-        "IP",
-        "VLAN",
-        "VM",
-        "OS",
-        "AD",
-        "SI",
-        "cloud",
-        "on-premise",
-        "datacenter",
-        # engineering practice
-        "API",
-        "REST",
-        "CI",
-        "CD",
-        "CI/CD",
-        "QA",
-        "SDLC",
-        "SAST",
-        "DAST",
-        "IaC",
-        "DevOps",
-        "DevSecOps",
-        "SRE",
-        "MVP",
-        "POC",
-        "PoC",
-        # governance and management
-        "RGPD",
-        "GDPR",
-        "ITIL",
-        "SLA",
-        "SLO",
-        "KPI",
-        "KPIs",
-        "ROI",
-        "PDCA",
-        "RSSI",
-        "DSI",
-        "PSSI",
-        "PCA",
-        "PRA",
-        "MOA",
-        "MOE",
-        # contract and calendar words a French offer always uses
-        "IT",
-        "M1",
-        "M2",
-        "BTS",
-        "DUT",
-    }
-)
+#: A term that is only digits and punctuation would be a quantity, and tier 1
+#: must never be reachable through tier 3. Refused at load time, not at use.
+_QUANTITY_ONLY_RE = re.compile(r"^[\d\s.,%+/-]+$")
+
+
+def load_generic_vocabulary(path: Path | None = None) -> frozenset[str]:
+    """Load the terms that assert nothing about the candidate.
+
+    Kept in config rather than in code so that a category word the validator has
+    not met yet is a two-minute edit informed by ``jobpilot vocab-misses``,
+    instead of a release. Nothing here is ever sourced from an offer: offer text
+    is untrusted, and a posting must not be able to license a claim.
+    """
+
+    chosen = Path(path or DEFAULT_VOCABULARY_PATH)
+    try:
+        raw = yaml.safe_load(chosen.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise GenericVocabularyError(
+            f"could not read generic vocabulary: {chosen}"
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise GenericVocabularyError(
+            f"generic vocabulary is invalid YAML: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise GenericVocabularyError("generic_vocabulary must be an object")
+    version = raw.get("version")
+    if not isinstance(version, int) or version < 1:
+        raise GenericVocabularyError(
+            "generic_vocabulary.version must be a positive integer"
+        )
+    terms = raw.get("terms")
+    if not isinstance(terms, list) or not terms:
+        raise GenericVocabularyError("generic_vocabulary.terms must be a non-empty list")
+    collected: set[str] = set()
+    for index, term in enumerate(terms):
+        if not isinstance(term, str) or not term.strip():
+            raise GenericVocabularyError(
+                f"generic_vocabulary.terms[{index}] must be a non-empty string"
+            )
+        cleaned = term.strip()
+        if _QUANTITY_ONLY_RE.match(cleaned):
+            raise GenericVocabularyError(
+                f"generic_vocabulary.terms[{index}] is a quantity, not vocabulary: "
+                f"{cleaned!r}"
+            )
+        collected.add(cleaned)
+    return frozenset(collected)

@@ -7,6 +7,7 @@ import sqlite3
 from typing import Any
 
 from jobpilot.state import LEGAL
+from jobpilot.vocabulary import TokenTier, parse_rejections
 
 # All statuses the state machine knows about, derived from its transition table.
 _ALL_STATUSES = set(LEGAL) | {nxt for nexts in LEGAL.values() for nxt in nexts}
@@ -191,3 +192,55 @@ def event_history(
             }
         )
     return history
+
+
+def vocabulary_misses(
+    db: sqlite3.Connection,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Return capability-tier tokens that have tripped generations, by frequency.
+
+    Only the tier a config edit can fix is reported. A refused quantity or a
+    refused employer name is a real fabrication and no vocabulary file should
+    ever excuse one, so those stay out of this list even though they are logged
+    the same way.
+    """
+
+    rows = db.execute(
+        "SELECT application_id, detail, created_at FROM events "
+        "WHERE event = 'generation_failed' ORDER BY id DESC",
+    ).fetchall()
+    misses: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        try:
+            parsed = json.loads(row["detail"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        messages = [str(parsed.get("error") or "")]
+        attempts = parsed.get("attempts")
+        if isinstance(attempts, list):
+            messages.extend(str(attempt) for attempt in attempts)
+        for rejection in parse_rejections(messages):
+            if rejection.tier is not TokenTier.CAPABILITY:
+                continue
+            entry = misses.setdefault(
+                rejection.token,
+                {
+                    "token": rejection.token,
+                    "kind": rejection.kind,
+                    "count": 0,
+                    "applications": [],
+                    "last_seen": row["created_at"],
+                },
+            )
+            entry["count"] += 1
+            if row["application_id"] not in entry["applications"]:
+                entry["applications"].append(row["application_id"])
+    ordered = sorted(
+        misses.values(),
+        key=lambda entry: (-entry["count"], entry["token"]),
+    )
+    return ordered[:limit]

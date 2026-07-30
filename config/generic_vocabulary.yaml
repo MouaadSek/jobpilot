@@ -1,0 +1,113 @@
+# Generic domain vocabulary — tier 3 of the provenance model.
+#
+# Words that place a sentence in an industry without claiming anything about the
+# candidate. « SIEM » says a bullet is about log supervision; « Wazuh » says the
+# candidate has run one. Only the second needs the fact bank behind it.
+#
+# THIS FILE IS THE MAINTENANCE POINT for that class. When a generation fails on
+# « unsupported capability '<token>' », run `jobpilot vocab-misses` and decide:
+#   - it is a category word          -> add it here, no release needed
+#   - it is a real unsupported claim -> leave it refused, or add the fact
+#
+# Two things this file can never do:
+#   - excuse a quantity: attribution is judged first and never yields here
+#   - excuse a product: adding « Wazuh » here would be a lie, not a shortcut
+#
+# Matching is accent- and case-insensitive.
+
+version: 1
+
+terms:
+  # --- security operations ---
+  - SIEM
+  - SOC
+  - SOAR
+  - EDR
+  - XDR
+  - NDR
+  - DLP
+  - IDS
+  - IPS
+  - WAF
+  - PKI
+  - MFA
+  - SSO
+  - RBAC
+  - IAM
+  - GRC
+  - CERT
+  - CSIRT
+  - threat intel
+  - phishing
+  - malware
+  - firewall
+  - pare-feu
+  - proxy
+  - endpoint
+  - logs
+  - journalisation
+  - supervision
+  - durcissement
+  - hardening
+  - pentest
+  - forensics
+
+  # --- networking and systems ---
+  - VPN
+  - LAN
+  - WAN
+  - DMZ
+  - DNS
+  - DHCP
+  - TCP
+  - IP
+  - VLAN
+  - VM
+  - OS
+  - AD
+  - SI
+  - cloud
+  - on-premise
+  - datacenter
+
+  # --- engineering practice ---
+  - API
+  - REST
+  - CI
+  - CD
+  - CI/CD
+  - QA
+  - SDLC
+  - SAST
+  - DAST
+  - IaC
+  - DevOps
+  - DevSecOps
+  - SRE
+  - MVP
+  - POC
+
+  # --- governance and management ---
+  - RGPD
+  - GDPR
+  - ITIL
+  - SLA
+  - SLO
+  - KPI
+  - KPIs
+  - ROI
+  - PDCA
+  - RSSI
+  - DSI
+  - PSSI
+  - PCA
+  - PRA
+  - MOA
+  - MOE
+
+  # --- contract and calendar words every French offer uses ---
+  - IT
+  - M1
+  - M2
+  - BTS
+  - DUT

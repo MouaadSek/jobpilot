@@ -39,7 +39,7 @@ from jobpilot.variant_catalogue import (
     VariantCatalogueError,
     default_catalogue,
 )
-from jobpilot.vocabulary import GENERIC_VOCABULARY, rejection_message
+from jobpilot.vocabulary import load_generic_vocabulary, rejection_message, tier_of
 
 log = get_logger("tailoring")
 
@@ -1445,7 +1445,11 @@ def _organisation_names(bank: FactBank) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _designation_spans(text: str, corpus: str) -> list[tuple[int, int]]:
+def _designation_spans(
+    text: str,
+    corpus: str,
+    cited: Sequence[str],
+) -> list[tuple[int, int]]:
     """Check every designation against the whole bank; return what it covers.
 
     Designations are capability claims that happen to contain digits, so they
@@ -1459,7 +1463,7 @@ def _designation_spans(text: str, corpus: str) -> list[tuple[int, int]]:
     for match in _DESIGNATION_RE.finditer(text):
         token = match.group(0).strip()
         if _normalize(token) not in corpus:
-            raise TailoringError(rejection_message("designation", token))
+            raise _refuse("designation", token, cited)
         log.debug(
             "accepted designation %r as bank-wide vocabulary (pattern %s), "
             "not as a metric of the cited fact",
@@ -1505,7 +1509,32 @@ def _proper_nouns(value: str, bank: FactBank) -> dict[str, str]:
     return candidates
 
 
-def _reject_borrowed_quantities(text: str, evidence: str) -> None:
+def _refuse(kind: str, token: str, cited: Sequence[str]) -> TailoringError:
+    """Build the rejection and record it, so the misses can be counted later.
+
+    This log line is what makes the model self-correcting: a token that keeps
+    tripping generations is either a category word missing from
+    config/generic_vocabulary.yaml or a claim the candidate genuinely cannot
+    make, and only the tier and the cited facts tell the two apart.
+    ``jobpilot vocab-misses`` reads the same information back out of the events
+    table for runs nobody was watching.
+    """
+
+    log.info(
+        "refused %s token %r (tier %s) cited by %s",
+        kind,
+        token,
+        tier_of(kind).value,
+        ", ".join(cited) or "nothing",
+    )
+    return TailoringError(rejection_message(kind, token))
+
+
+def _reject_borrowed_quantities(
+    text: str,
+    evidence: str,
+    cited: Sequence[str],
+) -> None:
     """Tier 1. A measurement belongs to the job it was measured in."""
 
     evidence_numbers = {
@@ -1513,13 +1542,14 @@ def _reject_borrowed_quantities(text: str, evidence: str) -> None:
     }
     for number in _NUMBER_RE.findall(text):
         if _normalized_number(number) not in evidence_numbers:
-            raise TailoringError(rejection_message("number", number.strip()))
+            raise _refuse("number", number.strip(), cited)
 
 
 def _reject_borrowed_attributions(
     text: str,
     evidence: str,
     organisations: Sequence[str],
+    cited: Sequence[str],
 ) -> None:
     """Tier 1. A bullet may not name an organisation its facts do not name."""
 
@@ -1529,7 +1559,7 @@ def _reject_borrowed_attributions(
         if _contains(normalized_text, name) and not _contains(
             normalized_evidence, name
         ):
-            raise TailoringError(rejection_message("organisation", name))
+            raise _refuse("organisation", name, cited)
 
 
 def _reject_unverified_skills(text: str, bank: FactBank) -> None:
@@ -1549,6 +1579,7 @@ def _reject_unsupported_capabilities(
     corpus: str,
     generic: Container[str],
     organisations: Sequence[str],
+    cited: Sequence[str],
 ) -> None:
     """Tiers 2 and 3. Named things must be in the bank; category words need not.
 
@@ -1564,12 +1595,14 @@ def _reject_unsupported_capabilities(
             continue
         if _contains(corpus, token):
             continue
-        raise TailoringError(rejection_message("capability", as_written))
+        raise _refuse("capability", as_written, cited)
 
 
 def validate_provenance(
     bullets: Sequence[SourcedBullet],
     bank: FactBank,
+    *,
+    vocabulary_path: Path | None = None,
 ) -> None:
     """Reject unsupported ids and tokens, in three tiers of increasing freedom.
 
@@ -1583,12 +1616,14 @@ def validate_provenance(
 
     Tier 3, vocabulary: category words and industry acronyms assert nothing
     about the candidate and are allowed. The bank names products, not
-    categories, so no bank-wide rule could ever have covered these.
+    categories, so no bank-wide rule could ever have covered these. Their list
+    lives in config/generic_vocabulary.yaml, which is the maintenance point for
+    this class.
     """
 
     corpus = _capability_corpus(bank)
     organisations = _organisation_names(bank)
-    generic = {_normalize(term) for term in GENERIC_VOCABULARY}
+    generic = {_normalize(term) for term in load_generic_vocabulary(vocabulary_path)}
     for bullet_index, bullet in enumerate(bullets):
         if not bullet.sources:
             raise TailoringError(
@@ -1609,15 +1644,18 @@ def validate_provenance(
         evidence = " ".join(claim.text for claim in claims)
         # Designations are judged bank-wide, then blanked out so the tiers below
         # read only the text still owed to the cited fact.
+        cited = bullet.sources
         text = _without_designations(
-            bullet.text, _designation_spans(bullet.text, corpus)
+            bullet.text, _designation_spans(bullet.text, corpus, cited)
         )
         # Tier 1 runs first and is never reachable through the others: a token
         # that is both a quantity and a category word is still a quantity.
-        _reject_borrowed_quantities(text, evidence)
-        _reject_borrowed_attributions(text, evidence, organisations)
+        _reject_borrowed_quantities(text, evidence, cited)
+        _reject_borrowed_attributions(text, evidence, organisations, cited)
         _reject_unverified_skills(text, bank)
-        _reject_unsupported_capabilities(text, bank, corpus, generic, organisations)
+        _reject_unsupported_capabilities(
+            text, bank, corpus, generic, organisations, cited
+        )
 
 
 _FRENCH_MONTHS = {

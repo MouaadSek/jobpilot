@@ -186,36 +186,74 @@ gender markers, reference codes, locations, and marketing noise do not reach the
 All three advisor modes now use the same sourced-content JSON contract. The
 advisor may rewrite and reorder experience/project content and lead with the
 most relevant verified skills, but every generated bullet and letter paragraph
-cites stable fact ids. The shared validator rejects unknown/review-pending ids,
-unverified skills, unsupported numbers, and unsupported proper nouns before any
-PDF is generated. Identity, contact details, employers, dates, diplomas, and
-certification names remain renderer-owned and cannot be supplied by the model.
+cites stable fact ids. The shared validator rejects unknown/review-pending ids
+and unverified skills before any PDF is generated, and judges every other token
+in three tiers (below). Identity, contact details, employers, dates, diplomas,
+and certification names remain renderer-owned and cannot be supplied by the model.
 
-### Numbers: metrics vs designations
+### The three provenance tiers
 
-Digits are read two ways in generated content.
+A bullet mixes tokens that are wrong in very different ways, so they are not held
+to the same standard. Classification is deterministic — no model call — and
+tier 1 always runs first, so nothing below can reach it.
 
-A **quantitative claim** — a bare number, percentage, count, or duration
-("1 500", "85 %", "40", "8 mois") — must appear in the facts that bullet cites.
-This is the anti-fabrication guarantee and it is unchanged: a number carried by
-some *other* fact in the bank is still rejected.
+**Tier 1 — attribution: must appear in the CITED facts.** Quantitative claims
+(`1 500`, `85 %`, `8 mois`, `3 VMs`) and the names of organisations the bank
+knows structurally — employers, schools, diplomas. This is the anti-fabrication
+and anti-misattribution guarantee: a number carried by some *other* fact is still
+rejected, and a bullet under one employer may not name another. It never weakens.
+(An organisation that exists only inside a fact's prose, such as a client
+mentioned in passing, is not recognised structurally and falls through to tier 2.)
 
-A **designation** — digits that name a standard, certification, or protocol
-(`ISO 27001`, `ISO/IEC 27002:2022`, `NIS2`, `RGPD art. 32`, `AZ-900`, `802.1X`,
-`CVSS v3`, `OWASP Top 10`, `ITIL v4`, `L2/L3`, ANSSI references) — is matched by
+**Tier 2 — capability: must appear ANYWHERE in the verified bank.** Named
+products, tools, standards and certifications (`Wazuh`, `Terraform`, `ISO 27001`,
+`AZ-900`, `EBIOS RM`). These claim what the candidate can do, which the bank as a
+whole answers rather than one fact. `Splunk` passes because it is genuinely a
+verified skill; `CrowdStrike` is refused because nothing in the bank mentions it.
+The corpus is built from verified, non-`needs_review` content only, and **never
+from the offer text** — a posting is untrusted input (Task 16) and must not be
+able to license a claim.
+
+Designations are the digit-shaped corner of this tier: `ISO 27001`,
+`ISO/IEC 27002:2022`, `NIS2`, `RGPD art. 32`, `AZ-900`, `802.1X`, `CVSS v3`,
+`OWASP Top 10`, `ITIL v4`, `L2/L3` and ANSSI references are recognised by
 **shape**, in one extendable constants block (`_DESIGNATION_PATTERNS`), never by
-a list of accepted values. Matching the shape only decides which rule applies:
-the designation is then accepted **only if it appears somewhere in the fact
-bank**, proving it belongs to the real vocabulary, and rejected outright when it
-does not. `ISO 31000` is refused precisely because no fact mentions it. Only
-verified, non-review content counts as vocabulary. Each acceptance is logged at
-debug with the token and the pattern that matched, so over-permissiveness stays
-auditable.
+a list of accepted values. The shape only decides which tier applies; acceptance
+is still corpus presence, which is why `ISO 31000` and `AZ-104` are refused. A
+validated designation's own span is then excluded from the tiers that read the
+rest of the bullet, so `ISO 27001 sur 42 applications` still fails on the 42.
 
-A validated designation's own span is then excluded from the number, skill, and
-proper-noun checks, which judge a token against the single cited fact — it has
-already been judged, against the whole bank, as a unit. Text outside that span is
-untouched, so "ISO 27001 sur 42 applications" still fails on the 42.
+**Tier 3 — generic vocabulary: free.** Category words and industry acronyms that
+assert nothing about the candidate: SIEM, SOC, EDR, PKI, MFA, API, REST, CI/CD,
+RGPD, ITIL, DevSecOps… The bank names *products* (Azure Sentinel, ELK, Wazuh,
+règles Sigma), so SIEM and SOC appear in no fact at all and no bank-wide rule
+could ever have reached them. Being on this list is never permission to claim a
+skill: SIEM says the bullet is about log supervision, `Wazuh` says the candidate
+has run one.
+
+### Maintaining the vocabulary
+
+`config/generic_vocabulary.yaml` is the maintenance point for tier 3. It is
+config, not code, so a category word the validator has not met yet is an edit
+rather than a release. Terms are matched case- and accent-insensitively, and a
+term that is only digits is refused at load time — tier 1 must never be reachable
+through tier 3.
+
+Every refusal is logged at INFO with the token, its tier, and the bullet's cited
+fact ids. For runs nobody was watching, `jobpilot vocab-misses [--limit N]` reads
+the same information back out of the `generation_failed` events and counts the
+tokens that keep tripping generations:
+
+```bash
+jobpilot vocab-misses
+```
+
+Each listed token is a two-way decision: it is a category word, and belongs in
+`generic_vocabulary.yaml`, or it is a claim the fact bank does not support, and
+belongs nowhere. Only capability-tier tokens are listed — no config entry may
+ever excuse a fabricated number or a borrowed employer name. The wordings this
+model retired (`unsupported proper noun`, `unsupported tool or skill`) are still
+parsed, so failures recorded before the tiers existed are counted too.
 
 ### Fact id citations
 
@@ -320,6 +358,7 @@ jobpilot mark-sent <id>          # record an externally-submitted app as sent (r
 jobpilot dashboard --port 8787   # local review UI on 127.0.0.1
 jobpilot stats                   # snapshot: offers, companies, by-contract, applications
 jobpilot facts                   # review all allowed claims and locked fields
+jobpilot vocab-misses            # tokens that keep failing generations, by frequency
 jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
 
 # Cold outreach (draft here; final confirmation is in the local dashboard)
