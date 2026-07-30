@@ -29,7 +29,13 @@ from jobpilot.config import (
     PROJECT_ROOT,
     get_settings,
 )
-from jobpilot.facts import ExperienceFact, FactBank, build_cv_title, load_fact_bank
+from jobpilot.facts import (
+    ExperienceFact,
+    FactBank,
+    FactClaim,
+    build_cv_title,
+    load_fact_bank,
+)
 from jobpilot.facts import normalise_role_title as normalise_role_title
 from jobpilot.logging_conf import get_logger
 from jobpilot.profile import CvProfile, load_cv_profile
@@ -227,60 +233,85 @@ class SourcedBullet:
         return cls(text=text.strip(), sources=tuple(source.strip() for source in sources))
 
 
+def _fact_id_list(value: object, *, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise TailoringError(f"{label} must be a non-empty fact-id list")
+    if not all(isinstance(item, str) and item.strip() for item in value):
+        raise TailoringError(f"{label} must contain non-empty fact ids")
+    chosen = tuple(item.strip() for item in value)
+    if len(set(chosen)) != len(chosen):
+        raise TailoringError(f"{label} selects the same fact twice")
+    return chosen
+
+
+def _justification(data: Mapping[str, Any], *, label: str) -> str:
+    value = data.get("justification", "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise TailoringError(f"{label}.justification must be text")
+    return value.strip()
+
+
 @dataclass(frozen=True, slots=True)
 class TailoredExperience:
-    """A renderer-owned experience header with AI-authored sourced bullets."""
+    """One employer's bullets, chosen from its facts rather than written.
+
+    The skill this pipeline implements never regenerates experience prose: the
+    template text is hand-tuned to render on one page without orphans, and the
+    pre-written variants already live in the fact bank. So the advisor picks and
+    orders fact ids, and the renderer inserts their text verbatim.
+    """
 
     experience_id: str
-    bullets: tuple[SourcedBullet, ...]
+    fact_ids: tuple[str, ...]
+    #: Why these facts, for the detail page. Never rendered into the CV.
+    justification: str = ""
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], *, index: int) -> TailoredExperience:
         label = f"experience_content[{index}]"
         if not isinstance(data, dict):
             raise TailoringError(f"{label} must be an object")
-        unknown = set(data) - {"experience_id", "bullets"}
+        unknown = set(data) - {"experience_id", "fact_ids", "justification"}
         if unknown:
             raise TailoringError(f"{label} contains unknown fields: {sorted(unknown)}")
         experience_id = data.get("experience_id")
-        bullets = data.get("bullets")
         if not isinstance(experience_id, str) or not experience_id.strip():
             raise TailoringError(f"{label}.experience_id must be non-empty text")
-        if not isinstance(bullets, list) or not bullets:
-            raise TailoringError(f"{label}.bullets must be a non-empty list")
         return cls(
             experience_id=experience_id.strip(),
-            bullets=tuple(
-                SourcedBullet.from_mapping(item, label=f"{label}.bullets[{bullet_index}]")
-                for bullet_index, item in enumerate(bullets)
-            ),
+            fact_ids=_fact_id_list(data.get("fact_ids"), label=f"{label}.fact_ids"),
+            justification=_justification(data, label=label),
         )
 
 
 @dataclass(frozen=True, slots=True)
 class TailoredProject:
-    """A renderer-owned project header/stack with one sourced description."""
+    """One project, and which of its facts describes it. Inserted verbatim."""
 
     project_id: str
-    description: SourcedBullet
+    fact_id: str
+    justification: str = ""
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], *, index: int) -> TailoredProject:
         label = f"project_content[{index}]"
         if not isinstance(data, dict):
             raise TailoringError(f"{label} must be an object")
-        unknown = set(data) - {"project_id", "description"}
+        unknown = set(data) - {"project_id", "fact_id", "justification"}
         if unknown:
             raise TailoringError(f"{label} contains unknown fields: {sorted(unknown)}")
         project_id = data.get("project_id")
+        fact_id = data.get("fact_id")
         if not isinstance(project_id, str) or not project_id.strip():
             raise TailoringError(f"{label}.project_id must be non-empty text")
+        if not isinstance(fact_id, str) or not fact_id.strip():
+            raise TailoringError(f"{label}.fact_id must be a non-empty fact id")
         return cls(
             project_id=project_id.strip(),
-            description=SourcedBullet.from_mapping(
-                data.get("description"),
-                label=f"{label}.description",
-            ),
+            fact_id=fact_id.strip(),
+            justification=_justification(data, label=label),
         )
 
 
@@ -1504,10 +1535,16 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
 
 
 def entry_scope(bank: FactBank, entry_id: str) -> ProvenanceScope:
-    """The scope for a bullet under one employer or one project.
+    """The scope for content written under one employer or one project.
 
     Dates are deliberately left out: they are renderer-owned, and a scope is
     about what was done, not when.
+
+    Since Task 30 no generated CV text sits under an entry — bullets are the
+    bank's own words — so nothing in the pipeline builds this scope any more. It
+    is kept as the executable definition of entry scope, exercised by
+    tests/test_entry_scoped_provenance.py, and is what to reach for if entry-level
+    prose ever returns.
     """
 
     for experience in bank.experience:
@@ -1742,20 +1779,64 @@ def validate_provenance(
                 raise TailoringError(f"unverified skill cannot be claimed: {source_id}")
             if claim.needs_review:
                 raise TailoringError(f"fact id requires review before use: {source_id}")
-        # Designations are judged first, then blanked out so the tiers below read
-        # only the text still owed to the scope.
-        cited = bullet.sources
-        text = _without_designations(
-            bullet.text, _designation_spans(bullet.text, cited, scope)
+        _reject_unsupported_tokens(
+            bullet.text,
+            bank,
+            scope=scope,
+            cited=bullet.sources,
+            generic=generic,
+            organisations=organisations,
         )
-        # Tier 1 runs first and is never reachable through the others: a token
-        # that is both a quantity and a category word is still a quantity.
-        _reject_borrowed_quantities(text, scope, cited)
-        _reject_borrowed_attributions(text, scope, organisations, cited)
-        _reject_unverified_skills(text, bank)
-        _reject_unsupported_capabilities(
-            text, bank, generic, organisations, cited, scope
-        )
+
+
+def _reject_unsupported_tokens(
+    text: str,
+    bank: FactBank,
+    *,
+    scope: ProvenanceScope,
+    cited: Sequence[str],
+    generic: Container[str],
+    organisations: Sequence[str],
+) -> None:
+    """Run the three tiers over one piece of generated text."""
+
+    # Designations are judged first, then blanked out so the tiers below read
+    # only the text still owed to the scope.
+    masked = _without_designations(text, _designation_spans(text, cited, scope))
+    # Tier 1 runs first and is never reachable through the others: a token
+    # that is both a quantity and a category word is still a quantity.
+    _reject_borrowed_quantities(masked, scope, cited)
+    _reject_borrowed_attributions(masked, scope, organisations, cited)
+    _reject_unverified_skills(masked, bank)
+    _reject_unsupported_capabilities(
+        masked, bank, generic, organisations, cited, scope
+    )
+
+
+def validate_generated_phrase(
+    text: str,
+    bank: FactBank,
+    *,
+    vocabulary_path: Path | None = None,
+) -> None:
+    """Run the tiers over generated text that carries no citations.
+
+    The profile's domain phrase is the CV's only remaining generated prose. It
+    has no fact ids to cite — it describes an orientation, not an achievement —
+    so it is judged against the whole bank: a category word is free, a tool or a
+    figure has to be one the candidate really has.
+    """
+
+    if not text.strip():
+        return
+    _reject_unsupported_tokens(
+        text,
+        bank,
+        scope=whole_bank_scope(bank),
+        cited=(),
+        generic={_normalize(term) for term in load_generic_vocabulary(vocabulary_path)},
+        organisations=_organisation_names(bank),
+    )
 
 
 def validate_plan_provenance(
@@ -1764,27 +1845,19 @@ def validate_plan_provenance(
     *,
     vocabulary_path: Path | None = None,
 ) -> None:
-    """Validate every sourced bullet against the entry it belongs to.
+    """Validate the content the advisor wrote, against the scope it claims in.
 
-    The entry comes from the plan's structure, never from the bullet's text: an
-    experience bullet belongs to the employer it was filed under, a project
-    description to the project it describes. The letter has no entry.
+    Since Task 30 the CV's bullets are verbatim fact text, so the token tiers
+    have nothing to say about them — their check is the selection itself, in
+    ``_validate_selection``. What is still written is the profile's domain phrase
+    and the letter, and both describe the whole career rather than one entry.
     """
 
-    for experience in plan.experience_content:
-        validate_provenance(
-            experience.bullets,
-            bank,
-            scope=entry_scope(bank, experience.experience_id),
-            vocabulary_path=vocabulary_path,
-        )
-    for project in plan.project_content:
-        validate_provenance(
-            (project.description,),
-            bank,
-            scope=entry_scope(bank, project.project_id),
-            vocabulary_path=vocabulary_path,
-        )
+    validate_generated_phrase(
+        plan.profile_domain_phrase,
+        bank,
+        vocabulary_path=vocabulary_path,
+    )
     validate_provenance(
         plan.letter_paragraphs,
         bank,
@@ -1858,23 +1931,21 @@ def _validate_experience_completeness(
             if position < _RECENT_EMPLOYER_COUNT
             else _OLDER_EMPLOYER_MIN_BULLETS
         )
-        if len(chosen.bullets) < minimum:
+        if len(chosen.fact_ids) < minimum:
             raise TailoringError(
                 f"employer {employer_by_id[chosen.experience_id]} needs at least "
-                f"{minimum} bullet(s), found {len(chosen.bullets)}"
+                f"{minimum} selected fact(s), found {len(chosen.fact_ids)}"
             )
 
 
-def _all_sourced_bullets(plan: TailoringPlan) -> tuple[SourcedBullet, ...]:
-    return (
-        tuple(
-            bullet
-            for experience in plan.experience_content
-            for bullet in experience.bullets
-        )
-        + tuple(project.description for project in plan.project_content)
-        + plan.letter_paragraphs
-    )
+def _generated_bullets(plan: TailoringPlan) -> tuple[SourcedBullet, ...]:
+    """The content the advisor actually wrote, which is only the letter now.
+
+    CV bullets and project descriptions are verbatim fact text, so there is
+    nothing in them for a token rule to judge.
+    """
+
+    return plan.letter_paragraphs
 
 
 #: Section prefixes used by every fact id in the bank. Models routinely rebuild an
@@ -1971,12 +2042,18 @@ def resolve_plan_fact_ids(plan: TailoringPlan, bank: FactBank) -> TailoringPlan:
         experience_content=tuple(
             replace(
                 experience,
-                bullets=tuple(_resolved_bullet(bullet, bank) for bullet in experience.bullets),
+                fact_ids=tuple(
+                    resolve_fact_id(fact_id, bank, section_hint="experience")
+                    for fact_id in experience.fact_ids
+                ),
             )
             for experience in plan.experience_content
         ),
         project_content=tuple(
-            replace(project, description=_resolved_bullet(project.description, bank))
+            replace(
+                project,
+                fact_id=resolve_fact_id(project.fact_id, bank, section_hint="projects"),
+            )
             for project in plan.project_content
         ),
         skill_order=tuple(
@@ -1987,6 +2064,34 @@ def resolve_plan_fact_ids(plan: TailoringPlan, bank: FactBank) -> TailoringPlan:
             _resolved_bullet(paragraph, bank) for paragraph in plan.letter_paragraphs
         ),
     )
+
+
+def _validate_selection(
+    fact_ids: Sequence[str],
+    own_facts: Sequence[FactClaim],
+    bank: FactBank,
+    *,
+    entry_id: str,
+) -> None:
+    """A selected fact must be a real, reviewed fact OF THAT ENTRY.
+
+    This is the whole provenance check for selected content. The text is the
+    bank's own, so there is nothing to trace token by token; what can still be
+    wrong is the selection — a fact from the wrong entry, or one not cleared for
+    use — and that is what this rejects.
+    """
+
+    own = {fact.id for fact in own_facts}
+    for fact_id in fact_ids:
+        claim = bank.claims.get(fact_id)
+        if claim is None:
+            raise TailoringError(f"unknown fact id in selection: {fact_id}")
+        if fact_id not in own:
+            raise TailoringError(
+                f"selected fact does not belong to entry {entry_id}: {fact_id}"
+            )
+        if claim.needs_review:
+            raise TailoringError(f"fact id requires review before use: {fact_id}")
 
 
 def _validate_sourced_plan(
@@ -2007,13 +2112,12 @@ def _validate_sourced_plan(
     _validate_experience_completeness(plan, bank)
     experience_by_id = {entry.id: entry for entry in bank.experience}
     for chosen in plan.experience_content:
-        own_fact_ids = {fact.id for fact in experience_by_id[chosen.experience_id].facts}
-        for bullet in chosen.bullets:
-            if not own_fact_ids.intersection(bullet.sources):
-                raise TailoringError(
-                    f"experience bullet must cite its selected experience: "
-                    f"{chosen.experience_id}"
-                )
+        _validate_selection(
+            chosen.fact_ids,
+            experience_by_id[chosen.experience_id].facts,
+            bank,
+            entry_id=chosen.experience_id,
+        )
 
     available_projects = {
         project.id
@@ -2035,11 +2139,12 @@ def _validate_sourced_plan(
         )
     project_by_id = {entry.id: entry for entry in bank.projects}
     for chosen in plan.project_content:
-        own_fact_ids = {fact.id for fact in project_by_id[chosen.project_id].facts}
-        if not own_fact_ids.intersection(chosen.description.sources):
-            raise TailoringError(
-                f"project description must cite its selected project: {chosen.project_id}"
-            )
+        _validate_selection(
+            (chosen.fact_id,),
+            project_by_id[chosen.project_id].facts,
+            bank,
+            entry_id=chosen.project_id,
+        )
 
     skill_claims = {
         skill.id: bank.claims[skill.id]
@@ -2056,7 +2161,6 @@ def _validate_sourced_plan(
             raise UnknownFactIdError(skill_id, section="skills")
         if not claim.verified or claim.needs_review:
             raise TailoringError(f"unverified skill cannot be claimed: {skill_id}")
-    sourced_bullets = _all_sourced_bullets(plan)
     locked_values = (
         bank.locked.name,
         bank.locked.email,
@@ -2067,8 +2171,10 @@ def _validate_sourced_plan(
         *bank.locked.certification_names,
         *bank.locked.dates,
     )
-    for bullet in sourced_bullets:
-        normalized_text = _normalize(bullet.text)
+    # Only what the advisor wrote can smuggle in a locked field. Selected bullets
+    # are the bank's own text, and the bank holds these fields structurally.
+    for written in (*_generated_bullets(plan), SourcedBullet(plan.profile_domain_phrase, ())):
+        normalized_text = _normalize(written.text)
         for locked_value in locked_values:
             if _normalize(locked_value) in normalized_text:
                 raise TailoringError(
@@ -2107,9 +2213,11 @@ def _rewrite_experiences(
             raise TailoringError(
                 f"selected experience is absent from template: {chosen.experience_id}"
             )
+        # Verbatim: the bank's text, only re-encoded to match the template's
+        # accent convention. No reflow, no paraphrase, no length adjustment.
         bullet_html = "\n".join(
-            f"        <li>{_encode_text(bullet.text, entities=entities)}</li>"
-            for bullet in chosen.bullets
+            f"        <li>{_encode_text(bank.claims[fact_id].text, entities=entities)}</li>"
+            for fact_id in chosen.fact_ids
         )
         block, count = re.subn(
             r"(?<=<ul>).*?(?=</ul>)",
@@ -2151,7 +2259,9 @@ def _rewrite_projects(
             raise TailoringError(
                 f"selected project is absent from template: {chosen.project_id}"
             )
-        description = _encode_text(chosen.description.text, entities=entities)
+        description = _encode_text(
+            bank.claims[chosen.fact_id].text, entities=entities
+        )
         block, count = re.subn(
             r'(?<=<div class="project-desc">).*?(?=</div>)',
             description,
@@ -2789,13 +2899,15 @@ Return exactly this shape:
   "experience_content": [
     {{
       "experience_id": "experience id from the bank",
-      "bullets": [{{"text": "tailored plain text", "sources": ["fact.id"]}}]
+      "fact_ids": ["fact ids of that experience, in the order to display"],
+      "justification": "one short French sentence, not printed on the CV"
     }}
   ],
   "project_content": [
     {{
       "project_id": "project id from the bank",
-      "description": {{"text": "tailored plain text", "sources": ["fact.id"]}}
+      "fact_id": "the fact id of that project's description",
+      "justification": "one short French sentence, not printed on the CV"
     }}
   ],
   "skill_order": ["verified skill ids, most relevant first"],
@@ -2805,19 +2917,23 @@ Return exactly this shape:
 }}
 
 Rules:
+- You SELECT the CV's experience bullets and project descriptions. You do not
+  write them. The renderer inserts the fact's text exactly as the bank holds it,
+  because that wording is tuned to render on one page without orphan lines. Never
+  paraphrase, shorten, translate, or re-punctuate a fact.
 - experience_content must contain EVERY experience id from the fact bank, in
   reverse-chronological order by start date, exactly as listed above. Omitting an
-  employer leaves an unexplained gap and the CV is rejected. You choose which
-  bullets represent an employer and how they read, never whether it appears.
-- Give the two most recent employers at least 2 bullets each and every older
-  employer at least 1.
+  employer leaves an unexplained gap and the CV is rejected. You choose which of
+  its facts represent an employer and in what order, never whether it appears.
+- Give the two most recent employers at least 2 selected facts each and every
+  older employer at least 1. Several facts of one employer say the same thing for
+  different audiences: pick the wording aimed at this offer.
+- Every id in fact_ids must be a fact OF THAT experience. Same for a project's
+  fact_id.
 - project_content must contain exactly 3 projects; pick and order the 3 most
   relevant for this offer.
 - skill_order must not repeat a tool: each tool belongs to one category only.
-- Rewrite every bullet and project description in the offer's language and emphasis.
-- Every generated bullet, description, and letter paragraph must cite one or more
-  exact fact ids. Numbers, percentages, durations, tools, and proper nouns must occur
-  in the cited facts. Never cite a needs-review or unverified skill.
+- tech_order REORDERS the exact categories above. Never invent a category.
 - Copy every fact id verbatim from the fact bank block above, character for
   character, including its section prefix (skill., project., experience.,
   education., certification., language.). Never rebuild an id from a fact's name:
@@ -2828,9 +2944,11 @@ Rules:
 - Do not output job_title, location_region, letter_body_html, or tech_keywords. The
   renderer owns them and the sourced structure above supersedes them, so anything you
   put there is ignored and only wastes tokens. Leave tech_keywords empty.
-- Use only plain text in sourced content: no HTML and no em dash.
-- Keep experience bullets concise enough for a one-page CV.
-- Keep project descriptions between 95 and 134 characters when possible.
+- You DO write the profile_domain_phrase and the letter. Both are plain text, no
+  HTML and no em dash. Numbers, tools, and proper nouns in them must be supported
+  by the fact bank.
+- Every letter paragraph must cite one or more exact fact ids. Never cite a
+  needs-review fact or an unverified skill.
 - Produce 5 or 6 letter_paragraphs. Salutation, addressee, locked identity, and
   signature are renderer-injected. Write naturally and specifically for the offer.
 - {exact_stage}
@@ -3182,28 +3300,28 @@ def _interactive_structured_payload(
         "profile_contract_phrase": profile_contract,
         "rhythm_phrase": None,
         "rationale": f"Variant {selection.label} selected from the offer missions.",
-        # Every employer is mandatory; only the bullet count varies with recency.
+        # Every employer is mandatory; only the number of selected facts varies
+        # with recency. The default takes the first facts of each, in bank order.
         "experience_content": [
             {
                 "experience_id": entry["experience_id"],
-                "bullets": [
-                    {"text": fact["text"], "sources": [fact["id"]]}
+                "fact_ids": [
+                    fact["id"]
                     for fact in entry["facts"][
                         : _RECENT_EMPLOYER_MIN_BULLETS
                         if position < _RECENT_EMPLOYER_COUNT
                         else _OLDER_EMPLOYER_MIN_BULLETS
                     ]
                 ],
+                "justification": "Sélection par défaut, dans l'ordre de la banque.",
             }
             for position, entry in enumerate(experiences)
         ],
         "project_content": [
             {
                 "project_id": project["project_id"],
-                "description": {
-                    "text": project["facts"][0]["text"],
-                    "sources": [project["facts"][0]["id"]],
-                },
+                "fact_id": project["facts"][0]["id"],
+                "justification": "Projet retenu pour l'ordre du template.",
             }
             for project in chosen_projects
         ],
@@ -3666,6 +3784,69 @@ def _tracker_value(value: object) -> str:
     return compact
 
 
+def _selection_notes(plan: TailoringPlan, bank: FactBank) -> dict[str, str]:
+    """Each entry's justification, keyed by the name a reader recognises."""
+
+    employers = {entry.id: entry.employer for entry in bank.experience}
+    titles = {project.id: project.title for project in bank.projects}
+    notes: dict[str, str] = {}
+    for experience in plan.experience_content:
+        if experience.justification:
+            label = employers.get(experience.experience_id, experience.experience_id)
+            notes[label] = experience.justification
+    for project in plan.project_content:
+        if project.justification:
+            label = titles.get(project.project_id, project.project_id)
+            notes[label] = project.justification
+    return notes
+
+
+#: The CV elements check_orphan_lines.py inspects that hold text we wrote. The
+#: bullets and project descriptions are verbatim bank text, whose line fit was
+#: tuned by hand; the profile carries the generated domain phrase.
+_GENERATED_ORPHAN_SELECTORS: tuple[str, ...] = (".profile",)
+
+
+def _check_orphans(
+    toolchain: DocumentToolchain,
+    tailored_path: Path,
+    original_path: Path,
+    *,
+    application_id: int,
+) -> str:
+    """Run the orphan gate, hard for text we wrote and advisory for the bank's.
+
+    skill/assets/stage-baifall-dream.md is explicit that this check reports false
+    positives outside a full rendering environment ("largeur de conteneur mal
+    mesurée") and that the reliable control is the rendered PDF. Since bullets are
+    now inserted verbatim from wording already tuned to fit, a warning about them
+    is far more likely to be that measurement artefact than a real regression, and
+    the page count still gates the PDF. Where we control the text -- the profile's
+    generated domain phrase -- the check stays hard.
+
+    Returns a warning to record on the ready event, or "" when the gate passed.
+    """
+
+    try:
+        toolchain.check_orphan_lines(tailored_path, original_path)
+    except TailoringError as exc:
+        report = str(exc)
+        generated = [
+            selector
+            for selector in _GENERATED_ORPHAN_SELECTORS
+            if f"[{selector}#" in report
+        ]
+        if generated:
+            raise
+        log.warning(
+            "application %d: orphan warning on verbatim content, not blocking: %s",
+            application_id,
+            report,
+        )
+        return report
+    return ""
+
+
 #: One retry, never more. A model that ignores the validator twice is not going to
 #: be argued into compliance, and each attempt is a paid call.
 _MAX_ADVISOR_RETRIES = 1
@@ -4005,7 +4186,12 @@ def generate_application(
             original_path,
             compare_original=not selection.adapted_for_stage,
         )
-        chosen_toolchain.check_orphan_lines(cv_html_path, original_path)
+        orphan_warning = _check_orphans(
+            chosen_toolchain,
+            cv_html_path,
+            original_path,
+            application_id=application_id,
+        )
         chosen_toolchain.generate_cv_pdf(cv_html_path, cv_pdf_path)
         chosen_toolchain.verify_page_count(cv_pdf_path)
         chosen_toolchain.generate_letter_pdf(
@@ -4070,6 +4256,13 @@ def generate_application(
             "letter_pdf_path": str(letter_pdf_path),
             "tracker_path": str(tracker_path),
         }
+        # Why these facts were selected, for the detail page's event history. The
+        # CV itself never shows a justification.
+        selection_notes = _selection_notes(plan, bank)
+        if selection_notes:
+            ready_detail["selection_justifications"] = selection_notes
+        if orphan_warning:
+            ready_detail["orphan_warning"] = orphan_warning
         if decision.justification:
             ready_detail["routing_justification"] = decision.justification
         if decision.runner_up:

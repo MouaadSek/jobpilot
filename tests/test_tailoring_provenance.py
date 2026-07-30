@@ -52,76 +52,36 @@ def _offer() -> OfferContext:
 
 
 def _experience_content() -> list[dict[str, object]]:
-    """Every employer, reverse-chronological, with the required bullet minimums."""
+    """Every employer, reverse-chronological, with the required fact minimums.
+
+    Selections, not prose: since Task 30 the advisor picks and orders fact ids and
+    the renderer inserts their text verbatim.
+    """
 
     return [
         {
             "experience_id": "experience.baifall_dream",
-            "bullets": [
-                {
-                    "text": (
-                        "Définition des exigences de journalisation et de traçabilité "
-                        "en vue de la supervision sécurité de la plateforme."
-                    ),
-                    "sources": [
-                        "experience.baifall.specification.des.exigences.de.journalisation.et"
-                    ],
-                },
-                {
-                    "text": (
-                        "Cadrage des exigences de sécurité applicative : "
-                        "authentification, gestion des accès, chiffrement."
-                    ),
-                    "sources": [
-                        "experience.baifall.definition.des.exigences.de.securite.applicative"
-                    ],
-                },
+            "fact_ids": [
+                "experience.baifall.specification.des.exigences.de.journalisation.et",
+                "experience.baifall.definition.des.exigences.de.securite.applicative",
             ],
+            "justification": "Supervision et sécurité applicative pour une offre SOC.",
         },
         {
             "experience_id": "experience.concentrix",
-            "bullets": [
-                {
-                    "text": (
-                        "Résolution de 1 500+ incidents avec 85 % de résolution "
-                        "au premier contact selon les SLA."
-                    ),
-                    "sources": ["experience.concentrix.incidents"],
-                },
-                {
-                    "text": (
-                        "Analyse de logs et réduction du délai moyen de résolution "
-                        "de 20 %."
-                    ),
-                    "sources": ["experience.concentrix.resolution_time"],
-                },
+            "fact_ids": [
+                "experience.concentrix.incidents",
+                "experience.concentrix.resolution_time",
             ],
+            "justification": "Volume d'incidents et délai de résolution.",
         },
         {
             "experience_id": "experience.lionbridge",
-            "bullets": [
-                {
-                    "text": (
-                        "Validation de 200 000+ éléments localisés avec un taux "
-                        "d'erreur inférieur à 0,5 %."
-                    ),
-                    "sources": ["experience.lionbridge.traitement.et.validation.de.200"],
-                }
-            ],
+            "fact_ids": ["experience.lionbridge.traitement.et.validation.de.200"],
         },
         {
             "experience_id": "experience.testronic",
-            "bullets": [
-                {
-                    "text": (
-                        "Détection de 90+ anomalies critiques avant production, "
-                        "taux de reproductibilité de 95 %."
-                    ),
-                    "sources": [
-                        "experience.testronic.detection.de.90.anomalies.critiques.2"
-                    ],
-                }
-            ],
+            "fact_ids": ["experience.testronic.detection.de.90.anomalies.critiques.2"],
         },
     ]
 
@@ -141,33 +101,16 @@ def _payload() -> dict[str, object]:
         "project_content": [
             {
                 "project_id": "project.soc.alternance.2",
-                "description": {
-                    "text": (
-                        "Surveillance de 3 serveurs, détection de 5 scénarios et "
-                        "3 procédures de réponse."
-                    ),
-                    "sources": ["project.soc.alternance.2.outcome"],
-                },
+                "fact_id": "project.soc.alternance.2.outcome",
+                "justification": "Surveillance endpoint en premier pour une offre SOC.",
             },
             {
                 "project_id": "project.soc.alternance.1",
-                "description": {
-                    "text": (
-                        "Détection de 3 types de cyberattaques avec 10 règles d'alerte "
-                        "et 3 procédures de réponse."
-                    ),
-                    "sources": ["project.soc.alternance.1.outcome"],
-                },
+                "fact_id": "project.soc.alternance.1.outcome",
             },
             {
                 "project_id": "project.soc.alternance.3",
-                "description": {
-                    "text": (
-                        "Simulation de 5 cyberattaques sur 5 machines et validation "
-                        "des défenses de détection."
-                    ),
-                    "sources": ["project.soc.alternance.3.outcome"],
-                },
+                "fact_id": "project.soc.alternance.3.outcome",
             },
         ],
         "skill_order": ["skill.wazuh", "skill.python"],
@@ -290,8 +233,9 @@ def test_structured_plan_renders_tailored_claims_and_injects_locked_headers() ->
         fact_bank=bank,
     )
 
-    assert "Résolution de 1 500+ incidents avec 85 %" in tailored
-    assert "Surveillance de 3 serveurs" in tailored
+    # Verbatim: exactly what the selected facts say, not a paraphrase of them.
+    assert bank.claims["experience.concentrix.incidents"].text in tailored
+    assert bank.claims["project.soc.alternance.2.outcome"].text in tailored
     assert tailored.index("Surveillance Endpoint") < tailored.index("SOC Lab")
     assert tailored.index("Baïfall Dream") < tailored.index("Concentrix")
     assert tailored.index("Concentrix") < tailored.index("Lionbridge")
@@ -503,10 +447,12 @@ def test_legacy_plan_without_sourced_structure_still_requires_a_letter() -> None
         )
 
 
-def test_locked_employer_name_cannot_be_generated_inside_a_bullet() -> None:
+def test_locked_employer_name_cannot_be_generated_inside_the_letter() -> None:
+    """Bullets are verbatim now, so the letter is where this can still happen."""
+
     payload = _payload()
-    payload["experience_content"][0]["bullets"][0]["text"] = (
-        "Chez Concentrix, résolution de 1 500+ incidents avec 85 % au premier contact."
+    payload["letter_paragraphs"][0]["text"] = (
+        "Chez Concentrix, j'ai appris la rigueur du support de niveau 2."
     )
     selection = pick_variant(_offer().description, title=_offer().title)
     plan = TailoringPlan.from_mapping(payload, offer=_offer(), selection=selection)
@@ -574,15 +520,17 @@ def test_valid_sourced_advice_completes_the_shared_generation_path(
     assert outcome.generation is not None
     tailored = outcome.generation.cv_html_path.read_text(encoding="utf-8")
     assert tailored.count('<div class="project-item">') == 3
-    assert "Résolution de 1 500+ incidents avec 85 %" in tailored
+    assert load_fact_bank().claims["experience.concentrix.incidents"].text in tailored
     assert outcome.generation.tracker_path.exists()
 
 
 class _FabricatingAdvisor:
+    """Invents a figure in the letter, the only CV-adjacent prose it still writes."""
+
     def advise(self, offer, selection, template):
         payload = _payload()
-        payload["experience_content"][0]["bullets"][0]["text"] = (
-            "Pilotage de 5 ans d'expérience en réponse aux incidents."
+        payload["letter_paragraphs"][0]["text"] = (
+            "Mon parcours couvre la résolution de 15 000 incidents."
         )
         return TailoringPlan.from_mapping(
             payload,

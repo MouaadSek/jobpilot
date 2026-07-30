@@ -82,21 +82,21 @@ def test_employers_out_of_chronological_order_are_rejected() -> None:
         _render(payload)
 
 
-def test_recent_employer_below_the_bullet_minimum_is_rejected() -> None:
+def test_recent_employer_below_the_selection_minimum_is_rejected() -> None:
     payload = copy.deepcopy(_payload())
-    payload["experience_content"][0]["bullets"] = payload["experience_content"][0][
-        "bullets"
+    payload["experience_content"][0]["fact_ids"] = payload["experience_content"][0][
+        "fact_ids"
     ][:1]
 
     with pytest.raises(TailoringError, match="Baïfall Dream needs at least 2"):
         _render(payload)
 
 
-def test_older_employer_keeps_its_single_bullet_minimum() -> None:
+def test_older_employer_keeps_its_single_selection_minimum() -> None:
     payload = copy.deepcopy(_payload())
-    payload["experience_content"][3]["bullets"] = []
+    payload["experience_content"][3]["fact_ids"] = []
 
-    with pytest.raises(TailoringError, match="bullets.*non-empty"):
+    with pytest.raises(TailoringError, match="fact_ids must be a non-empty"):
         _render(payload)
 
 
