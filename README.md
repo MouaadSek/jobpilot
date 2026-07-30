@@ -183,38 +183,67 @@ it at any time with `jobpilot facts`; entries marked `needs_review` stay visible
 instead of being guessed. Posting titles are normalized before rendering so
 gender markers, reference codes, locations, and marketing noise do not reach the CV.
 
-All three advisor modes now use the same sourced-content JSON contract. The
-advisor may rewrite and reorder experience/project content and lead with the
-most relevant verified skills, but every generated bullet and letter paragraph
-cites stable fact ids. The shared validator rejects unknown/review-pending ids
-and unverified skills before any PDF is generated, and judges every other token
-in three tiers (below). Identity, contact details, employers, dates, diplomas,
-and certification names remain renderer-owned and cannot be supplied by the model.
+All three advisor modes use the same sourced-content JSON contract. Identity,
+contact details, employers, dates, diplomas, and certification names remain
+renderer-owned and cannot be supplied by the model.
+
+### The advisor selects; the renderer inserts
+
+**The CV's experience bullets and project descriptions are not generated.** The
+advisor returns, per employer, an ordered list of **fact ids**, and per project a
+project id plus the fact id of its description. The renderer inserts
+`bank.claims[id].text` unchanged — only re-encoded to match the template's accent
+convention. There is no field for prose, so an advisor that writes instead of
+selecting fails loudly rather than quietly reflowing the page.
+
+This is what `skill/SKILL.md` has always described. Its six zones reorder, swap
+and make small bounded edits; the bullet text in the templates is the *line-fit*
+version, hand-tuned so the CV renders on one page without orphan lines with claims
+that are already true. `skill/assets/stage-baifall-dream.md` holds eight
+pre-written Baïfall bullet-3 variants (GRC, DevSecOps, AppSec, CloudSec, SOC, Chef
+de Projet, Consultant, IAM), and each is a fact-bank entry: selecting is how they
+were meant to be used.
+
+Several facts of one employer say the same thing for different audiences, so
+selection is a real judgement — the advisor also returns a one-line justification
+per entry, recorded on the `ready` event for the detail page and never printed on
+the CV.
+
+What the advisor still **writes**:
+
+- the **profile domain phrase** — 3 to 7 words after « Profil orienté », with the
+  rendered profile held within ±15 characters of the template's;
+- the **job title** — the offer's terminology plus contract and start date;
+- the **motivation letter** — free generation. The letter has room and no line-fit
+  constraint, so its rules are unchanged.
+
+Tech rows are **reordered only**: `skill_order` ranks the values already in the
+template and never adds or drops one. Région comes from the offer's region, else
+the profile.
 
 ### Scope: what a claim is judged against
 
-A bullet is judged against its **entry** — the employer it is filed under in
-EXPÉRIENCE, or the project it describes in PROJETS — and everything that entry's
-facts say is true there. The entry comes from the plan's structure, never from the
-bullet's text.
+Generated text is judged against a **scope**. The letter and the domain phrase
+describe a whole career, so their scope is the whole verified bank. A selected
+bullet has no scope question left — its text is the bank's own — so its whole check
+is the selection: the id must resolve (below) and must belong to *that* entry.
+Borrowing another employer's achievement is no longer something the validator has
+to catch in prose; it is unrepresentable.
 
-This replaced judging a bullet against the facts it happened to cite, which made
-the same true sentence pass or fail on bookkeeping alone. Concentrix has five
-facts and only two carry « 1 500+ »: « Triage de 1 500+ incidents » passed when
-either of those was cited and was refused as a fabricated number when one of the
-other three was. Good bullets naturally synthesise across an employer's facts, so
-the requirement was unnatural, not the model's failing.
+Entry scope was introduced when bullets were still written, because judging one
+against the facts it happened to cite made the same true sentence pass or fail on
+bookkeeping alone: Concentrix has five facts and only two carry « 1 500+ », so
+« Triage de 1 500+ incidents » was accepted or refused depending on the citation.
+Selection removed the question. `entry_scope()` remains as the executable
+definition of the model, exercised by tests, for the day entry-level prose returns.
 
-Citations stay **required** and still have to resolve to real, reviewed facts —
-they are the audit trail. They are no longer the boundary.
+Letter citations stay **required** and still have to resolve to real, reviewed
+facts — they are the audit trail.
 
-Content with **no entry** — the motivation letter — is judged against the whole
-verified bank, because a career summary is not owed to any single employer. The
-scope there is genuinely looser: a small figure that exists anywhere in the bank
-passes, so attribution in the letter means "the bank knows this number" rather
-than "this employer produced it". Anything absent from the bank is refused
-everywhere. (The profile domain phrase carries no citations at all; it is governed
-by its own 3-to-7-word rule and the locked-field checks.)
+The whole-bank scope is genuinely looser than an entry's: a small figure that
+exists anywhere in the bank passes, so attribution in the letter means "the bank
+knows this number" rather than "this employer produced it". Anything absent from
+the bank is refused everywhere.
 
 ### The three provenance tiers
 
@@ -312,19 +341,38 @@ Provenance stops fabrication; a second set of rules stops omission. A generated
 CV is rejected (rollback to `queued` plus a `generation_failed` event) unless:
 
 - every employer in the fact bank appears, in reverse-chronological order by
-  start date, with at least 2 bullets for the two most recent employers and at
-  least 1 for each older one;
+  start date, with at least 2 selected facts for the two most recent employers
+  and at least 1 for each older one;
 - exactly 3 projects are selected;
 - no tool is listed under two skill categories;
 - the header location is a real region, never a bare country.
 
-The model still chooses which bullets represent an employer, how they read,
-which 3 projects to show, and how the letter is written. It no longer chooses
-whether an employer appears. The header location is renderer-owned: it uses the
-offer's region and falls back to `config/profile.yaml` (city + region) instead of
-a bare country. The tracker row's variant and project columns are derived from
-the validated document, not from the pre-generation routing guess, which is
-recorded as `routing_variant` in the status-change event detail.
+The model still chooses which of an employer's facts represent it and in what
+order, which 3 projects to show, and how the letter is written. It no longer
+chooses whether an employer appears, nor how a bullet reads. The header location
+is renderer-owned: it uses the offer's region and falls back to
+`config/profile.yaml` (city + region) instead of a bare country. The tracker row's
+variant and project columns are derived from the validated document, not from the
+pre-generation routing guess, which is recorded as `routing_variant` in the
+status-change event detail.
+
+### Rendering gates: hard vs advisory
+
+`verify_page_count.py` is a **hard gate** on both rendered PDFs. It is the control
+`skill/assets/stage-baifall-dream.md` calls reliable, and nothing downgrades it.
+
+`check_orphan_lines.py` is **split**, because that same file says plainly that the
+script reports false positives outside a full rendering environment (« largeur de
+conteneur mal mesurée ») and that the reliable control is the rendered PDF:
+
+- an orphan reported against `li` or `.project-desc` — **verbatim** bank text,
+  whose line fit was tuned by hand — logs a warning and is recorded as
+  `orphan_warning` on the `ready` event. It does not fail the generation.
+- an orphan reported against `.profile` — the **generated** domain phrase — still
+  fails the generation, with the usual rollback to `queued`.
+
+The split is by the selector the script blames, so it follows the text's origin
+rather than a guess.
 
 ## Sources
 

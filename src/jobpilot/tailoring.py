@@ -1535,10 +1535,16 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
 
 
 def entry_scope(bank: FactBank, entry_id: str) -> ProvenanceScope:
-    """The scope for a bullet under one employer or one project.
+    """The scope for content written under one employer or one project.
 
     Dates are deliberately left out: they are renderer-owned, and a scope is
     about what was done, not when.
+
+    Since Task 30 no generated CV text sits under an entry — bullets are the
+    bank's own words — so nothing in the pipeline builds this scope any more. It
+    is kept as the executable definition of entry scope, exercised by
+    tests/test_entry_scoped_provenance.py, and is what to reach for if entry-level
+    prose ever returns.
     """
 
     for experience in bank.experience:
@@ -1773,20 +1779,64 @@ def validate_provenance(
                 raise TailoringError(f"unverified skill cannot be claimed: {source_id}")
             if claim.needs_review:
                 raise TailoringError(f"fact id requires review before use: {source_id}")
-        # Designations are judged first, then blanked out so the tiers below read
-        # only the text still owed to the scope.
-        cited = bullet.sources
-        text = _without_designations(
-            bullet.text, _designation_spans(bullet.text, cited, scope)
+        _reject_unsupported_tokens(
+            bullet.text,
+            bank,
+            scope=scope,
+            cited=bullet.sources,
+            generic=generic,
+            organisations=organisations,
         )
-        # Tier 1 runs first and is never reachable through the others: a token
-        # that is both a quantity and a category word is still a quantity.
-        _reject_borrowed_quantities(text, scope, cited)
-        _reject_borrowed_attributions(text, scope, organisations, cited)
-        _reject_unverified_skills(text, bank)
-        _reject_unsupported_capabilities(
-            text, bank, generic, organisations, cited, scope
-        )
+
+
+def _reject_unsupported_tokens(
+    text: str,
+    bank: FactBank,
+    *,
+    scope: ProvenanceScope,
+    cited: Sequence[str],
+    generic: Container[str],
+    organisations: Sequence[str],
+) -> None:
+    """Run the three tiers over one piece of generated text."""
+
+    # Designations are judged first, then blanked out so the tiers below read
+    # only the text still owed to the scope.
+    masked = _without_designations(text, _designation_spans(text, cited, scope))
+    # Tier 1 runs first and is never reachable through the others: a token
+    # that is both a quantity and a category word is still a quantity.
+    _reject_borrowed_quantities(masked, scope, cited)
+    _reject_borrowed_attributions(masked, scope, organisations, cited)
+    _reject_unverified_skills(masked, bank)
+    _reject_unsupported_capabilities(
+        masked, bank, generic, organisations, cited, scope
+    )
+
+
+def validate_generated_phrase(
+    text: str,
+    bank: FactBank,
+    *,
+    vocabulary_path: Path | None = None,
+) -> None:
+    """Run the tiers over generated text that carries no citations.
+
+    The profile's domain phrase is the CV's only remaining generated prose. It
+    has no fact ids to cite — it describes an orientation, not an achievement —
+    so it is judged against the whole bank: a category word is free, a tool or a
+    figure has to be one the candidate really has.
+    """
+
+    if not text.strip():
+        return
+    _reject_unsupported_tokens(
+        text,
+        bank,
+        scope=whole_bank_scope(bank),
+        cited=(),
+        generic={_normalize(term) for term in load_generic_vocabulary(vocabulary_path)},
+        organisations=_organisation_names(bank),
+    )
 
 
 def validate_plan_provenance(
@@ -1798,11 +1848,16 @@ def validate_plan_provenance(
     """Validate the content the advisor wrote, against the scope it claims in.
 
     Since Task 30 the CV's bullets are verbatim fact text, so the token tiers
-    have nothing to say about them — their check is the selection itself. What
-    is still written is the letter, which summarises the whole career and so is
-    judged against the whole bank.
+    have nothing to say about them — their check is the selection itself, in
+    ``_validate_selection``. What is still written is the profile's domain phrase
+    and the letter, and both describe the whole career rather than one entry.
     """
 
+    validate_generated_phrase(
+        plan.profile_domain_phrase,
+        bank,
+        vocabulary_path=vocabulary_path,
+    )
     validate_provenance(
         plan.letter_paragraphs,
         bank,

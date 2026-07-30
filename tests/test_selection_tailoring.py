@@ -297,6 +297,31 @@ def test_the_profile_stays_within_fifteen_characters_of_the_template() -> None:
         _render(payload)
 
 
+def test_a_fabricated_tool_in_the_domain_phrase_is_refused() -> None:
+    """The phrase is short, but it is still generated, so the tiers still read it."""
+
+    payload = copy.deepcopy(_payload())
+    payload["profile_domain_phrase"] = "détection avancée via CrowdStrike"
+
+    with pytest.raises(TailoringError, match="unsupported capability 'CrowdStrike'"):
+        _render(payload)
+
+
+def test_a_fabricated_figure_in_the_domain_phrase_is_refused() -> None:
+    payload = copy.deepcopy(_payload())
+    payload["profile_domain_phrase"] = "détection sur 15 000 incidents"
+
+    with pytest.raises(TailoringError, match="unsupported number '15 000'"):
+        _render(payload)
+
+
+def test_a_category_word_in_the_domain_phrase_is_free() -> None:
+    payload = copy.deepcopy(_payload())
+    payload["profile_domain_phrase"] = "supervision SIEM et réponse à incident"
+
+    assert _render(payload)
+
+
 def test_the_letter_is_still_free_generation(bank) -> None:
     payload = copy.deepcopy(_payload())
     payload["letter_paragraphs"][0]["text"] = (
