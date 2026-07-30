@@ -6,6 +6,7 @@ only through sourced facts, before bundled quality gates render final artifacts.
 
 from __future__ import annotations
 
+import dataclasses
 import html
 import json
 import os
@@ -338,6 +339,11 @@ class TailoringPlan:
     rationale: str
     profile_contract_phrase: str | None = None
     rhythm_phrase: str | None = None
+    #: Zone 3 additions: {existing category: [keyword]}, at most two in total.
+    #: Empty for every plan that only reorders, which is most of them.
+    tech_additions: Mapping[str, Sequence[str]] = dataclasses.field(
+        default_factory=dict
+    )
     experience_content: tuple[TailoredExperience, ...] = ()
     project_content: tuple[TailoredProject, ...] = ()
     skill_order: tuple[str, ...] = ()
@@ -367,6 +373,7 @@ class TailoringPlan:
             "profile_domain_phrase",
             "tech_order",
             "tech_keywords",
+            "tech_additions",
             "project_order",
             "location_region",
             "letter_body_html",
@@ -400,16 +407,21 @@ class TailoringPlan:
                 raise TailoringError(f"tailoring plan field '{key}' must be a string list")
             return tuple(item.strip() for item in value)
 
-        raw_keywords = data.get("tech_keywords", {})
-        if not isinstance(raw_keywords, dict):
-            raise TailoringError("tailoring plan field 'tech_keywords' must be an object")
-        keywords: dict[str, tuple[str, ...]] = {}
-        for category, values in raw_keywords.items():
-            if not isinstance(category, str) or not isinstance(values, list):
-                raise TailoringError("tech keyword entries must map a category to a list")
-            if not all(isinstance(value, str) and value.strip() for value in values):
-                raise TailoringError("tech keywords must be non-empty strings")
-            keywords[category.strip()] = tuple(value.strip() for value in values)
+        def keyword_map(field: str) -> dict[str, tuple[str, ...]]:
+            raw = data.get(field, {})
+            if not isinstance(raw, dict):
+                raise TailoringError(f"tailoring plan field '{field}' must be an object")
+            parsed: dict[str, tuple[str, ...]] = {}
+            for category, values in raw.items():
+                if not isinstance(category, str) or not isinstance(values, list):
+                    raise TailoringError("tech keyword entries must map a category to a list")
+                if not all(isinstance(value, str) and value.strip() for value in values):
+                    raise TailoringError("tech keywords must be non-empty strings")
+                parsed[category.strip()] = tuple(value.strip() for value in values)
+            return parsed
+
+        keywords = keyword_map("tech_keywords")
+        additions = keyword_map("tech_additions")
 
         def optional_text(key: str) -> str | None:
             value = data.get(key)
@@ -506,6 +518,7 @@ class TailoringPlan:
             profile_domain_phrase=required_text("profile_domain_phrase"),
             tech_order=text_tuple("tech_order"),
             tech_keywords=keywords,
+            tech_additions=additions,
             project_order=text_tuple("project_order"),
             location_region=location_region,
             letter_body_html=letter_body_html,
@@ -2574,6 +2587,121 @@ def _add_tech_keywords(
     return source
 
 
+#: SKILL.md Zone 3: "Add 1-2 keywords from the offer if genuinely in Mouaad's
+#: skill set". Both halves are load-bearing, so both are enforced.
+_MAX_TECH_ADDITIONS = 2
+
+
+def _row_budget(source: str) -> int:
+    """The longest tech row the template itself already accepts, in characters.
+
+    The templates are line-fit by hand, so their own widest row is the honest
+    bound: a row that stays inside it renders the way the designer accepted.
+    """
+
+    return max(
+        (len(_plain(list_match.group(2))) for _row, list_match, _values in _tech_lists(source)),
+        default=0,
+    )
+
+
+def _add_tech_additions(
+    source: str,
+    requested: Mapping[str, Sequence[str]],
+    *,
+    bank: FactBank,
+    offer_description: str,
+    entities: bool,
+) -> str:
+    """Insert offer keywords the candidate genuinely has into existing rows.
+
+    A keyword is accepted only if the bank has it as a verified, reviewed skill
+    AND the offer asks for it: the first half stops invention, the second stops
+    padding the CV with everything he knows. Rows are never created, and a
+    keyword that would push its row past the template's own widest line is
+    dropped rather than failing the run — the CV is still true without it, and
+    one page matters more than one keyword.
+    """
+
+    if not requested:
+        return source
+    total = sum(len(values) for values in requested.values())
+    if total > _MAX_TECH_ADDITIONS:
+        raise TailoringError(
+            f"at most {_MAX_TECH_ADDITIONS} offer keywords may be added to the tech "
+            f"stack, found {total}"
+        )
+    verified = {
+        _normalize(skill.name): skill.name
+        for skill in bank.skills
+        if skill.verified and not skill.needs_review
+    }
+    normalized_offer = _normalize(offer_description)
+    budget = _row_budget(source)
+    present = {
+        _normalize(value)
+        for _row, _list_match, values in _tech_lists(source)
+        for value in values
+    }
+    for requested_category, keywords in requested.items():
+        category_key = _normalize(requested_category)
+        row_match = next(
+            (
+                match
+                for match in _TECH_ROW_RE.finditer(source)
+                if _normalize(
+                    _extract_first(
+                        r'<div class="tech-category">(.*?)</div>',
+                        match.group(0),
+                        "tech category",
+                    )
+                )
+                == category_key
+            ),
+            None,
+        )
+        if row_match is None:
+            raise TailoringError(
+                f"unknown tech category for keyword addition: {requested_category}"
+            )
+        row = row_match.group(0)
+        list_match = re.search(r'(<div class="tech-list">)(.*?)(</div></div>)', row)
+        if not list_match:
+            raise TailoringError(f"tech list missing for category: {requested_category}")
+        rendered = _plain(list_match.group(2))
+        additions: list[str] = []
+        for keyword in keywords:
+            if _normalize(keyword) not in verified:
+                raise TailoringError(
+                    f"tech keyword is not a verified skill in the fact bank: {keyword}"
+                )
+            if not _contains(normalized_offer, keyword):
+                raise TailoringError(
+                    f"tech keyword does not appear in the offer: {keyword}"
+                )
+            if _normalize(keyword) in present:
+                continue
+            if len(rendered) + len(", ") + len(keyword) > budget:
+                log.debug(
+                    "dropped tech keyword %r: row %r would reach %d characters, "
+                    "past the template's widest row (%d)",
+                    keyword,
+                    requested_category,
+                    len(rendered) + len(", ") + len(keyword),
+                    budget,
+                )
+                continue
+            additions.append(_encode_text(keyword, entities=entities))
+            rendered = f"{rendered}, {keyword}"
+            present.add(_normalize(keyword))
+        if not additions:
+            continue
+        new_list = list_match.group(2).rstrip() + ", " + ", ".join(additions)
+        new_row = row[: list_match.start(2)] + new_list + row[list_match.end(2) :]
+        source = source[: row_match.start()] + new_row + source[row_match.end() :]
+    return source
+
+
 def _zone6_variant(offer_description: str) -> str | None:
     normalized = _normalize(offer_description)
     if _contains_any(normalized, ("iso 27001", "conformite", "audit", "rssi")):
@@ -2642,6 +2770,13 @@ def tailor_cv_html(
     result = _tailor_profile(result, plan, selection)
     result = _reorder_tech_rows(result, plan.tech_order)
     result = _add_tech_keywords(result, plan.tech_keywords, entities=selection.entity_encoded)
+    result = _add_tech_additions(
+        result,
+        plan.tech_additions,
+        bank=bank,
+        offer_description=offer_description,
+        entities=selection.entity_encoded,
+    )
     result = _reorder_projects(result, plan.project_order)
     encoded_location = _encode_text(plan.location_region, entities=selection.entity_encoded)
     result = _replace_required(
@@ -2939,6 +3074,7 @@ Return exactly this shape:
   "profile_domain_phrase": "3 to 7 HR-friendly words",
   "tech_order": ["all exact categories, most relevant first"],
   "tech_keywords": {{}},
+  "tech_additions": {{"exact category name": ["at most 2 keywords in total"]}},
   "project_order": ["all exact project titles, most relevant first"],
   "profile_contract_phrase": null,
   "rhythm_phrase": null,
@@ -2981,6 +3117,10 @@ Rules:
   relevant for this offer.
 - skill_order must not repeat a tool: each tool belongs to one category only.
 - tech_order REORDERS the exact categories above. Never invent a category.
+- tech_additions may add at most 2 keywords in total, into categories that
+  already exist. A keyword is accepted only if it is a verified skill in the fact
+  bank AND appears in the offer text; anything else is rejected. Leave it empty
+  when the template already covers the offer, which is the usual case.
 - Copy every fact id verbatim from the fact bank block above, character for
   character, including its section prefix (skill., project., experience.,
   education., certification., language.). Never rebuild an id from a fact's name:

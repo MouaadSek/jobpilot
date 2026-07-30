@@ -233,9 +233,17 @@ What the advisor still **writes**:
 - the **motivation letter** — free generation. The letter has room and no line-fit
   constraint, so its rules are unchanged.
 
-Tech rows are **reordered only**: `skill_order` ranks the values already in the
-template and never adds or drops one. Région comes from the offer's region, else
-the profile.
+Tech rows are **reordered** by `skill_order`, which ranks the values already in
+the template and never drops one. `tech_additions` may insert **at most 2**
+keywords into categories that already exist, and only when both halves of the
+skill's rule hold: the keyword is a **verified, reviewed skill in the fact bank**
+*and* it **appears in the offer text**. The first stops invention, the second
+stops padding the CV with everything he knows; failing either rejects the plan.
+Rows are never created. A keyword that would push its row past the template's own
+widest line is dropped with a debug log rather than failing the run — one page
+matters more than one keyword, and `verify_page_count` still gates the PDF.
+
+Région comes from the offer's region, else the profile.
 
 ### Scope: what a claim is judged against
 
