@@ -1490,41 +1490,26 @@ def _organisation_names(bank: FactBank) -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class ProvenanceScope:
-    """The context a bullet is read in, and everything true within it.
+    """Everything true of the career the generated text is describing.
 
-    A bullet in EXPÉRIENCE or PROJETS sits under one entry, and everything that
-    entry's facts say is true there — whichever of them the model happened to
-    cite. Validating against the citation list instead made the same true
-    sentence pass or fail on bookkeeping alone: « Triage de 1 500+ incidents »
-    is true of Concentrix, but only two of its five facts carry the figure.
-
-    The letter has no entry. It legitimately summarises the whole career, so its
-    scope is the whole verified bank.
+    Generated text is now the letter and the profile's domain phrase, both of
+    which summarise a whole career, so there is one scope. Bullets used to be
+    written under an employer and were judged against that entry alone; since
+    they are selected verbatim from the bank, contamination across employers is
+    not something prose can express, so the entry scope went away with the prose.
     """
 
     label: str
-    entry_id: str | None
     #: Accent- and case-folded, for name and capability lookups.
     normalized: str
     #: Every quantity the scope actually contains, normalised for comparison.
     numbers: frozenset[str]
 
-    @property
-    def is_entry(self) -> bool:
-        return self.entry_id is not None
 
-    @property
-    def entry_label(self) -> str | None:
-        """The name a rejection should blame, or None for the whole bank."""
-
-        return self.label if self.is_entry else None
-
-
-def _scope(label: str, entry_id: str | None, parts: Sequence[str]) -> ProvenanceScope:
+def _scope(label: str, parts: Sequence[str]) -> ProvenanceScope:
     text = " ".join(part for part in parts if part)
     return ProvenanceScope(
         label=label,
-        entry_id=entry_id,
         normalized=_normalize(text),
         numbers=frozenset(
             _normalized_number(value) for value in _NUMBER_RE.findall(text)
@@ -1533,7 +1518,7 @@ def _scope(label: str, entry_id: str | None, parts: Sequence[str]) -> Provenance
 
 
 def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
-    """The scope for content that has no entry: the profile and the letter.
+    """The scope for the letter and the profile's domain phrase.
 
     Attribution still applies here — a quantity must exist somewhere in the bank
     and an organisation must be one the bank really knows — but a career summary
@@ -1541,54 +1526,13 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
 
     The bank's own dates belong to this scope: a letter that says « depuis
     juillet 2026 » is recounting the career the bank records, while a year the
-    bank never mentions is still an invention. Entry scopes deliberately leave
-    dates out, because there a scope is about what was done, not when.
+    bank never mentions is still an invention.
     """
 
     return _scope(
         "the whole bank",
-        None,
         [*_bank_parts(bank), *_organisation_names(bank), *bank.locked.dates],
     )
-
-
-def entry_scope(bank: FactBank, entry_id: str) -> ProvenanceScope:
-    """The scope for content written under one employer or one project.
-
-    Dates are deliberately left out: they are renderer-owned, and a scope is
-    about what was done, not when.
-
-    Since Task 30 no generated CV text sits under an entry — bullets are the
-    bank's own words — so nothing in the pipeline builds this scope any more. It
-    is kept as the executable definition of entry scope, exercised by
-    tests/test_entry_scoped_provenance.py, and is what to reach for if entry-level
-    prose ever returns.
-    """
-
-    for experience in bank.experience:
-        if experience.id == entry_id:
-            return _scope(
-                experience.employer,
-                entry_id,
-                [
-                    *(fact.text for fact in experience.facts if not fact.needs_review),
-                    experience.employer,
-                    experience.role,
-                    experience.location,
-                ],
-            )
-    for project in bank.projects:
-        if project.id == entry_id:
-            return _scope(
-                project.title,
-                entry_id,
-                [
-                    *(fact.text for fact in project.facts if not fact.needs_review),
-                    project.title,
-                    *project.stack,
-                ],
-            )
-    raise TailoringError(f"unknown entry for provenance scope: {entry_id}")
 
 
 def _designation_spans(
@@ -1680,7 +1624,7 @@ def _refuse(
         scope.label,
         ", ".join(cited) or "nothing",
     )
-    return TailoringError(rejection_message(kind, token, entry=scope.entry_label))
+    return TailoringError(rejection_message(kind, token))
 
 
 def _reject_borrowed_quantities(

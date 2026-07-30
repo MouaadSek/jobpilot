@@ -15,11 +15,15 @@ from jobpilot.facts import load_fact_bank
 from jobpilot.state import current_status
 from jobpilot.tailoring import (
     OfferContext,
+    SourcedBullet,
     TailoringError,
     TailoringPlan,
     extract_template_context,
     pick_variant,
     tailor_cv_html,
+    validate_plan_provenance,
+    validate_provenance,
+    whole_bank_scope,
 )
 from tests.test_fact_id_resolution import TEMPLATE_PATH
 from tests.test_tailoring_provenance import _payload, _queued_application
@@ -475,3 +479,155 @@ def test_the_prompt_asks_for_selections_not_prose() -> None:
     assert "You SELECT the CV's experience bullets" in prompt
     assert "paraphrase, shorten, translate, or re-punctuate" in prompt
     assert '"bullets"' not in prompt
+
+
+# ----- selection is what replaced entry-scoped provenance (Task 28 -> 30) -----
+
+#: Concentrix has five facts and only two carry « 1 500+ ». While bullets were
+#: written, the same true sentence passed or failed on which one was cited.
+#: Selecting removed the question: any of the five may be chosen, and none of
+#: them can carry another employer's words.
+CONCENTRIX_FACTS = (
+    "experience.concentrix.incidents",
+    "experience.concentrix.resolution_time",
+    "experience.concentrix.incidents.2",
+    "experience.concentrix.resolution_time.2",
+    "experience.concentrix.resolution_time.3",
+)
+
+
+def test_only_two_of_the_five_concentrix_facts_carry_the_figure(bank) -> None:
+    """The premise of the problem selection solved, kept as documentation."""
+
+    carriers = [
+        fact_id for fact_id in CONCENTRIX_FACTS if "1 500+" in bank.claims[fact_id].text
+    ]
+
+    assert len(carriers) == 2
+    assert len(CONCENTRIX_FACTS) == 5
+
+
+@pytest.mark.parametrize("chosen", CONCENTRIX_FACTS)
+def test_any_of_an_entrys_facts_may_be_selected_for_it(bank, chosen: str) -> None:
+    payload = copy.deepcopy(_payload())
+    payload["experience_content"][1]["fact_ids"] = [
+        chosen,
+        *(other for other in CONCENTRIX_FACTS if other != chosen),
+    ][:2]
+
+    assert bank.claims[chosen].text in _render(payload)
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    (
+        "experience.lionbridge.traitement.et.validation.de.200",
+        "experience.baifall.cadrage.complet.du.projet.benchmark",
+        "experience.testronic.detection.de.90.anomalies.critiques",
+    ),
+)
+def test_another_employers_fact_cannot_be_selected_here(foreign: str) -> None:
+    """Cross-entry contamination is now unrepresentable rather than policed."""
+
+    payload = copy.deepcopy(_payload())
+    payload["experience_content"][1]["fact_ids"] = [
+        "experience.concentrix.incidents",
+        foreign,
+    ]
+
+    with pytest.raises(
+        TailoringError,
+        match="does not belong to entry experience.concentrix",
+    ):
+        _render(payload)
+
+
+def test_a_review_pending_fact_cannot_be_selected(bank) -> None:
+    import dataclasses
+
+    from jobpilot.facts import ExperienceFact, FactClaim
+
+    draft = FactClaim(
+        id="experience.concentrix.draft",
+        text="Brouillon non relu",
+        section="experience",
+        needs_review=True,
+    )
+    concentrix = next(e for e in bank.experience if e.id == CONCENTRIX)
+    widened = dataclasses.replace(
+        bank,
+        experience=tuple(
+            dataclasses.replace(entry, facts=entry.facts + (draft,))
+            if entry.id == CONCENTRIX
+            else entry
+            for entry in bank.experience
+        ),
+        claims={**bank.claims, draft.id: draft},
+    )
+    assert isinstance(concentrix, ExperienceFact)
+    payload = copy.deepcopy(_payload())
+    payload["experience_content"][1]["fact_ids"] = [
+        "experience.concentrix.incidents",
+        draft.id,
+    ]
+    offer = _offer()
+    selection = pick_variant(offer.description, title=offer.title)
+
+    with pytest.raises(TailoringError, match="requires review"):
+        tailor_cv_html(
+            TEMPLATE_PATH.read_text(encoding="utf-8"),
+            TailoringPlan.from_mapping(payload, offer=offer, selection=selection),
+            selection,
+            offer_description=offer.description,
+            fact_bank=widened,
+            offer=offer,
+        )
+
+
+# ----- the letter keeps the whole-bank scope -----
+
+
+def test_a_letter_paragraph_may_summarise_the_whole_career(bank) -> None:
+    validate_provenance(
+        [
+            SourcedBullet(
+                text=(
+                    "Mon parcours couvre la résolution de 1 500+ incidents et la "
+                    "détection de 90+ anomalies critiques."
+                ),
+                sources=("experience.concentrix.incidents",),
+            )
+        ],
+        bank,
+        scope=whole_bank_scope(bank),
+    )
+
+
+def test_a_fabricated_number_in_the_letter_still_fails(bank) -> None:
+    payload = copy.deepcopy(_payload())
+    payload["letter_paragraphs"][0]["text"] = (
+        "Mon parcours couvre 15 000 incidents traités."
+    )
+    offer = _offer()
+    plan = TailoringPlan.from_mapping(
+        payload,
+        offer=offer,
+        selection=pick_variant(offer.description, title=offer.title),
+    )
+
+    with pytest.raises(
+        TailoringError,
+        match="unsupported number '15 000' for the whole bank",
+    ):
+        validate_plan_provenance(plan, bank)
+
+
+def test_a_letter_paragraph_with_no_citation_is_still_rejected(bank) -> None:
+    """Citations stopped being the boundary; they did not stop being required."""
+
+    with pytest.raises(TailoringError, match="must cite at least one fact id"):
+        validate_provenance(
+            [SourcedBullet(text="Un parcours cohérent.", sources=())],
+            bank,
+            scope=whole_bank_scope(bank),
+        )

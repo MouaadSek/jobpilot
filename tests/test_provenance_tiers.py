@@ -12,7 +12,6 @@ from jobpilot.tailoring import (
     SourcedBullet,
     TailoringError,
     TailoringPlan,
-    entry_scope,
     pick_variant,
     tailor_cv_html,
     validate_provenance,
@@ -24,7 +23,6 @@ from tests.test_tailoring_provenance import _payload
 # A real fact about incident volumes: it names no tool, no standard and no
 # category, so anything accepted alongside it was accepted by another tier.
 CITED = "experience.concentrix.incidents"
-ENTRY = "experience.concentrix"
 
 
 @pytest.fixture
@@ -32,18 +30,8 @@ def bank():
     return load_fact_bank()
 
 
-def _in_entry(text: str, bank, *, cited: str = CITED, entry: str = ENTRY) -> None:
-    """Judge as a CV bullet is judged: only this employer's facts answer."""
-
-    validate_provenance(
-        [SourcedBullet(text=text, sources=(cited,))],
-        bank,
-        scope=entry_scope(bank, entry),
-    )
-
-
 def _in_bank(text: str, bank, *, cited: str = CITED) -> None:
-    """Judge as the letter is judged: no entry, so the whole bank answers."""
+    """The one scope generated text has: the whole verified bank."""
 
     validate_provenance(
         [SourcedBullet(text=text, sources=(cited,))],
@@ -52,11 +40,15 @@ def _in_bank(text: str, bank, *, cited: str = CITED) -> None:
     )
 
 
-def test_the_entry_names_none_of_the_tokens_under_test(bank) -> None:
-    """Otherwise these tests would pass through the attribution tier."""
+def test_the_bank_names_none_of_the_category_words_under_test(bank) -> None:
+    """The premise of tier 3: the bank names products, never categories.
 
-    evidence = entry_scope(bank, ENTRY).normalized
-    for token in ("siem", "soc", "api", "wazuh", "terraform", "edr"):
+    « SOC » and « API » do appear, inside project titles, so they would pass on
+    corpus presence alone and prove nothing about tier 3. These four do not.
+    """
+
+    evidence = whole_bank_scope(bank).normalized
+    for token in ("siem", "edr", "xdr", "waf"):
         assert token not in evidence
 
 
@@ -80,20 +72,20 @@ def test_a_category_word_is_allowed_without_any_fact_naming_it(
 ) -> None:
     """The bank names products; no corpus rule could ever reach a category."""
 
-    _in_entry(text, bank)
+    _in_bank(text, bank)
 
 
 def test_the_observed_failure_no_longer_fails(bank) -> None:
     """'unsupported proper noun siem' was the whole reason for this redesign."""
 
-    _in_entry("Supervision SIEM et réponse aux incidents.", bank)
+    _in_bank("Supervision SIEM et réponse aux incidents.", bank)
 
 
 def test_vocabulary_does_not_license_the_product_behind_the_category(bank) -> None:
     """SIEM is free; the SIEM you claim to have run is not."""
 
     with pytest.raises(TailoringError, match="unsupported capability 'QRadar'"):
-        _in_entry("Supervision du SIEM QRadar au quotidien.", bank)
+        _in_bank("Supervision du SIEM QRadar au quotidien.", bank)
 
 
 # ----- tier 2: capability claims are judged against the whole bank -----
@@ -110,8 +102,6 @@ def test_vocabulary_does_not_license_the_product_behind_the_category(bank) -> No
     ),
 )
 def test_a_tool_in_the_bank_is_allowed_from_any_cited_fact(bank, text: str) -> None:
-    """In the letter's scope. Under an entry, see test_entry_scoped_provenance."""
-
     _in_bank(text, bank)
 
 
@@ -179,7 +169,7 @@ def test_an_unverified_skill_is_refused_even_though_it_is_in_the_bank(bank) -> N
     widened = dataclasses.replace(bank, skills=bank.skills + (unverified,))
 
     with pytest.raises(TailoringError, match="unverified skill"):
-        _in_entry("Supervision du SIEM QRadar au quotidien.", widened)
+        _in_bank("Supervision du SIEM QRadar au quotidien.", widened)
 
 
 # ----- tier 1: attribution never yields to the tiers below -----
@@ -190,22 +180,14 @@ def test_an_unverified_skill_is_refused_even_though_it_is_in_the_bank(bank) -> N
     (
         "Résolution de 15 000 incidents au premier contact.",
         "Taux de 98 % de résolution au premier contact.",
-        "5 ans d'expérience sur le périmètre sécurité.",
+        "Réduction du délai moyen de résolution de 45 %.",
     ),
 )
 def test_a_fabricated_quantity_is_refused(bank, text: str) -> None:
+    """No fact anywhere carries these figures, so no scope can accept them."""
+
     with pytest.raises(TailoringError, match="unsupported number"):
-        _in_entry(text, bank)
-
-
-def test_a_quantity_carried_by_another_fact_is_still_refused(bank) -> None:
-    """Bank-wide tolerance is for capabilities, never for measurements."""
-
-    others = " ".join(claim.text for key, claim in bank.claims.items() if key != CITED)
-    assert "93" in others  # "93 mesures ISO 27001:2022" lives on another fact
-
-    with pytest.raises(TailoringError, match="unsupported number '93'"):
-        _in_entry("Autoévaluation de 93 mesures de sécurité.", bank)
+        _in_bank(text, bank)
 
 
 def test_a_designation_does_not_smuggle_in_a_neighbouring_quantity(bank) -> None:
@@ -215,32 +197,22 @@ def test_a_designation_does_not_smuggle_in_a_neighbouring_quantity(bank) -> None
         _in_bank("Mise en conformité ISO 27001 sur 42 applications.", bank)
 
 
-def test_a_bullet_may_not_name_an_employer_its_facts_do_not_name(bank) -> None:
-    """The anti-misattribution guarantee: whose incidents were they?"""
+def test_an_organisation_the_bank_records_may_be_named(bank) -> None:
+    """Task 31: the letter is prose about a career and may name its employers."""
 
-    with pytest.raises(TailoringError, match="unsupported organisation 'Lionbridge'"):
-        _in_entry("Traitement des incidents pour Lionbridge.", bank)
-
-
-def test_an_organisation_is_not_rescued_by_being_in_the_bank(bank) -> None:
-    """Lionbridge is a real employer; that is why naming it here is a lie."""
-
-    corpus = " ".join(claim.text for claim in bank.claims.values())
-    assert "Lionbridge" in corpus or any(
-        entry.employer == "Lionbridge" for entry in bank.experience
-    )
-
-    with pytest.raises(TailoringError, match="unsupported organisation"):
-        _in_entry("Traitement des incidents pour Lionbridge.", bank)
+    _in_bank("Traitement des incidents pour Lionbridge.", bank)
+    _in_bank("Formation suivie à Supinfo en parallèle du poste.", bank)
 
 
-def test_a_school_the_cited_fact_does_not_name_is_refused(bank) -> None:
-    with pytest.raises(TailoringError, match="unsupported organisation 'Supinfo'"):
-        _in_entry("Formation suivie à Supinfo en parallèle du poste.", bank)
+def test_an_organisation_the_bank_never_records_is_refused(bank) -> None:
+    """Delivered by the capability tier, which is the rule that still runs."""
+
+    with pytest.raises(TailoringError, match="unsupported capability 'Capgemini'"):
+        _in_bank("Mission réalisée pour Capgemini.", bank)
 
 
-def test_the_entrys_own_quantities_are_still_accepted(bank) -> None:
-    _in_entry(
+def test_the_banks_own_quantities_are_still_accepted(bank) -> None:
+    _in_bank(
         "Résolution de 1 500+ incidents avec 85 % de résolution au premier contact.",
         bank,
     )

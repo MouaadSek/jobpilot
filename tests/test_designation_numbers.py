@@ -12,7 +12,6 @@ from jobpilot.tailoring import (
     SourcedBullet,
     TailoringError,
     TailoringPlan,
-    entry_scope,
     pick_variant,
     tailor_cv_html,
     validate_provenance,
@@ -24,7 +23,6 @@ from tests.test_tailoring_provenance import _payload
 # A real fact with numbers of its own but no standard in it, so an accepted
 # designation can only have come from elsewhere in the scope.
 CITED = "experience.concentrix.incidents"
-ENTRY = "experience.concentrix"
 
 
 @pytest.fixture
@@ -40,24 +38,6 @@ def _in_bank(text: str, bank, *, cited: str = CITED) -> None:
         bank,
         scope=whole_bank_scope(bank),
     )
-
-
-def _in_entry(text: str, bank, *, cited: str = CITED, entry: str = ENTRY) -> None:
-    """Judge as a CV bullet is judged: only this employer's facts answer."""
-
-    validate_provenance(
-        [SourcedBullet(text=text, sources=(cited,))],
-        bank,
-        scope=entry_scope(bank, entry),
-    )
-
-
-def test_the_entry_really_lacks_the_designations_under_test(bank) -> None:
-    """Otherwise these tests would pass through the ordinary metric rule."""
-
-    evidence = entry_scope(bank, ENTRY).normalized
-    for token in ("iso", "27001", "nis2", "az-900", "802.1x", "cvss", "owasp"):
-        assert token not in evidence
 
 
 # ----- designations are vocabulary of their scope -----
@@ -131,35 +111,19 @@ def test_acceptance_as_a_designation_is_logged_with_token_and_pattern(
     (
         "Résolution de 15 000 incidents au premier contact.",
         "Taux de 98 % de résolution au premier contact.",
-        "5 ans d'expérience sur le périmètre sécurité.",
         "Réduction du délai moyen de résolution de 45 %.",
-        "Supervision de 3 VMs de production.",
-        "Cadrage mené sur 8 mois.",
+        "Autoévaluation de 9 000 mesures de sécurité.",
     ),
 )
 def test_a_fabricated_metric_is_still_rejected(bank, text: str) -> None:
     """The anti-fabrication guarantee is not weakened by designation handling."""
 
     with pytest.raises(TailoringError, match="unsupported number"):
-        _in_entry(text, bank)
+        _in_bank(text, bank)
 
 
-def test_a_metric_is_rejected_even_when_another_fact_carries_that_number(
-    bank,
-) -> None:
-    """Wider-than-the-cited-fact tolerance is for designations, never quantities."""
-
-    others = " ".join(
-        claim.text for key, claim in bank.claims.items() if key != CITED
-    )
-    assert "93" in others  # "93 mesures ISO 27001:2022" lives on another fact
-
-    with pytest.raises(TailoringError, match="unsupported number '93'"):
-        _in_entry("Autoévaluation de 93 mesures de sécurité.", bank)
-
-
-def test_the_entrys_own_numbers_are_still_accepted(bank) -> None:
-    _in_entry(
+def test_the_banks_own_numbers_are_still_accepted(bank) -> None:
+    _in_bank(
         "Résolution de 1 500+ incidents avec 85 % de résolution au premier contact.",
         bank,
     )

@@ -22,11 +22,11 @@ from jobpilot.tailoring import (
     SourcedBullet,
     TailoringError,
     TailoringPlan,
-    entry_scope,
     extract_template_context,
     pick_variant,
     tailor_cv_html,
     validate_provenance,
+    whole_bank_scope,
 )
 
 TEMPLATE_PATH = (
@@ -250,7 +250,7 @@ def test_structured_plan_renders_tailored_claims_and_injects_locked_headers() ->
     ("text", "source", "message"),
     [
         (
-            "Pilotage de 5 ans d'expérience en réponse aux incidents.",
+            "Pilotage de 15 000 incidents en réponse aux incidents.",
             "experience.concentrix.incidents",
             "number",
         ),
@@ -270,11 +270,7 @@ def test_provenance_rejects_fabricated_numbers_and_tools(
 
     with pytest.raises(TailoringError, match=message):
         bank = load_fact_bank()
-        validate_provenance(
-            (bullet,),
-            bank,
-            scope=entry_scope(bank, "experience.concentrix"),
-        )
+        validate_provenance((bullet,), bank, scope=whole_bank_scope(bank))
 
 
 def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
@@ -292,7 +288,7 @@ def test_provenance_rejects_unverified_skill_and_unknown_fact_id() -> None:
         claims=claims,
     )
 
-    scope = entry_scope(bank, "experience.concentrix")
+    scope = whole_bank_scope(bank)
     with pytest.raises(TailoringError, match="unverified skill"):
         validate_provenance(
             (SourcedBullet(text="Zzztool", sources=("skill.zzztool",)),),

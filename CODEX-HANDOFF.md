@@ -106,6 +106,18 @@ Everything in the original Phase 2–6 roadmap shipped, plus Tasks 7–9. Highli
    status changes go through `state.transition()`. `mailer.py` does update the
    `applied_at` timestamp column directly, which is allowed (it is not a status
    write).
+3. **Entry-scoped provenance was removed, on purpose (Task 32).** Task 28 judged
+   each CV bullet against the facts of the employer or project it sat under, so
+   one employer's figures could not appear under another. Task 30 then made
+   bullets *selections* of fact ids, inserted verbatim, and the completeness
+   check verifies each selected id belongs to its own entry. Cross-entry
+   contamination stopped being something prose could express, so the text-level
+   check had nothing left to catch and `entry_scope()` had no caller. A guard
+   with no caller reads as protection that is not running, so it went. What
+   replaced it is `_validate_selection()` in `tailoring.py`. The tier machinery
+   survives for the content still generated — the letter and the profile's
+   domain phrase — against `whole_bank_scope()`. If entry-level prose ever
+   returns, entry scope has to come back with it.
 
 ### What is NOT built yet (your job)
 

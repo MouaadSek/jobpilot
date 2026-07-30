@@ -70,8 +70,9 @@ _LEGACY_KIND_TIERS: Mapping[str, TokenTier] = {
 #: skill" is not shadowed by a shorter alternative that prefix-matches it.
 _READABLE_KIND_TIERS: Mapping[str, TokenTier] = {**_KIND_TIERS, **_LEGACY_KIND_TIERS}
 
-#: The scope a refusal blames. "in sourced content" is the pre-entry wording,
-#: still read because the events table outlives the code that wrote it.
+#: The scope a refusal blames. Only "the whole bank" is written now — generated
+#: text always describes a whole career — but the two earlier shapes are still
+#: read, because the events table outlives the code that wrote it.
 _SCOPE_RE = r"(?:in sourced content|for (?:entry '(?P<entry>[^']+)'|the whole bank))"
 
 _REJECTION_RE = re.compile(
@@ -89,23 +90,22 @@ class TokenRejection:
     tier: TokenTier
     kind: str
     token: str
-    #: The entry that could not support the token, or None for the whole bank
-    #: (and for messages written before scopes were recorded).
+    #: The entry that could not support the token, for rows written while CV
+    #: bullets were still generated. Always None for anything written since.
     entry: str | None = None
 
 
-def rejection_message(kind: str, token: str, *, entry: str | None = None) -> str:
+def rejection_message(kind: str, token: str) -> str:
     """The one wording for a refused token; every caller goes through here.
 
     Naming the scope makes a rejection self-explanatory: "unsupported number
-    '93' for entry 'Concentrix'" says which claim was not supported and where,
-    which is what a reader needs in order to fix it.
+    '15 000' for the whole bank" says which claim was not supported and against
+    what, which is what a reader needs in order to fix it.
     """
 
     if kind not in _KIND_TIERS:
         raise KeyError(f"unknown rejection kind: {kind}")
-    where = f"entry '{entry}'" if entry else "the whole bank"
-    return f"unsupported {kind} '{token}' for {where}"
+    return f"unsupported {kind} '{token}' for the whole bank"
 
 
 def tier_of(kind: str) -> TokenTier:
