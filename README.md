@@ -187,6 +187,22 @@ All three advisor modes use the same sourced-content JSON contract. Identity,
 contact details, employers, dates, diplomas, and certification names remain
 renderer-owned and cannot be supplied by the model.
 
+**In the CV.** Generated CV text — the profile domain phrase — may not contain any
+of them. Each has a slot the renderer fills, so writing one there duplicates or
+contradicts that slot.
+
+**In the letter.** Prose about a career has to be able to name it, so a letter
+paragraph may say « Mon stage actuel chez Baïfall Dream… », name Supinfo, or cite
+the AZ-900. Two limits still hold and they come from different rules:
+
+- **contact details** — name, email, phone, LinkedIn — are refused in the letter
+  body, because the renderer injects the address block and a body that repeats it
+  is duplicating the header rather than writing a sentence;
+- an employer, school or certification the **bank never records** is refused by
+  the capability tier exactly like any other unsupported proper noun, so
+  « Capgemini » does not become sayable. The bank's own dates are part of the
+  whole-bank scope, so « depuis juillet 2026 » is fine and « depuis 2014 » is not.
+
 ### The advisor selects; the renderer inserts
 
 **The CV's experience bullets and project descriptions are not generated.** The

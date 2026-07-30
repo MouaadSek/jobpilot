@@ -447,13 +447,11 @@ def test_legacy_plan_without_sourced_structure_still_requires_a_letter() -> None
         )
 
 
-def test_locked_employer_name_cannot_be_generated_inside_the_letter() -> None:
-    """Bullets are verbatim now, so the letter is where this can still happen."""
+def test_locked_employer_name_cannot_be_generated_inside_cv_text() -> None:
+    """The CV's slots are renderer-owned; the letter's prose is not (Task 31)."""
 
     payload = _payload()
-    payload["letter_paragraphs"][0]["text"] = (
-        "Chez Concentrix, j'ai appris la rigueur du support de niveau 2."
-    )
+    payload["profile_domain_phrase"] = "sécurité chez Concentrix"
     selection = pick_variant(_offer().description, title=_offer().title)
     plan = TailoringPlan.from_mapping(payload, offer=_offer(), selection=selection)
 

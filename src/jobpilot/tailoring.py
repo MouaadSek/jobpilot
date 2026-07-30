@@ -1525,12 +1525,17 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
     Attribution still applies here — a quantity must exist somewhere in the bank
     and an organisation must be one the bank really knows — but a career summary
     is not owed to any single employer.
+
+    The bank's own dates belong to this scope: a letter that says « depuis
+    juillet 2026 » is recounting the career the bank records, while a year the
+    bank never mentions is still an invention. Entry scopes deliberately leave
+    dates out, because there a scope is about what was done, not when.
     """
 
     return _scope(
         "the whole bank",
         None,
-        [*_bank_parts(bank), *_organisation_names(bank)],
+        [*_bank_parts(bank), *_organisation_names(bank), *bank.locked.dates],
     )
 
 
@@ -2066,6 +2071,53 @@ def resolve_plan_fact_ids(plan: TailoringPlan, bank: FactBank) -> TailoringPlan:
     )
 
 
+def _contact_fields(bank: FactBank) -> tuple[str, ...]:
+    """Identity and contact details, which the renderer injects into every header.
+
+    Repeating one in prose is a formatting error wherever it appears: the letter
+    already carries the address block, so a body that also states the email is
+    duplicating the header, not writing a sentence.
+    """
+
+    return (
+        bank.locked.name,
+        bank.locked.email,
+        bank.locked.phone,
+        bank.locked.linkedin,
+    )
+
+
+def _cv_locked_fields(bank: FactBank) -> tuple[str, ...]:
+    """Everything the CV's own layout owns: contact details plus career headers.
+
+    A CV states an employer, a diploma, a certification and a date in a slot the
+    renderer fills. The model typing one into generated CV text would duplicate
+    or contradict that slot, so the whole set is refused there -- and only there.
+    A motivation letter is prose about the same career and must be able to name
+    it; see the letter's narrower rule above.
+    """
+
+    return (
+        *_contact_fields(bank),
+        *bank.locked.diplomas,
+        *bank.locked.employer_names,
+        *bank.locked.certification_names,
+        *bank.locked.dates,
+    )
+
+
+def _reject_locked_fields(
+    text: str,
+    values: Sequence[str],
+    *,
+    message: str,
+) -> None:
+    normalized_text = _normalize(text)
+    for value in values:
+        if _normalize(value) in normalized_text:
+            raise TailoringError(message.format(value=value))
+
+
 def _validate_selection(
     fact_ids: Sequence[str],
     own_facts: Sequence[FactClaim],
@@ -2161,26 +2213,21 @@ def _validate_sourced_plan(
             raise UnknownFactIdError(skill_id, section="skills")
         if not claim.verified or claim.needs_review:
             raise TailoringError(f"unverified skill cannot be claimed: {skill_id}")
-    locked_values = (
-        bank.locked.name,
-        bank.locked.email,
-        bank.locked.phone,
-        bank.locked.linkedin,
-        *bank.locked.diplomas,
-        *bank.locked.employer_names,
-        *bank.locked.certification_names,
-        *bank.locked.dates,
-    )
     # Only what the advisor wrote can smuggle in a locked field. Selected bullets
     # are the bank's own text, and the bank holds these fields structurally.
-    for written in (*_generated_bullets(plan), SourcedBullet(plan.profile_domain_phrase, ())):
-        normalized_text = _normalize(written.text)
-        for locked_value in locked_values:
-            if _normalize(locked_value) in normalized_text:
-                raise TailoringError(
-                    f"locked field must be renderer-injected, not model-generated: "
-                    f"{locked_value}"
-                )
+    _reject_locked_fields(
+        plan.profile_domain_phrase,
+        _cv_locked_fields(bank),
+        message=(
+            "locked field must be renderer-injected, not model-generated: {value}"
+        ),
+    )
+    for paragraph in plan.letter_paragraphs:
+        _reject_locked_fields(
+            paragraph.text,
+            _contact_fields(bank),
+            message="letter must not repeat a contact field the header carries: {value}",
+        )
     validate_plan_provenance(plan, bank)
     _validate_letter_body(plan.letter_body_html)
 
