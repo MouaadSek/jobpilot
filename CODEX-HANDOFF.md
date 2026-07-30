@@ -135,7 +135,6 @@ jobpilot/
 │   ├── config.py                 # Settings + get_settings() (env-driven)
 │   ├── db.py                     # SQLite layer, migrations runner
 │   ├── state.py                  # State machine + transition() + events
-│   ├── matcher.py                # ⛔ DO NOT MODIFY LOGIC
 │   ├── scoring.py                # build_profile_text(), score_new_offers()
 │   ├── tailoring.py              # ✅ variant picker + 5+1 zones + advisors
 │   ├── contacts.py               # ✅ contacts + cold-mail drafting + rails
@@ -153,6 +152,7 @@ jobpilot/
 │       ├── email_alerts.py       # ✅ Gmail LinkedIn/Indeed alert ingestion
 │       ├── wttj.py               # ✅ Welcome to the Jungle (Algolia)
 │       └── registry.py           # source registry / enable flags
+├── matcher.py                    # ⛔ DO NOT MODIFY LOGIC (repo root, not src/)
 ├── schema.sql
 ├── migrations/
 │   ├── 001_add_profile_headline.sql

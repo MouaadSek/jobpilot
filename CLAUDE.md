@@ -7,14 +7,16 @@ regardless of which prompt phase is being executed.
 
 Personal job application pipeline for the French IT/cybersecurity market.
 Owner: M1 cybersecurity student, Lille, targeting alternance/stage then
-Cloud Security / DevSecOps roles. Runs locally on WSL2 Ubuntu, Python 3.11+,
-SQLite. Single user, no multi-tenancy, no cloud deploy.
+Cloud Security / DevSecOps roles. Runs locally on native macOS (Intel),
+Python 3.11+, SQLite; CI also runs the suite on Windows, so keep paths and
+shell assumptions portable. Single user, no multi-tenancy, no cloud deploy.
 
 ## Non-negotiable architecture
 
 - schema.sql is the source of truth for the data model. Never alter tables
   ad hoc: write numbered migration files in migrations/ instead.
-- matcher.py owns scoring logic. Extend via its config, do not fork it.
+- matcher.py owns scoring logic (it lives at the repo root, not under
+  src/jobpilot/). Extend via its config, do not fork it.
 - The state machine lives in applications.status. Every transition MUST
   be written through a single function (src/jobpilot/state.py:transition)
   that validates legality and logs to the events table. No direct UPDATE
