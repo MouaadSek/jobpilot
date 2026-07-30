@@ -491,13 +491,51 @@ def add_contact_cmd(
 
 @app.command("contacts")
 def contacts_cmd(
-    company: str = typer.Option(..., "--company", help="Company id or name."),
+    company: str = typer.Option(
+        None, "--company", help="Company id or name. Omit with --targets."
+    ),
+    targets: bool = typer.Option(
+        False, "--targets",
+        help="List sourced outreach targets (companies likely to hire) instead.",
+    ),
+    source: str = typer.Option(
+        None, "--source", help="With --targets: restrict to one ingestion source."
+    ),
+    limit: int = typer.Option(30, "--limit", help="With --targets: rows to show."),
 ) -> None:
-    """List stored contacts for a company."""
-    from jobpilot.contacts import list_contacts
+    """List stored contacts for a company, or the sourced outreach targets.
+
+    A target is a company an ingestion source flagged as likely to hire. It has
+    posted nothing, so it is never an offer and never reaches the review queue;
+    it is a candidate for the cold-outreach flow, which stays gated behind
+    COLD_SEND_ENABLED, the suppression list, the daily cap, and human
+    confirmation.
+    """
+
+    from jobpilot.contacts import list_contacts, list_outreach_targets
 
     conn = connect()
     try:
+        if targets:
+            rows = list_outreach_targets(conn, source=source, limit=limit)
+            if not rows:
+                typer.echo("no sourced outreach targets")
+                return
+            typer.echo(
+                f"{'id':>4}  {'company':32} {'city':18} {'contacts':>8}  sector"
+            )
+            for r in rows:
+                typer.echo(
+                    f"{r['id']:>4}  {(r['name'] or '?')[:32]:32} "
+                    f"{(r['city'] or '-')[:18]:18} {r['contact_count']:>8}  "
+                    f"{(r['sector'] or '-')[:40]}"
+                )
+            typer.echo(
+                "\nadd a contact with: jobpilot add-contact --company <id> ..."
+            )
+            return
+        if not company:
+            raise typer.BadParameter("--company is required without --targets")
         company_id = _resolve_company(conn, company)
         rows = list_contacts(conn, company_id)
     finally:

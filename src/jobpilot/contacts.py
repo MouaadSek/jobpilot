@@ -186,6 +186,38 @@ def list_contacts(db: sqlite3.Connection, company_id: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def list_outreach_targets(
+    db: sqlite3.Connection,
+    *,
+    source: str | None = None,
+    limit: int = 30,
+) -> list[sqlite3.Row]:
+    """Companies an ingestion source flagged as likely to hire an alternant.
+
+    These are outreach candidates, never offers: nothing here has posted a job,
+    so none of it belongs in the review queue. Ordered with the ones nobody has
+    contacted yet first, since those are the work.
+    """
+
+    clause = "WHERE c.source IS NOT NULL"
+    params: list[object] = []
+    if source:
+        clause = "WHERE c.source = ?"
+        params.append(source)
+    params.append(limit)
+    return db.execute(
+        "SELECT c.id, c.name, c.city, c.sector, c.size_bucket, c.source, c.notes, "
+        "       count(ct.id) AS contact_count "
+        "FROM companies c "
+        "LEFT JOIN contacts ct ON ct.company_id = c.id "
+        f"{clause} "
+        "GROUP BY c.id "
+        "ORDER BY contact_count ASC, c.name ASC "
+        "LIMIT ?",
+        params,
+    ).fetchall()
+
+
 def discover_and_store(
     db: sqlite3.Connection, company_id: int, company_name: str,
     discovery: DiscoverySource | None = None,

@@ -434,3 +434,112 @@ class _NoWait:
 
     def wait(self, key: str = "default") -> None:
         return None
+
+
+# ----- 33.2: targets are outreach candidates, and nothing more -----
+
+
+@respx.mock
+def test_targets_are_listed_for_outreach_without_touching_the_queue(
+    db: sqlite3.Connection,
+) -> None:
+    from jobpilot.contacts import list_outreach_targets
+
+    body = _fixture("search_idf_cyber.json") | {"jobs": []}
+    respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=body))
+    ingest_source(db, _source(rate_limiter=_NoWait()))
+
+    targets = list_outreach_targets(db, source="labonnealternance")
+
+    assert targets
+    assert all(row["source"] == "labonnealternance" for row in targets)
+    assert all(row["contact_count"] == 0 for row in targets)
+    assert db.execute("SELECT count(*) AS n FROM applications").fetchone()["n"] == 0
+
+
+def test_targets_exclude_companies_created_from_an_offer(
+    db: sqlite3.Connection,
+) -> None:
+    from jobpilot.contacts import list_outreach_targets
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    get_or_create_company(db, CompanyRecord(name="Employeur d'une offre"), {})
+    get_or_create_company(
+        db, CompanyRecord(name="Cible", source="labonnealternance"), {}
+    )
+
+    names = {row["name"] for row in list_outreach_targets(db)}
+
+    assert names == {"Cible"}
+
+
+def test_targets_lead_with_the_ones_nobody_has_contacted(
+    db: sqlite3.Connection,
+) -> None:
+    from jobpilot.contacts import list_outreach_targets, upsert_contact
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    contacted, _ = get_or_create_company(
+        db, CompanyRecord(name="Déjà contactée", source="labonnealternance"), {}
+    )
+    get_or_create_company(
+        db, CompanyRecord(name="Zzz jamais contactée", source="labonnealternance"), {}
+    )
+    upsert_contact(db, contacted, full_name="RH", email="rh@example.test")
+
+    targets = list_outreach_targets(db)
+
+    assert [row["name"] for row in targets][0] == "Zzz jamais contactée"
+
+
+def test_the_contacts_command_lists_targets(
+    db: sqlite3.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from jobpilot.cli import app
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    get_or_create_company(
+        db,
+        CompanyRecord(
+            name="KLINT", source="labonnealternance", city="Levallois-Perret",
+            sector="Conseil en systèmes et logiciels informatiques",
+        ),
+        {},
+    )
+    db.commit()
+    monkeypatch.setattr("jobpilot.cli.connect", lambda: db)
+
+    result = CliRunner().invoke(app, ["contacts", "--targets"])
+
+    assert result.exit_code == 0
+    assert "KLINT" in result.stdout
+    assert "Levallois-Perret" in result.stdout
+
+
+def test_the_contacts_command_still_needs_a_company_without_targets(
+    db: sqlite3.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from jobpilot.cli import app
+
+    monkeypatch.setattr("jobpilot.cli.connect", lambda: db)
+
+    result = CliRunner().invoke(app, ["contacts"])
+
+    assert result.exit_code != 0
+
+
+def test_sourcing_targets_changes_no_sending_gate() -> None:
+    """Task 33 adds candidates; every Task 11 rail stays exactly as it was."""
+
+    from jobpilot.config import get_settings
+
+    assert get_settings().cold_send_enabled is False

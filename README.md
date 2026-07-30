@@ -7,9 +7,11 @@ Single user, local-only, SQLite. See `CLAUDE.md` for the project constitution
 > **Status:** Built and validated — France Travail ingestion, ATS pollers,
 > embeddings + scoring (natural-language profile text), review queue, scheduler,
 > cold-outreach drafting (contacts, suppression, rate-limit), LinkedIn/Indeed
-> **email-alert** ingestion (no scraping), and WTTJ (Algolia). Sources needing a
-> credential (La Bonne Alternance, Gmail alerts, WTTJ) are wired and unit-tested
-> but skip gracefully until their key is set — see Pending setup.
+> **email-alert** ingestion (no scraping), WTTJ (Algolia), and La Bonne
+> Alternance through the API Apprentissage (offers plus likely-to-hire companies
+> as outreach targets). Sources needing a credential (Gmail alerts, WTTJ) are
+> wired and unit-tested but skip gracefully until their key is set — see Pending
+> setup.
 
 ## Requirements
 
@@ -60,7 +62,8 @@ All secrets live in `.env` (gitignored); `.env.example` documents every key.
 | --- | --- |
 | `FRANCE_TRAVAIL_CLIENT_ID` / `FRANCE_TRAVAIL_CLIENT_SECRET` | France Travail "Offres v2" OAuth2 credentials |
 | `FRANCE_TRAVAIL_PUBLISHED_SINCE` | Recency window in days: 1, 3, 7, 14, or 31 (default 31, for backfill) |
-| `LBA_API_KEY` | API Apprentissage Bearer token for La Bonne Alternance (see Pending setup) |
+| `LBA_API_KEY` | API Apprentissage Bearer token for La Bonne Alternance |
+| `LBA_MAX_PAGES` | Cap on search calls per ingest run (default 5; see below) |
 | `JOBPILOT_DB` | Override the SQLite path (default `data/jobpilot.db`) |
 | `JOBPILOT_LOG_DIR` | Override the log directory (default `logs/`) |
 | `JOBPILOT_EMBED_MODEL` | Override the embedding model |
@@ -437,12 +440,50 @@ then works via `jobpilot ingest`. Until then it is skipped with a clear message.
   pages per query. The tunable query block targets alternance and stage roles
   across cyber, cloud, DevSecOps, and IT infrastructure in Hauts-de-France,
   Île-de-France, or remote.
-- **La Bonne Alternance** — the legacy public API (caller-email auth) was
-  decommissioned; the current **API Apprentissage** requires an account plus a
-  token. Register and generate a key at
-  <https://labonnealternance.apprentissage.beta.gouv.fr/espace-developpeurs>,
-  then set `LBA_API_KEY` in `.env` and flip `labonnealternance.enabled: true` in
-  `config/sources.yaml`.
+- **La Bonne Alternance / API Apprentissage** — register an account and generate
+  a token at <https://api.apprentissage.beta.gouv.fr>, then set `LBA_API_KEY` in
+  `.env`. The source is enabled in `config/sources.yaml` and skips with a notice
+  until the key is present, like every other keyed source. See the section below
+  for what it does.
+
+### La Bonne Alternance (API Apprentissage)
+
+Built against the live OpenAPI document at
+<https://api.apprentissage.beta.gouv.fr/api/documentation/json>: base URL
+`https://api.apprentissage.beta.gouv.fr/api`, `Authorization: Bearer
+<LBA_API_KEY>`, `GET /job/v1/search`. The documented quota is **60 calls per
+minute per consumer**, reported through `x-ratelimit-*` headers with
+`retry-after` on 429; the shared limiter and backoff honour both.
+
+`GET /job/v1/search` answers with two lists, and JobPilot uses them for two
+different things:
+
+- **`jobs` → offers.** Mapped into the standard offer shape and ingested through
+  the same idempotent path as every other source, so re-running never duplicates
+  a row. The tunable block at the top of `sources/labonnealternance.py` holds the
+  ROME codes (the IT/systems family) and the department groups
+  (Hauts-de-France, Île-de-France).
+- **`recruiters` → cold-outreach targets.** Companies the service considers
+  likely to hire an alternant. They have posted nothing, so they are **not
+  offers**: they are stored in `companies` with `source = 'labonnealternance'`
+  (migration `005`) and never reach the review queue. List them with
+  `jobpilot contacts --targets`, then add a contact with `jobpilot add-contact`.
+
+  **This adds candidates; it sends nothing.** Every Task 11 rail is untouched:
+  `COLD_SEND_ENABLED` stays false, the suppression list, the ≤25/day cap, the
+  4-minute stagger, the opt-out footer, and the two-step human confirmation all
+  still gate any actual send.
+
+Three things the API does not have, which shape the client:
+
+- **No pagination.** One call returns the whole result set for its filters, so
+  `LBA_MAX_PAGES` caps how many *search calls* a run may issue (one per
+  department group) rather than paging through results.
+- **No contract-type filter, and no stage.** The endpoint publishes
+  apprenticeship only, so every offer it returns is an alternance.
+- **No contact email.** `apply` exposes a URL and sometimes a phone number, so
+  `offers.contact_email` stays empty for this source and the email-send flow has
+  nothing to use; apply through the offer's URL.
 
 ## Commands
 
@@ -470,6 +511,8 @@ jobpilot daemon --interval-hours 3   # loop ingest + score (Ctrl-C to stop)
 # Cold outreach (draft here; final confirmation is in the local dashboard)
 jobpilot add-contact --company "ACME" --name "Jean Dupont" --role RSSI --email rh@acme.fr
 jobpilot contacts --company "ACME"
+jobpilot contacts --targets                        # sourced companies likely to hire
+jobpilot contacts --targets --source labonnealternance --limit 50
 jobpilot draft-cold --company "ACME" --role "analyste SOC" --contact 1
 jobpilot suppress someone@acme.fr --reason "opted out"
 ```
