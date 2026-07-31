@@ -193,7 +193,7 @@ def get_settings() -> Settings:
         email_alert_since_days=int(os.getenv("EMAIL_ALERT_SINCE_DAYS", "7")),
         wttj_app_id=os.getenv("WTTJ_APP_ID", "CSEKHVMS53"),
         wttj_api_key=os.getenv("WTTJ_API_KEY") or None,
-        wttj_index=os.getenv("WTTJ_INDEX", "wttj_jobs_production_c3_search"),
+        wttj_index=os.getenv("WTTJ_INDEX", "wk_cms_jobs_production"),
         output_dir=_path("JOBPILOT_OUTPUT_DIR", "output/applications"),
         tailoring_provider=os.getenv("TAILORING_PROVIDER", "auto"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,

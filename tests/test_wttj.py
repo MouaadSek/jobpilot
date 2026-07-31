@@ -237,3 +237,124 @@ def test_wttj_max_pages_uses_existing_env_names(
         assert settings.wttj_max_pages == 7
     finally:
         config.get_settings.cache_clear()
+
+
+# ----- Task 35 item 5: the source was dead in two independent ways -----
+
+
+def test_the_client_sends_the_referer_the_public_key_is_restricted_to() -> None:
+    """Verified live 2026-07-31: without these the endpoint answers 403
+    "Method not allowed with this referer" for every request, whatever the
+    index. They are what makes the public key work at all, not politeness."""
+
+    from jobpilot.sources.wttj import WTTJ_REFERER_HEADERS, WelcomeToTheJungleSource
+
+    source = WelcomeToTheJungleSource(settings=_settings(), api_key="k")
+    headers = source._client.headers
+
+    assert headers["Referer"] == "https://www.welcometothejungle.com/"
+    assert headers["Origin"] == "https://www.welcometothejungle.com"
+    assert WTTJ_REFERER_HEADERS["Referer"].startswith("https://")
+    # The Algolia credentials must survive alongside them.
+    assert headers["X-Algolia-API-Key"] == "k"
+    assert headers["X-Algolia-Application-Id"]
+
+
+def test_the_default_index_is_the_live_jobs_index() -> None:
+    """wttj_jobs_production_c3_search 404s. wk_cms_organizations_production
+    exists but indexes companies, not jobs."""
+
+    from jobpilot.config import get_settings
+    from jobpilot.sources.wttj import DEFAULT_INDEX
+
+    assert DEFAULT_INDEX == "wk_cms_jobs_production"
+    assert get_settings().wttj_index == DEFAULT_INDEX
+    assert "organizations" not in DEFAULT_INDEX
+
+
+def test_the_request_stays_the_single_index_form() -> None:
+    """The endpoint still accepts POST /1/indexes/{index}/query with the
+    payload this source builds. If WTTJ moves to Algolia's multi-query form
+    (/1/indexes/*/queries with indexName in the body) this breaks, and that is
+    a different request shape than this source implements."""
+
+    import re
+
+    from jobpilot.sources.wttj import WelcomeToTheJungleSource
+
+    source = WelcomeToTheJungleSource(settings=_settings(), api_key="k")
+
+    assert re.fullmatch(
+        r"https://[\w-]+-dsn\.algolia\.net/1/indexes/[\w-]+/query", source._url
+    ), source._url
+    # The multi-query form would be /1/indexes/*/queries with indexName in the
+    # body, which this source does not build.
+    assert not source._url.endswith("/queries")
+
+
+def test_the_posting_body_is_read_from_profile_not_description() -> None:
+    """wk_cms_jobs_production carries no `description`; the body is `profile`,
+    as HTML. An offer with no description can never clear the threshold,
+    because semantic score is half the blend."""
+
+    from jobpilot.sources.wttj import map_hit
+
+    record = map_hit(
+        {
+            "objectID": "4208349",
+            "name": "Stagiaire Cybersécurité",
+            "slug": "stagiaire-cybersecurite",
+            "organization": {"name": "SIMPLON", "slug": "simplon-co-1"},
+            "contract_type": "INTERNSHIP",
+            "office": {"city": "Montreuil"},
+            "profile": (
+                "<b>Comp&eacute;tences attendues</b><ul><li>Connaissances des "
+                "r&eacute;f&eacute;rentiels</li><li>ISO 27001</li></ul>"
+            ),
+        }
+    )
+
+    assert record is not None
+    assert record.description is not None
+    # Tags stripped, entities decoded, whitespace collapsed.
+    assert "<b>" not in record.description
+    assert "Compétences attendues" in record.description
+    assert "ISO 27001" in record.description
+
+
+def test_an_explicit_description_still_wins_over_profile() -> None:
+    """Defensive mapping: another index, or a future one, may carry both."""
+
+    from jobpilot.sources.wttj import map_hit
+
+    record = map_hit(
+        {
+            "objectID": "1",
+            "name": "Analyste SOC",
+            "slug": "analyste-soc",
+            "organization": {"name": "Acme", "slug": "acme"},
+            "contract_type": "APPRENTICESHIP",
+            "description": "Description explicite.",
+            "profile": "<p>Repli</p>",
+        }
+    )
+
+    assert record is not None
+    assert record.description == "Description explicite."
+
+
+def test_a_hit_with_no_prose_at_all_still_maps() -> None:
+    from jobpilot.sources.wttj import map_hit
+
+    record = map_hit(
+        {
+            "objectID": "2",
+            "name": "Analyste SOC",
+            "slug": "analyste-soc",
+            "organization": {"name": "Acme", "slug": "acme"},
+            "contract_type": "APPRENTICESHIP",
+        }
+    )
+
+    assert record is not None
+    assert record.description in (None, "")

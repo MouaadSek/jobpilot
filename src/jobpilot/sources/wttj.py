@@ -11,7 +11,9 @@ app id / index / key against the live site if WTTJ changes them.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
+from html import unescape
 from typing import Any
 
 import httpx
@@ -47,6 +49,18 @@ ALGOLIA_FACET_FILTERS = (
     ),
 )
 _HITS_PER_PAGE = 50
+
+#: The public Algolia key is referer-restricted, so these are not optional
+#: politeness — they are what makes the key work at all.
+WTTJ_REFERER_HEADERS = {
+    "Referer": "https://www.welcometothejungle.com/",
+    "Origin": "https://www.welcometothejungle.com",
+}
+
+#: The live jobs index, confirmed against the endpoint on 2026-07-31 (92k
+#: records). The previous default, wttj_jobs_production_c3_search, now 404s.
+#: wk_cms_organizations_production exists but indexes companies, not jobs.
+DEFAULT_INDEX = "wk_cms_jobs_production"
 
 # Backward-compatible public name used by older callers.
 KEYWORDS = list(SEARCH_QUERIES)
@@ -112,6 +126,11 @@ class WelcomeToTheJungleSource(Source):
                 "X-Algolia-Application-Id": self._app_id,
                 "X-Algolia-API-Key": self._api_key,
                 "Content-Type": "application/json",
+                # The public search key is restricted by HTTP referer. Without
+                # these the endpoint answers 403 "Method not allowed with this
+                # referer" for every request, whatever the index. Verified live
+                # 2026-07-31: adding them turns that 403 into a real response.
+                **WTTJ_REFERER_HEADERS,
             },
         )
         self._rl = rate_limiter or RateLimiter(min_interval_s=1.0)
@@ -163,6 +182,25 @@ def _first(*vals: Any) -> str | None:
         if v:
             return str(v)
     return None
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _prose(hit: dict[str, Any]) -> str | None:
+    """The offer's text, from whichever field this index actually carries.
+
+    ``wk_cms_jobs_production`` has no ``description``; the posting body lives in
+    ``profile`` as HTML. Without this, every WTTJ offer would arrive with an
+    empty description and score like the alert sources do — semantic score is
+    half the blend, so an empty description is an offer that can never queue.
+    """
+
+    raw = _first(hit.get("description"), hit.get("profile"))
+    if raw is None:
+        return None
+    text = unescape(_TAG_RE.sub(" ", raw))
+    return " ".join(text.split()) or None
 
 
 def _org(hit: dict[str, Any]) -> dict[str, Any]:
@@ -240,7 +278,7 @@ def map_hit(hit: dict[str, Any]) -> OfferRecord | None:
         url=url,
         title=str(title),
         company_name=_first(_org(hit).get("name")),
-        description=_first(hit.get("description")),
+        description=_prose(hit),
         contract_type=_contract(hit),
         city=_city(hit),
         remote_policy=_remote_policy(hit),
