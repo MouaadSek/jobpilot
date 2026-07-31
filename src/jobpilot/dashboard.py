@@ -9,7 +9,7 @@ import webbrowser
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -64,6 +64,16 @@ from jobpilot.review import (
 )
 from jobpilot.routing import Route, RouteError, resolve_route
 from jobpilot.scheduler import scheduler_status
+from jobpilot.skim import (
+    DEFAULT_SORT,
+    SkimError,
+    ignore_offer,
+    promote_offer,
+    skim_offers,
+)
+from jobpilot.skim import (
+    available_sources as skim_sources,
+)
 from jobpilot.state import IllegalTransition, current_status, log_event, transition
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -415,6 +425,103 @@ def create_app(
                 "error": None,
             },
         )
+
+    @app.get("/skim", response_class=HTMLResponse)
+    def skim_page(
+        request: Request,
+        db: Database,
+        source: str | None = None,
+        sort: str = DEFAULT_SORT,
+        page: int = 1,
+        include_ignored: bool = False,
+        error: str | None = None,
+    ) -> HTMLResponse:
+        """Offers that passed the hard filter but scored below the threshold.
+
+        A discovery channel rather than a scoring one: alert-sourced offers
+        cannot be scored well and cannot be enriched without scraping, so they
+        get a human skimming path instead.
+        """
+
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "skim",
+                "skim": skim_offers(
+                    db,
+                    source=source or None,
+                    include_ignored=include_ignored,
+                    sort=sort,
+                    page=page,
+                ),
+                "skim_sources": skim_sources(db),
+                "error": error,
+            },
+        )
+
+    def _skim_redirect(
+        page: int, source: str | None, sort: str, include_ignored: bool,
+        *, error: str | None = None,
+    ) -> RedirectResponse:
+        """Back to the same slice of the list, so a skim keeps its place."""
+
+        query = {"page": str(page), "sort": sort}
+        if source:
+            query["source"] = source
+        if include_ignored:
+            query["include_ignored"] = "1"
+        if error:
+            query["error"] = error
+        return RedirectResponse(url=f"/skim?{urlencode(query)}", status_code=303)
+
+    @app.post("/skim/{offer_id}/queue")
+    def skim_queue(
+        offer_id: int,
+        db: Database,
+        source: str | None = None,
+        sort: str = DEFAULT_SORT,
+        page: int = 1,
+        include_ignored: bool = False,
+    ) -> Response:
+        """Promote a skimmed offer into the ordinary review queue."""
+
+        with APPLICATION_LOCK:
+            try:
+                promote_offer(db, offer_id)
+            except SkimError as exc:
+                return _skim_redirect(
+                    page, source, sort, include_ignored, error=str(exc)
+                )
+            except IllegalTransition as exc:
+                return _skim_redirect(
+                    page, source, sort, include_ignored, error=str(exc)
+                )
+        return _skim_redirect(page, source, sort, include_ignored)
+
+    @app.post("/skim/{offer_id}/ignore")
+    def skim_ignore(
+        offer_id: int,
+        db: Database,
+        source: str | None = None,
+        sort: str = DEFAULT_SORT,
+        page: int = 1,
+        include_ignored: bool = False,
+    ) -> Response:
+        """Dismiss a skimmed offer so it stops reappearing."""
+
+        with APPLICATION_LOCK:
+            try:
+                ignore_offer(db, offer_id)
+            except SkimError as exc:
+                return _skim_redirect(
+                    page, source, sort, include_ignored, error=str(exc)
+                )
+            except IllegalTransition as exc:
+                return _skim_redirect(
+                    page, source, sort, include_ignored, error=str(exc)
+                )
+        return _skim_redirect(page, source, sort, include_ignored)
 
     @app.get("/facts", response_class=HTMLResponse)
     def facts_page(request: Request) -> HTMLResponse:
