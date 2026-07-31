@@ -348,7 +348,26 @@ _NOISE_GENDER_RE = re.compile(r"^[()\s/]*(?:[fhmwx](?:\s*/\s*[fhmwx])+[()\s]*)+$
 # them into salary_min/max is out of scope here, so they are simply refused.
 _NOISE_SALARY_RE = re.compile(r"€|\beur\b", re.IGNORECASE)
 
-_NOISE_PATTERNS = (_NOISE_COUNT_RE, _NOISE_GENDER_RE, _NOISE_SALARY_RE)
+# Employer star ratings. Indeed prints "3,7" or "4" next to the company on every
+# card; the positional reader filed 59 of them as the offer's city, and the hard
+# filter then rejected every one on location. Bounded to 0-5 with at most one
+# decimal so a real chunk that merely starts with a digit is untouched.
+_NOISE_RATING_RE = re.compile(r"^[0-5](?:[.,]\d)?$")
+
+# Whole sentences ending in a question mark, which cards use as editorial
+# headings ("comment garantir la protection des données personnelles ?"). The
+# length guard is what keeps this off titles: no real job title is both this
+# long and a question.
+_NOISE_QUESTION_MIN_LENGTH = 25
+_NOISE_QUESTION_RE = re.compile(rf"^.{{{_NOISE_QUESTION_MIN_LENGTH},}}\?\s*$", re.DOTALL)
+
+_NOISE_PATTERNS = (
+    _NOISE_COUNT_RE,
+    _NOISE_GENDER_RE,
+    _NOISE_SALARY_RE,
+    _NOISE_RATING_RE,
+    _NOISE_QUESTION_RE,
+)
 
 # "Easy Apply" is chrome, but it is *useful* chrome: it marks offers that
 # support LinkedIn's inline application flow (Tasks 17/18). It is stripped out

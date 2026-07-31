@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import typer
@@ -12,7 +13,7 @@ from jobpilot.apply_flow import (
     ApplicationNotQueuedError,
     approve_application,
 )
-from jobpilot.config import MissingCredentialError, get_settings
+from jobpilot.config import PROJECT_ROOT, MissingCredentialError, get_settings
 from jobpilot.db import connect, init_db
 from jobpilot.descriptions import backfill_descriptions, clear_match_scores
 from jobpilot.ingest import ingest_source
@@ -434,6 +435,127 @@ def init_profile_cmd(
     finally:
         conn.close()
     typer.echo(f"profile saved; {n} cv_variant(s) synced; embedding cached")
+
+
+@app.command("apply-matching-profile")
+def apply_matching_profile_cmd(
+    path: str = typer.Option(
+        "config/matching_profile.yaml", "--path",
+        help="Committed matching vocabulary to apply.",
+    ),
+    rescore: bool = typer.Option(
+        True, "--rescore/--no-rescore",
+        help="Re-score every offer afterwards. Off leaves stale scores in place.",
+    ),
+) -> None:
+    """Apply config/matching_profile.yaml and report what it changed.
+
+    Re-scoring is on by default: these columns feed keyword_score, hard_filter
+    *and* the profile embedding, so leaving the old match_scores rows in place
+    would mean the database reports scores from a vocabulary that is no longer
+    the profile's.
+    """
+
+    from jobpilot.embeddings import ensure_profile_embedding, get_embed_fn
+    from jobpilot.profile import (
+        MatchingProfileError,
+        apply_matching_profile,
+        load_matching_profile,
+    )
+
+    chosen = Path(path)
+    if not chosen.is_absolute():
+        chosen = PROJECT_ROOT / chosen
+    try:
+        profile = load_matching_profile(chosen)
+    except MatchingProfileError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    threshold = get_settings().queue_threshold
+    conn = connect()
+    try:
+        before = _queue_snapshot(conn, threshold)
+        try:
+            changes = apply_matching_profile(conn, profile)
+        except MatchingProfileError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+
+        for field, (old, new) in changes.items():
+            if old == new:
+                typer.echo(f"{field}: unchanged ({len(new)} entries)")
+                continue
+            added = [item for item in new if item not in old]
+            removed = [item for item in old if item not in new]
+            typer.echo(f"{field}: {len(old)} -> {len(new)} entries")
+            if added:
+                typer.echo(f"  + {', '.join(added)}")
+            if removed:
+                typer.echo(f"  - {', '.join(removed)}")
+
+        embed_fn = get_embed_fn()
+        ensure_profile_embedding(conn, embed_fn, force=True)
+        typer.echo("profile embedding refreshed")
+
+        if not rescore:
+            typer.secho(
+                "scores left untouched; run `jobpilot rescore` to make them "
+                "reflect this vocabulary",
+                fg=typer.colors.YELLOW,
+            )
+            return
+
+        after = _rescore_all(conn, embed_fn, threshold)
+        typer.echo(
+            f"\nofferers over threshold ({threshold:.2f}): "
+            f"{before['queued']} -> {after['queued']}"
+        )
+        typer.echo(
+            f"hard filter passed: {before['passed']} -> {after['passed']} "
+            f"of {after['scored']} scored"
+        )
+    finally:
+        conn.close()
+
+
+def _queue_snapshot(conn: sqlite3.Connection, threshold: float) -> dict[str, int]:
+    """Count what currently clears the bar, for an honest before/after."""
+
+    row = conn.execute(
+        "SELECT count(*) AS scored, "
+        "       sum(hard_filter_pass) AS passed, "
+        "       sum(final_score >= ?) AS queued FROM match_scores",
+        (threshold,),
+    ).fetchone()
+    return {
+        "scored": int(row["scored"] or 0),
+        "passed": int(row["passed"] or 0),
+        "queued": int(row["queued"] or 0),
+    }
+
+
+def _rescore_all(
+    conn: sqlite3.Connection, embed_fn: object, threshold: float
+) -> dict[str, int]:
+    """Re-evaluate every offer against the new vocabulary.
+
+    ``jobpilot score`` only looks at offers with no match_scores row, so it
+    cannot see a vocabulary change on its own. ``clear_match_scores`` is the
+    existing primitive for that, and it deliberately leaves alone any offer that
+    already has an application: those scores back a human decision the state
+    machine now owns.
+    """
+
+    from jobpilot.scoring import score
+
+    cleared = clear_match_scores(conn)
+    typer.echo(
+        f"cleared {cleared.cleared} score(s); "
+        f"{cleared.skipped_with_application} left alone (already an application)"
+    )
+    score(conn, embed_fn, threshold=threshold)
+    return _queue_snapshot(conn, threshold)
 
 
 @app.command("daemon")

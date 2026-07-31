@@ -1,0 +1,131 @@
+# The vocabulary the matcher scores against. Committed, reviewable, re-appliable.
+#
+# Until Task 35 these three lists existed only inside data/jobpilot.db, filled
+# once by the interactive `jobpilot init-profile`. Nothing about the scoring was
+# reproducible or reviewable as a result. Apply this file with:
+#
+#     jobpilot apply-matching-profile
+#
+# ---------------------------------------------------------------------------
+# How matcher.py (frozen) actually reads these, measured on 381 real offers:
+#
+#   target_roles  -> hard_filter is unaffected; keyword_score adds a FLAT +0.15
+#                    when ANY entry is a substring of the offer TITLE. No
+#                    denominator, so breadth is free. This is the whole lever:
+#                    role_hit coverage 8% -> 44% took the queue from 9 to 23.
+#                    Entries must be SHORT. The previous list was already
+#                    French but multi-word ("ingénieur cybersécurité"), and
+#                    substring matching needs exact adjacency, so
+#                    "Ingénieur EN Cybersécurité" missed.
+#
+#   hard_skills   -> keyword_score computes hits / len(hard_skills). Every term
+#                    added ENLARGES THE DENOMINATOR, so a long aspirational list
+#                    scores worse than a short honest one. Keep the count flat
+#                    and swap dead terms for ones the corpus actually contains.
+#
+#   locations_ok  -> hard_filter does `any(loc in city)`, unanchored. The
+#                    two-digit department entries are LOad-BEARING: France
+#                    Travail writes "Courbevoie (92)" and "92400 Courbevoie",
+#                    and removing them costs 50 offers to block 4 near-zero
+#                    false passes. Measured; do not "clean" this list.
+#
+# All three are ALSO embedded into the profile vector by
+# embeddings.build_profile_text, so every edit here moves semantic_score too —
+# which is 50% of the blend. That is why trimming hard_skills to only
+# high-hitting terms scored WORSE than leaving it alone. Re-measure after edits.
+#
+# Every term must be defensible as something the candidate can claim: this feeds
+# CV variant selection as well as scoring, and inflating it corrupts both.
+# ---------------------------------------------------------------------------
+
+target_roles:
+  # Kept from the original list.
+  - Analyste SOC
+  - Analyste sécurité
+  - Ingénieur cybersécurité
+  - Consultant sécurité
+  - Pentester junior
+  - Cloud Security
+  - DevSecOps
+  - GRC
+  - Alternance cybersécurité
+  # Short French market forms. These are what actually fire on real titles.
+  - cybersécurité
+  - sécurité informatique
+  - sécurité des systèmes
+  - ingénieur sécurité
+  - analyste cybersécurité
+  - technicien cybersécurité
+  - technicien informatique
+  - administrateur systèmes
+  - administrateur réseaux
+  - systèmes et réseaux
+  - devops
+  - sécurité cloud
+  - audit sécurité
+  - infrastructure
+  - support informatique
+  - sécurité
+  - alternance cyber
+  - apprenti
+  - alternant
+  - informatique
+  - réseaux
+  - systèmes
+  - cloud
+  # Deliberately NOT included: bare "soc", "si" and "data". As substrings they
+  # match "société", "assistant", "baby-sitter" and "hôtellerie" — they hand out
+  # the +0.15 to offers that have nothing to do with the candidate. Verified.
+
+hard_skills:
+  # Count held at 18 (was 22). Every entry below is a verified, non-review skill
+  # in config/fact_bank.yaml AND appears somewhere in the real offer corpus.
+  # Dropped because they score exactly zero on 189 scored offers and were only
+  # inflating the denominator: SIEM, Microsoft Sentinel, détection et réponse à
+  # incident, pentest, tests d'intrusion, vulnerability management, hardening,
+  # forensique, KQL, network security, scripting.
+  - Active Directory
+  - Python
+  - Linux
+  - Docker
+  - Kubernetes
+  - Azure
+  - Microsoft 365
+  - ISO 27001
+  - durcissement système
+  - Windows Server
+  - VPN
+  - pare-feu
+  - DNS
+  - TCP/IP
+  - Git
+  - VMware
+  - segmentation réseau
+  - gestion des accès
+
+locations_ok:
+  # UNCHANGED, on purpose. Measured: removing the numeric department tokens
+  # drops the queue from 9 to 5, and adding commune names instead dilutes the
+  # profile embedding with place names and drops it to 6. The unanchored
+  # substring match is a real defect, but fixing it properly means anchored
+  # matching inside the frozen matcher.hard_filter, which is a separate
+  # decision (Task 36), not a data change.
+  - Lille
+  - Hauts-de-France
+  - Paris
+  - Île-de-France
+  - remote
+  - télétravail
+  - "59"
+  - "62"
+  - "60"
+  - "02"
+  - "80"
+  - "75"
+  - "77"
+  - "78"
+  - "91"
+  - "92"
+  - "93"
+  - "94"
+  - "95"

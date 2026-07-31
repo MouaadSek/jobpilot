@@ -511,18 +511,24 @@ def test_the_plan_page_states_the_route_the_sentence_and_the_hash(
 def test_the_plan_page_names_the_routes_it_skipped_and_why(
     dashboard_db: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from jobpilot import routing
+
     application_id = _ready_offer(
         dashboard_db,
         tmp_path,
         suffix="plan-unavailable",
         contact_email="recrutement@exemple.fr",
     )
+    # Injected, not ambient. This test originally read SMTP_* straight from the
+    # developer's .env and silently started failing the day one was configured;
+    # an unavailability message must be pinned to the condition it describes.
+    monkeypatch.setattr(routing, "get_settings", lambda: _settings(smtp_password=None))
 
     with _client(dashboard_db, tmp_path) as client:
         plan = client.get(f"/application/{application_id}/apply-plan")
 
-    # SMTP is not configured in the test environment, so the email route is
-    # eligible, unavailable, and must say so rather than being selected.
+    # The email route is eligible but unavailable, and must say so rather than
+    # being selected and failing at click time.
     assert plan.status_code == 200
     assert "SMTP non configuré" in plan.text
     assert "Envoi par email" in plan.text

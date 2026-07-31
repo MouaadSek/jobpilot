@@ -19,10 +19,24 @@ from jobpilot.logging_conf import get_logger
 log = get_logger("profile")
 
 DEFAULT_CV_PROFILE_PATH = PROJECT_ROOT / "config" / "profile.yaml"
+DEFAULT_MATCHING_PROFILE_PATH = PROJECT_ROOT / "config" / "matching_profile.yaml"
+
+#: The only profile columns the committed matching vocabulary owns. Everything
+#: else on the row (name, certs, languages, headline) stays whatever
+#: ``init-profile`` put there.
+MATCHING_PROFILE_FIELDS: tuple[str, ...] = (
+    "target_roles",
+    "hard_skills",
+    "locations_ok",
+)
 
 
 class CvProfileError(ValueError):
     """Raised when the committed CV profile is missing or malformed."""
+
+
+class MatchingProfileError(ValueError):
+    """Raised when the committed matching vocabulary is missing or malformed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +73,98 @@ def load_cv_profile(path: Path | None = None) -> CvProfile:
     if not isinstance(region, str) or not region.strip():
         raise CvProfileError("CV profile location.region must be non-empty text")
     return CvProfile(city=city.strip(), region=region.strip())
+
+
+@dataclass(frozen=True, slots=True)
+class MatchingProfile:
+    """The scoring vocabulary, committed to git rather than typed once.
+
+    These three lists drive ``matcher.keyword_score``, ``matcher.hard_filter``
+    *and* the profile embedding, so keeping them in the database alone made the
+    matching behaviour unreviewable and unreproducible.
+    """
+
+    target_roles: list[str]
+    hard_skills: list[str]
+    locations_ok: list[str]
+
+    def as_json(self) -> dict[str, str]:
+        return {
+            name: json.dumps(getattr(self, name), ensure_ascii=False)
+            for name in MATCHING_PROFILE_FIELDS
+        }
+
+
+def load_matching_profile(path: Path | None = None) -> MatchingProfile:
+    """Load the committed matching vocabulary, failing loudly rather than defaulting."""
+
+    chosen = Path(path or DEFAULT_MATCHING_PROFILE_PATH)
+    try:
+        raw = yaml.safe_load(chosen.read_text(encoding="utf-8")) or {}
+    except OSError as exc:
+        raise MatchingProfileError(f"could not read matching profile: {chosen}") from exc
+    except yaml.YAMLError as exc:
+        raise MatchingProfileError(f"matching profile is invalid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise MatchingProfileError("matching profile must be an object")
+
+    values: dict[str, list[str]] = {}
+    for name in MATCHING_PROFILE_FIELDS:
+        items = raw.get(name)
+        if not isinstance(items, list) or not items:
+            raise MatchingProfileError(
+                f"matching profile must define a non-empty '{name}' list"
+            )
+        cleaned = [str(item).strip() for item in items]
+        if not all(cleaned):
+            raise MatchingProfileError(f"'{name}' contains an empty entry")
+        # Duplicates inflate len(hard_skills), which is keyword_score's
+        # denominator, so they silently lower every score.
+        seen = {item.casefold() for item in cleaned}
+        if len(seen) != len(cleaned):
+            raise MatchingProfileError(f"'{name}' contains duplicate entries")
+        values[name] = cleaned
+    return MatchingProfile(**values)
+
+
+def apply_matching_profile(
+    db: sqlite3.Connection, profile: MatchingProfile
+) -> dict[str, tuple[list[str], list[str]]]:
+    """Write the vocabulary onto the profile singleton. Returns {field: (before, after)}.
+
+    Touches only the three matching columns; idempotent, so re-running it is a
+    no-op rather than a second edit.
+    """
+
+    row = db.execute("SELECT * FROM profile WHERE id = 1").fetchone()
+    if row is None:
+        raise MatchingProfileError(
+            "no profile row; run `jobpilot init-profile` before applying the "
+            "matching vocabulary"
+        )
+    before = {
+        name: json.loads(row[name] or "[]") for name in MATCHING_PROFILE_FIELDS
+    }
+    payload = profile.as_json()
+    db.execute(
+        "UPDATE profile SET target_roles = :target_roles, "
+        " hard_skills = :hard_skills, locations_ok = :locations_ok WHERE id = 1",
+        payload,
+    )
+    db.commit()
+    changed = [
+        name
+        for name in MATCHING_PROFILE_FIELDS
+        if before[name] != getattr(profile, name)
+    ]
+    log.info(
+        "applied matching profile; %s",
+        f"changed: {', '.join(changed)}" if changed else "no change",
+    )
+    return {
+        name: (before[name], getattr(profile, name))
+        for name in MATCHING_PROFILE_FIELDS
+    }
 
 
 @dataclass(slots=True)
