@@ -42,6 +42,7 @@ from jobpilot.apply_flow import (
 from jobpilot.clipboard import copy_text
 from jobpilot.config import get_settings
 from jobpilot.db import connect
+from jobpilot.downloads import download_filename
 from jobpilot.facts import FactBankError, load_fact_bank
 from jobpilot.mailer import (
     MailerError,
@@ -145,6 +146,13 @@ def _record_apply_route(
         (route_id, application_id),
     )
     log_event(db, application_id, "apply_route_selected", {"route": route_id})
+
+
+def _candidate_name(db: sqlite3.Connection) -> str | None:
+    """The operator's name, for the download filename. Absent is not an error."""
+
+    row = db.execute("SELECT full_name FROM profile WHERE id = 1").fetchone()
+    return row["full_name"] if row else None
 
 
 def _manual_open_warning(opened: bool, copied: bool) -> str:
@@ -1100,11 +1108,21 @@ def create_app(
 
     @app.get("/files/{application_id}/{name}", response_class=FileResponse)
     def artifact(application_id: int, name: str, db: Database) -> FileResponse:
+        """Serve one generated artefact under a name an employer folder can keep."""
+
         detail = application_detail(db, application_id)
         if detail is None or detail["status"] != "ready":
             raise HTTPException(status_code=404, detail="artifact not found")
         path = _safe_artifact_path(artifacts_root, application_id, name)
-        return FileResponse(path)
+        return FileResponse(
+            path,
+            filename=download_filename(
+                name,
+                application_id=application_id,
+                company=detail["company"],
+                candidate=_candidate_name(db),
+            ),
+        )
 
     return app
 
