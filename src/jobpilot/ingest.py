@@ -41,11 +41,32 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _backfill_company_source(
+    db: sqlite3.Connection, company_id: int, source: str | None
+) -> None:
+    """Teach an existing company row where it came from, once.
+
+    A company first seen as an offer's employer is stored with ``source`` NULL.
+    When a sourcing provider later returns that same company as an outreach
+    target, the row has to learn its provenance or it never appears in
+    ``contacts --targets``. The ``source IS NULL`` guard makes this a backfill
+    and never a rewrite: the first provider to claim a company keeps the claim.
+    """
+
+    if source is None:
+        return
+    db.execute(
+        "UPDATE companies SET source = ? WHERE id = ? AND source IS NULL",
+        (source, company_id),
+    )
+
+
 def get_or_create_company(
     db: sqlite3.Connection, company: CompanyRecord, cache: dict[str, int]
 ) -> tuple[int, bool]:
     key = " ".join(company.name.lower().split())
     if key in cache:
+        _backfill_company_source(db, cache[key], company.source)
         return cache[key], False
     row = db.execute(
         "SELECT id FROM companies WHERE lower(name) = ? LIMIT 1", (key,)
@@ -59,6 +80,7 @@ def get_or_create_company(
         ).fetchone()
     if row is not None:
         cache[key] = row["id"]
+        _backfill_company_source(db, row["id"], company.source)
         return row["id"], False
     cur = db.execute(
         "INSERT INTO companies (name, siren, domain, size_bucket, sector, city, "

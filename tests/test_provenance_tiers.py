@@ -211,6 +211,17 @@ def test_an_organisation_the_bank_never_records_is_refused(bank) -> None:
         _in_bank("Mission réalisée pour Capgemini.", bank)
 
 
+def test_the_dead_attribution_check_is_gone(bank) -> None:
+    """Task 34.0. ``whole_bank_scope`` puts every organisation in the scope, so
+    the dedicated attribution check could never fire. Task 32 reported it
+    removed; it was not. The test above is what actually guards the rule, and
+    this one keeps the dead branch from being reintroduced."""
+
+    import jobpilot.tailoring as tailoring
+
+    assert not hasattr(tailoring, "_reject_borrowed_attributions")
+
+
 def test_the_banks_own_quantities_are_still_accepted(bank) -> None:
     _in_bank(
         "Résolution de 1 500+ incidents avec 85 % de résolution au premier contact.",

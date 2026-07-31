@@ -1639,20 +1639,6 @@ def _reject_borrowed_quantities(
             raise _refuse("number", number.strip(), cited, scope)
 
 
-def _reject_borrowed_attributions(
-    text: str,
-    scope: ProvenanceScope,
-    organisations: Sequence[str],
-    cited: Sequence[str],
-) -> None:
-    """Tier 1. A bullet may not name an organisation its scope does not name."""
-
-    normalized_text = _normalize(text)
-    for name in organisations:
-        if _contains(normalized_text, name) and not _contains(scope.normalized, name):
-            raise _refuse("organisation", name, cited, scope)
-
-
 def _reject_unverified_skills(text: str, bank: FactBank) -> None:
     """A skill the bank has not verified may not be claimed at all, ever."""
 
@@ -1679,10 +1665,12 @@ def _reject_unsupported_capabilities(
     names the industry rather than the candidate, which confirms nothing and is
     allowed. Tokens already judged as attributions are not re-judged here.
 
-    The scope is the entry, not the bank: naming a tool under an employer says
-    that employer's work involved it, so Terraform learned on a personal project
-    does not belong in a support-desk bullet. Wider than the cited fact, narrower
-    than the bank.
+    The scope is the whole bank. Generated text summarises a career rather than
+    one entry, so a tool the candidate really used somewhere is fair to name;
+    what the scope refuses is the tool the candidate never touched at all. This
+    is also where an organisation the bank never records is caught: a name the
+    bank does not know is not an attribution it can skip, it is an unsupported
+    proper noun like any other.
     """
 
     attributions = {_normalize(name) for name in organisations}
@@ -1709,13 +1697,12 @@ def validate_provenance(
     they are no longer the validation boundary, because which of an entry's facts
     a model happened to cite says nothing about whether the claim is true.
 
-    Tier 1, attribution: quantities and the names of employers, clients and
-    schools must appear in the scope. This is the anti-fabrication and
-    anti-misattribution guarantee and it is never relaxed.
+    Tier 1, attribution: every quantity must appear in the scope. This is the
+    anti-fabrication guarantee and it is never relaxed.
 
-    Tier 2, capability: named products, tools, standards and certifications must
-    appear in the scope, because claiming a tool under an employer says that
-    employer's work involved it.
+    Tier 2, capability: named products, tools, standards, certifications and the
+    names of employers, clients and schools must appear in the scope, because
+    naming one claims the candidate really was there or really used it.
 
     Tier 3, vocabulary: category words and industry acronyms assert nothing
     about the candidate and are allowed. The bank names products, not
@@ -1768,7 +1755,6 @@ def _reject_unsupported_tokens(
     # Tier 1 runs first and is never reachable through the others: a token
     # that is both a quantity and a category word is still a quantity.
     _reject_borrowed_quantities(masked, scope, cited)
-    _reject_borrowed_attributions(masked, scope, organisations, cited)
     _reject_unverified_skills(masked, bank)
     _reject_unsupported_capabilities(
         masked, bank, generic, organisations, cited, scope

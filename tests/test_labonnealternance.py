@@ -409,6 +409,74 @@ def test_an_offers_employer_is_not_marked_as_a_sourced_target(
     assert row["source"] is None
 
 
+def test_an_offers_employer_learns_its_source_when_sourcing_returns_it(
+    db: sqlite3.Connection,
+) -> None:
+    """Task 34.0: a NULL source is backfilled, so the row reaches --targets."""
+
+    from jobpilot.contacts import list_outreach_targets
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    first_id, created = get_or_create_company(db, CompanyRecord(name="Cible"), {})
+    assert created is True
+
+    second_id, created_again = get_or_create_company(
+        db, CompanyRecord(name="Cible", source="labonnealternance"), {}
+    )
+
+    assert second_id == first_id
+    assert created_again is False
+    row = db.execute(
+        "SELECT source FROM companies WHERE id = ?", (first_id,)
+    ).fetchone()
+    assert row["source"] == "labonnealternance"
+    assert [target["name"] for target in list_outreach_targets(db)] == ["Cible"]
+
+
+def test_a_company_source_already_set_is_never_overwritten(
+    db: sqlite3.Connection,
+) -> None:
+    """The first provider to claim a company keeps the claim."""
+
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    company_id, _ = get_or_create_company(
+        db, CompanyRecord(name="Cible", source="labonnealternance"), {}
+    )
+    get_or_create_company(db, CompanyRecord(name="Cible", source="autre"), {})
+    get_or_create_company(db, CompanyRecord(name="Cible"), {})
+
+    row = db.execute(
+        "SELECT source FROM companies WHERE id = ?", (company_id,)
+    ).fetchone()
+    assert row["source"] == "labonnealternance"
+
+
+def test_the_source_backfill_also_happens_on_a_cache_hit(
+    db: sqlite3.Connection,
+) -> None:
+    """Within one ingest run the cache short-circuits the SELECT; it must not
+    short-circuit the backfill."""
+
+    from jobpilot.ingest import get_or_create_company
+    from jobpilot.models import CompanyRecord
+
+    cache: dict[str, int] = {}
+    company_id, _ = get_or_create_company(db, CompanyRecord(name="Cible"), cache)
+    assert cache  # the second call below takes the cache path
+
+    get_or_create_company(
+        db, CompanyRecord(name="Cible", source="labonnealternance"), cache
+    )
+
+    row = db.execute(
+        "SELECT source FROM companies WHERE id = ?", (company_id,)
+    ).fetchone()
+    assert row["source"] == "labonnealternance"
+
+
 def test_the_same_company_under_two_names_is_stored_once(
     db: sqlite3.Connection,
 ) -> None:
