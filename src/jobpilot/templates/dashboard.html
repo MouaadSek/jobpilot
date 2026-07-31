@@ -285,6 +285,7 @@
       <nav class="top-nav" aria-label="Main navigation">
         <a href="/">Applications</a>
         <a href="/skim">À trier</a>
+        <a href="/tracker">Suivi</a>
         <a href="/library">Documents</a>
         <a href="/outreach">Outreach</a>
         <a href="/facts">Faits</a>
@@ -480,6 +481,75 @@
           <p class="muted">
             Rien à trier pour l'instant. Lancez « Actualiser les offres » depuis
             la file pour en récupérer de nouvelles.
+          </p>
+        {% endif %}
+      </section>
+
+    {% elif view == "tracker" %}
+      <section class="panel">
+        <h2>Suivi des candidatures</h2>
+
+        <div class="counts">
+          <span class="badge">Envoyées cette semaine <strong>{{ counts.sent_this_week }}</strong></span>
+          <span class="badge">Envoyées au total <strong>{{ counts.sent_total }}</strong></span>
+          <span class="badge">Prêtes <strong>{{ counts.ready }}</strong></span>
+          <span class="badge">En file <strong>{{ counts.queued }}</strong></span>
+        </div>
+
+        <form method="get" action="/tracker" class="skim-filters">
+          <label>
+            Statut
+            <select name="status" onchange="this.form.submit()">
+              <option value="">Tous</option>
+              {% for name in statuses %}
+                <option value="{{ name }}" {% if status == name %}selected{% endif %}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Tri
+            <select name="sort" onchange="this.form.submit()">
+              <option value="recent" {% if sort == "recent" %}selected{% endif %}>Activité récente</option>
+              <option value="company" {% if sort == "company" %}selected{% endif %}>Entreprise</option>
+              <option value="score" {% if sort == "score" %}selected{% endif %}>Score</option>
+              <option value="status" {% if sort == "status" %}selected{% endif %}>Statut</option>
+              <option value="applied" {% if sort == "applied" %}selected{% endif %}>Date d'envoi</option>
+            </select>
+          </label>
+          <a class="btn secondary" href="/tracker.csv?sort={{ sort }}{% if status %}&status={{ status }}{% endif %}">Exporter en CSV</a>
+          <span class="muted">{{ rows|length }} candidature(s)</span>
+        </form>
+
+        {% if rows %}
+          <div class="table-wrap">
+            <table class="dense">
+              <thead>
+                <tr>{% for key, label in columns %}<th>{{ label }}</th>{% endfor %}</tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                  <tr>
+                    <td><a href="/application/{{ row.application_id }}">{{ row.company or "—" }}</a></td>
+                    <td>{{ row.title or "—" }}</td>
+                    <td>{{ row.source or "—" }}</td>
+                    <td>{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>
+                    <td>{{ row.status }}</td>
+                    <td {% if row.applied_at %}title="{{ row.applied_at }}"{% endif %}>{{ row.applied_at|ymd or "—" }}</td>
+                    <td>{{ row.apply_route or "—" }}</td>
+                    <td>{{ row.variant or "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">
+            {% if status %}
+              Aucune candidature au statut « {{ status }} ».
+            {% else %}
+              Aucune candidature pour l'instant. Approuvez une offre depuis la
+              file pour en créer une.
+            {% endif %}
           </p>
         {% endif %}
       </section>

@@ -78,6 +78,27 @@ from jobpilot.skim import (
     available_sources as skim_sources,
 )
 from jobpilot.state import IllegalTransition, current_status, log_event, transition
+from jobpilot.tracker import (
+    COLUMNS as TRACKER_COLUMNS,
+)
+from jobpilot.tracker import (
+    DEFAULT_SORT as TRACKER_DEFAULT_SORT,
+)
+from jobpilot.tracker import (
+    SORTS as TRACKER_SORTS,
+)
+from jobpilot.tracker import (
+    counts as tracker_counts,
+)
+from jobpilot.tracker import (
+    statuses as tracker_statuses,
+)
+from jobpilot.tracker import (
+    to_csv as tracker_to_csv,
+)
+from jobpilot.tracker import (
+    tracker_rows,
+)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 ALLOWED_ARTIFACTS = frozenset(
@@ -1173,6 +1194,47 @@ def create_app(
             # Starlette sets attachment whenever `filename` is given, so inline
             # has to be stated explicitly or every preview would download.
             content_disposition_type="attachment" if download else "inline",
+        )
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker_page(
+        request: Request,
+        db: Database,
+        status: str | None = None,
+        sort: str = TRACKER_DEFAULT_SORT,
+    ) -> HTMLResponse:
+        """Where every application stands. Read-only on purpose."""
+
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "tracker",
+                "rows": tracker_rows(db, status=status or None, sort=sort),
+                "columns": TRACKER_COLUMNS,
+                "counts": tracker_counts(db).as_dict(),
+                "statuses": tracker_statuses(db),
+                "status": status or "",
+                "sort": sort if sort in TRACKER_SORTS else TRACKER_DEFAULT_SORT,
+                "error": None,
+            },
+        )
+
+    @app.get("/tracker.csv")
+    def tracker_csv(
+        db: Database,
+        status: str | None = None,
+        sort: str = TRACKER_DEFAULT_SORT,
+    ) -> Response:
+        """The visible rows, in the visible order, as CSV."""
+
+        body = tracker_to_csv(tracker_rows(db, status=status or None, sort=sort))
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="jobpilot_tracker.csv"'
+            },
         )
 
     @app.get("/library", response_class=HTMLResponse)
