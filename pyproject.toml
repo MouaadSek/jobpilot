@@ -33,6 +33,12 @@ dev = [
     "ruff>=0.6",
     "respx>=0.21",
 ]
+# macOS menu bar item. Optional and platform-gated on purpose: rumps is
+# macOS-only, base dependencies must stay installable on Windows, and nothing in
+# the import graph may import it at module level.
+menubar = [
+    "rumps>=0.4; sys_platform == 'darwin'",
+]
 
 [project.scripts]
 jobpilot = "jobpilot.cli:app"

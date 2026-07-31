@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import sqlite3
 import sys
 import webbrowser
@@ -1001,13 +1002,45 @@ def create_app(
     return app
 
 
-def run_dashboard(port: int = 8787) -> None:
-    """Run the dashboard on an intentionally fixed loopback interface."""
+DASHBOARD_HOST = "127.0.0.1"
+
+
+def dashboard_already_running(
+    port: int,
+    *,
+    host: str = DASHBOARD_HOST,
+    timeout: float = 0.5,
+) -> bool:
+    """Whether something is already listening on the dashboard's port.
+
+    A connect probe rather than a bind probe: bind semantics for an in-use port
+    differ between Windows and Unix once SO_REUSEADDR is in play, and the
+    question being asked is simply "is the dashboard already up?".
+    """
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(timeout)
+        return probe.connect_ex((host, port)) == 0
+
+
+def run_dashboard(port: int = 8787) -> int:
+    """Run the dashboard on an intentionally fixed loopback interface.
+
+    Returns a process exit code. A port already in use is **not** an error: the
+    LaunchAgent runs under KeepAlive, so a non-zero exit there becomes a restart
+    loop fighting whichever dashboard is already serving the page.
+    """
 
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             reconfigure(encoding="utf-8", errors="replace")
+
+    if dashboard_already_running(port):
+        print(f"JobPilot tourne déjà sur http://{DASHBOARD_HOST}:{port}")
+        return 0
+
     import uvicorn
 
-    uvicorn.run(create_app(), host="127.0.0.1", port=port)
+    uvicorn.run(create_app(), host=DASHBOARD_HOST, port=port)
+    return 0

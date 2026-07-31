@@ -607,7 +607,28 @@ def dashboard_cmd(
     """Launch the local review dashboard on 127.0.0.1."""
     from jobpilot.dashboard import run_dashboard
 
-    run_dashboard(port)
+    raise typer.Exit(run_dashboard(port))
+
+
+@app.command("menubar")
+def menubar_cmd(
+    port: int = typer.Option(
+        8787,
+        "--port",
+        min=1,
+        max=65535,
+        help="Port the menubar item opens and polls.",
+    ),
+) -> None:
+    """Show ready/queued counts in the macOS menu bar (optional extra)."""
+
+    from jobpilot.menubar import MenubarUnavailable, run_menubar
+
+    try:
+        run_menubar(port=port)
+    except MenubarUnavailable as exc:
+        typer.secho(str(exc), fg=typer.colors.YELLOW)
+        raise typer.Exit(1) from exc
 
 
 @app.command("stats")
