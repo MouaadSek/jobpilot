@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -88,8 +89,18 @@ def test_the_cli_exits_zero_on_a_port_collision() -> None:
 
 
 @contextmanager
-def _fake_launchctl(tmp_path: Path) -> Iterator[tuple[dict[str, str], Path]]:
-    """A launchctl stub on PATH that records its calls, so the script can run."""
+def _fake_macos(tmp_path: Path) -> Iterator[tuple[dict[str, str], Path, Path]]:
+    """A throwaway repo, a fake HOME, and a launchctl stub on PATH.
+
+    The scripts derive REPO_ROOT from their own location, so copying them into a
+    temporary tree beside a stub venv is enough to point them at that venv
+    instead of the developer's. Running them against the real repo made these
+    tests pass only on a machine that happened to have a .venv — which is why
+    they passed locally and failed in CI, where the script correctly exits 1.
+
+    The stub is named ``python`` rather than ``python3`` on purpose: it also
+    exercises the script's fallback branch.
+    """
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -100,25 +111,35 @@ def _fake_launchctl(tmp_path: Path) -> Iterator[tuple[dict[str, str], Path]]:
     )
     stub.chmod(0o755)
 
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    for name in ("install_agent.sh", "uninstall_agent.sh"):
+        shutil.copy2(SCRIPTS / name, repo / "scripts" / name)
+    venv_bin = repo / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    interpreter = venv_bin / "python"
+    interpreter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    interpreter.chmod(0o755)
+
     home = tmp_path / "home"
     home.mkdir()
     env = dict(os.environ)
     env["HOME"] = str(home)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
-    yield env, home
+    yield env, home, repo
 
 
 @needs_posix_shell
 def test_install_agent_writes_a_keepalive_plist_with_a_resolved_interpreter(
     tmp_path: Path,
 ) -> None:
-    with _fake_launchctl(tmp_path) as (env, home):
+    with _fake_macos(tmp_path) as (env, home, repo):
         result = subprocess.run(
-            ["sh", str(SCRIPTS / "install_agent.sh"), "8788"],
+            ["sh", str(repo / "scripts" / "install_agent.sh"), "8788"],
             capture_output=True,
             text=True,
             env=env,
-            cwd=ROOT,
+            cwd=repo,
         )
 
     assert result.returncode == 0, result.stderr
@@ -127,9 +148,11 @@ def test_install_agent_writes_a_keepalive_plist_with_a_resolved_interpreter(
     assert "<key>RunAtLoad</key>" in content
     assert "<key>KeepAlive</key>" in content
     assert "<string>8788</string>" in content
-    # The venv interpreter is resolved at install time, not left as a token.
+    # The venv interpreter is resolved at install time, not left as a token —
+    # and resolved against the script's own tree, not the machine's.
     assert "__HOME__" not in content
-    assert str(ROOT / ".venv") in content
+    assert str(repo / ".venv") in content
+    assert str(ROOT / ".venv") not in content
     # stdout and stderr both go to ~/Library/Logs/jobpilot/.
     assert str(home / "Library" / "Logs" / "jobpilot") in content
     assert (home / "Library" / "Logs" / "jobpilot").is_dir()
@@ -139,14 +162,14 @@ def test_install_agent_writes_a_keepalive_plist_with_a_resolved_interpreter(
 def test_install_agent_is_idempotent(tmp_path: Path) -> None:
     """Running it twice leaves one agent, not two."""
 
-    with _fake_launchctl(tmp_path) as (env, home):
+    with _fake_macos(tmp_path) as (env, home, repo):
         for _ in range(2):
             result = subprocess.run(
-                ["sh", str(SCRIPTS / "install_agent.sh")],
+                ["sh", str(repo / "scripts" / "install_agent.sh")],
                 capture_output=True,
                 text=True,
                 env=env,
-                cwd=ROOT,
+                cwd=repo,
             )
             assert result.returncode == 0, result.stderr
 
@@ -168,21 +191,21 @@ def test_uninstall_agent_removes_it_and_tolerates_being_run_twice(
 ) -> None:
     """An agent you cannot remove is a trap, especially under KeepAlive."""
 
-    with _fake_launchctl(tmp_path) as (env, home):
+    with _fake_macos(tmp_path) as (env, home, repo):
         subprocess.run(
-            ["sh", str(SCRIPTS / "install_agent.sh")], env=env, cwd=ROOT, check=True,
+            ["sh", str(repo / "scripts" / "install_agent.sh")], env=env, cwd=repo, check=True,
             capture_output=True,
         )
         plist = home / "Library" / "LaunchAgents" / "com.jobpilot.dashboard.plist"
         assert plist.is_file()
 
         first = subprocess.run(
-            ["sh", str(SCRIPTS / "uninstall_agent.sh")],
-            capture_output=True, text=True, env=env, cwd=ROOT,
+            ["sh", str(repo / "scripts" / "uninstall_agent.sh")],
+            capture_output=True, text=True, env=env, cwd=repo,
         )
         second = subprocess.run(
-            ["sh", str(SCRIPTS / "uninstall_agent.sh")],
-            capture_output=True, text=True, env=env, cwd=ROOT,
+            ["sh", str(repo / "scripts" / "uninstall_agent.sh")],
+            capture_output=True, text=True, env=env, cwd=repo,
         )
 
     assert first.returncode == 0
