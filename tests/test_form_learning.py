@@ -402,3 +402,86 @@ def test_relearning_a_domain_does_not_duplicate_rows(db: sqlite3.Connection) -> 
         record_form_fields(db, DOMAIN, fields_from_html(html))
 
     assert len(mappings_for(db, DOMAIN)) == 2
+
+
+# ----- Task 35 item 4: the payment refusal gap -----
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # Verified misses. CVV2 is Visa's own name for the field and CVC2 is
+        # Mastercard's; "cryptogramme visuel" is the standard French term and was
+        # absent from the set entirely.
+        "cvv2", "cvc2", "ccv2", "cid", "cryptogramme", "code_securite",
+        "card_security_code", "securitycode", "cardnum", "numcarte", "exp_month",
+        # Same class, found while fixing the above.
+        "cryptogramme_visuel", "numero_de_carte", "date_expiration", "exp_year",
+        "card_number_1", "iban_field", "cvv_code",
+    ],
+)
+def test_affixed_and_french_payment_fields_are_refused(name: str) -> None:
+    """Payment matches as substrings after folding, not as whole tokens: token
+    boundaries let every affixed form through, and a missed payment field is the
+    one failure in this module that actually costs something."""
+
+    assert refusal_category(FormField(selector="input", name=name)) == "payment"
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["full_name", "salaire_souhaite", "date-naissance", "linkedin", "email",
+     "telephone", "adresse", "code_postal", "ville", "motivation", "cv"],
+)
+def test_ordinary_fields_survive_the_wider_payment_net(name: str) -> None:
+    """Widening payment must not start refusing the fields the module exists to
+    map — code_postal in particular sits close to 'code de securite'."""
+
+    assert refusal_category(FormField(selector="input", name=name)) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("password2", "password"),
+        ("pwd1", "password"),
+        ("user_password_confirm", "password"),
+        ("ssn_last4", "identity_document"),
+        ("passportnumber", "identity_document"),
+        ("numero_passeport", "identity_document"),
+    ],
+)
+def test_password_and_identity_affixed_forms_were_already_covered(
+    name: str, expected: str
+) -> None:
+    """Checked rather than assumed: separator folding plus the unbounded
+    password tokens already handled this class, so only payment needed widening."""
+
+    assert refusal_category(FormField(selector="input", name=name)) == expected
+
+
+@pytest.mark.parametrize("name", ["secretariat", "secretaire"])
+def test_the_secret_token_does_not_refuse_secretarial_fields(name: str) -> None:
+    """Bare 'secret' as a substring would refuse these; it is bounded for that
+    reason."""
+
+    assert refusal_category(FormField(selector="input", name=name)) is None
+
+
+def test_a_widened_payment_field_is_still_never_recorded(
+    db: sqlite3.Connection,
+) -> None:
+    """The refusal has to reach the recorder, not just the classifier."""
+
+    result = record_form_fields(
+        db,
+        DOMAIN,
+        [
+            FormField(selector='input[name="cvv2"]', name="cvv2"),
+            FormField(selector='input[name="cryptogramme"]', name="cryptogramme"),
+            FormField(selector='input[name="email"]', name="email"),
+        ],
+    )
+
+    assert sorted(c for _, c in result.refused) == ["payment", "payment"]
+    assert [m.selector for m in mappings_for(db, DOMAIN)] == ['input[name="email"]']

@@ -64,14 +64,26 @@ REFUSED_INPUT_TYPES: frozenset[str] = frozenset({"password"})
 REFUSAL_PATTERNS: tuple[tuple[str, str], ...] = (
     (
         "password",
+        # Already substring-matched (no boundaries on password/passwd/pwd), so
+        # password2 and pwd1 were never at risk. Only the two shortest tokens
+        # need boundaries: bare "secret" would refuse "secretariat", and bare
+        # "otp" would fire inside unrelated words.
         r"password|passwd|mot\s*de\s*passe|motdepasse|pwd|passphrase|"
-        r"current\s*password|new\s*password|otp|code\s*secret|secret",
+        r"current\s*password|new\s*password|\botp\b|code\s*secret|\bsecret\b",
     ),
     (
+        # Matched as SUBSTRINGS, not tokens: CVV2 is Visa's own name for the
+        # field, CVC2 is Mastercard's, and real forms ship cardnum, numcarte,
+        # securitycode and exp_month. Token boundaries let every one of those
+        # through. Payment is the one category where a false refusal costs
+        # nothing (the human fills it) and a miss costs a card number.
         "payment",
-        r"card\s*number|cardnumber|credit\s*card|debit\s*card|carte\s*bancaire|"
-        r"\bcb\b|\biban\b|\bbic\b|\bswift\b|\brib\b|\bcvv\b|\bcvc\b|\bccv\b|"
-        r"cc\s*number|cc\s*csc|cc\s*exp|expiry|expiration\s*date|paypal|"
+        r"card\s*num|cardnum|num\s*carte|num[ée]ro\s*de\s*carte|credit\s*card|"
+        r"debit\s*card|carte\s*bancaire|\bcb\b|iban|\bbic\b|swift|\brib\b|"
+        r"cvv|cvc|ccv|\bcid\b|csc|cryptogramme|code\s*(?:de\s*)?s[ée]curit[ée]|"
+        r"code\s*secret\s*carte|security\s*code|securitycode|"
+        r"cc\s*number|cc\s*csc|cc\s*exp|exp\s*month|exp\s*year|"
+        r"expiry|expiration|date\s*d.?expiration|paypal|"
         r"bank\s*account|compte\s*bancaire|coordonn[ée]es\s*bancaires",
     ),
     (
