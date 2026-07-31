@@ -626,6 +626,34 @@ ingestion and reports how many offers were newly queued. The first refresh of a
 process is slow because the embedding model loads lazily, exactly as on the CLI
 path; the page shows **Chargement du modèle…** while that happens.
 
+### Régénérer (iterate on tailoring output from the browser)
+
+A `ready` application carries a **Régénérer** button next to **Marquer comme
+envoyée**. It runs the same generation path as **Approve** — there is no second
+tailoring implementation — after moving the application back through
+`ready → queued`, so the full event chain stays in `events` and
+`state.transition()` remains the only writer of `applications.status`.
+
+The previous run is **moved, not overwritten**, to
+
+```
+output/applications/<application_id>/archive/<UTC timestamp>/
+```
+
+so generation N can be diffed against N+1. The timestamp is ISO 8601 basic
+format (`20260731T014530Z`) because the extended form's colons are not legal in
+a Windows filename. Archive directories are never read back by the application
+and are not reachable through `/files/…`; they are there for a human with a diff
+tool, under the already-gitignored `output/`.
+
+Regeneration is single-flight **per application**: a second click while one is
+in flight returns `409` with « Une génération est déjà en cours pour cette
+candidature. » instead of starting a parallel run, while a different application
+can regenerate at the same time. Regenerating anything that is not `ready`
+returns `409` with the current status rather than silently doing nothing. When
+the validator rejects a generation, the application returns to `queued` and the
+validator's own message is shown verbatim on the detail page.
+
 ### Fact bank and scheduler status
 
 **Faits** in the header opens `/facts`, a read-only rendering of the fact bank

@@ -5,17 +5,33 @@ from __future__ import annotations
 import importlib
 import sqlite3
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jobpilot.logging_conf import get_logger
 from jobpilot.state import current_status, log_event, transition
+
+log = get_logger("apply_flow")
 
 # SQLite is single-user here, and a dashboard double-click must not start two
 # generations. RLock also lets the TestClient's shared in-memory connection use
 # this exact lock in its dependency override.
 APPLICATION_LOCK = threading.RLock()
+
+#: Where a regeneration puts the run it is about to replace.
+ARCHIVE_DIR_NAME = "archive"
+
+# Which applications are generating right now. Same single-flight discipline as
+# RefreshRunner's: one lock guards the claim, the check and the claim happen in
+# one critical section, and a second caller is refused rather than queued
+# behind the first. Keyed per application id so two different applications can
+# generate concurrently.
+_GENERATING: set[int] = set()
+_GENERATING_LOCK = threading.Lock()
 
 
 class ApplicationNotFoundError(LookupError):
@@ -28,6 +44,10 @@ class ApplicationNotQueuedError(RuntimeError):
 
 class ApplicationGenerationError(RuntimeError):
     """A redacted generation failure suitable for CLI and dashboard display."""
+
+
+class GenerationInFlight(RuntimeError):
+    """Raised when a generation is already running for this application."""
 
 
 class InteractiveAdvisorRequired(RuntimeError):
@@ -45,6 +65,70 @@ class ApplyOutcome:
     application_id: int
     is_cold_application: bool
     generation: Any | None
+
+
+@contextmanager
+def generation_single_flight(application_id: int) -> Iterator[None]:
+    """Claim the one generation slot for ``application_id``, or refuse.
+
+    Taken *before* ``APPLICATION_LOCK``, which is the whole point: a second
+    click that waited on the writer lock would be admitted the moment the first
+    generation released it, find the application ready again, and start a
+    second run. Refusing up front is what makes a double click a no-op.
+    """
+
+    with _GENERATING_LOCK:
+        if application_id in _GENERATING:
+            raise GenerationInFlight(
+                "Une génération est déjà en cours pour cette candidature."
+            )
+        _GENERATING.add(application_id)
+    try:
+        yield
+    finally:
+        with _GENERATING_LOCK:
+            _GENERATING.discard(application_id)
+
+
+def archive_artifacts(output_root: Path, application_id: int) -> Path | None:
+    """Move an application's current artefacts aside; return where they went.
+
+    Diffing generation N against N+1 is the entire point of regenerating, so
+    the previous run is moved rather than overwritten. Nothing in the
+    application ever reads these directories back — they exist for a human with
+    a diff tool — and they live under ``output/``, which is gitignored.
+
+    The stamp is ISO 8601 *basic* format. The extended format's colons are not
+    legal in a Windows filename and CI runs Windows.
+    """
+
+    application_dir = Path(output_root) / str(application_id)
+    if not application_dir.is_dir():
+        return None
+    artifacts = sorted(path for path in application_dir.iterdir() if path.is_file())
+    if not artifacts:
+        return None
+
+    archive_root = application_dir / ARCHIVE_DIR_NAME
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    destination = archive_root / stamp
+    # Two regenerations inside the same second would otherwise land on the same
+    # directory, and an archive that overwrites an archive helps nobody.
+    attempt = 1
+    while destination.exists():
+        attempt += 1
+        destination = archive_root / f"{stamp}-{attempt}"
+    destination.mkdir(parents=True)
+
+    for artifact in artifacts:
+        artifact.replace(destination / artifact.name)
+    log.info(
+        "application %d: archived %d artefact(s) to %s",
+        application_id,
+        len(artifacts),
+        destination,
+    )
+    return destination
 
 
 def approve_application(

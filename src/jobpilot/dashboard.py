@@ -30,8 +30,11 @@ from jobpilot.apply_flow import (
     ApplicationGenerationError,
     ApplicationNotFoundError,
     ApplicationNotQueuedError,
+    GenerationInFlight,
     InteractiveAdvisorRequired,
     approve_application,
+    archive_artifacts,
+    generation_single_flight,
 )
 from jobpilot.config import get_settings
 from jobpilot.db import connect
@@ -468,6 +471,96 @@ def create_app(
                     error=str(exc),
                     status_code=422,
                 )
+        return RedirectResponse(
+            url=f"/application/{application_id}",
+            status_code=303,
+        )
+
+    @app.post("/application/{application_id}/regenerate")
+    def regenerate(
+        request: Request,
+        application_id: int,
+        db: Database,
+    ) -> Response:
+        """Re-run the existing generation path on a ready application.
+
+        No generation logic of its own: the current artefacts are archived, the
+        application goes back through ``ready -> queued``, and then down the
+        exact ``approve_application`` path the Approve button uses.
+        """
+
+        try:
+            with generation_single_flight(application_id):
+                with APPLICATION_LOCK:
+                    try:
+                        status = current_status(db, application_id)
+                    except ValueError as exc:
+                        raise HTTPException(
+                            status_code=404, detail=str(exc)
+                        ) from exc
+                    if status != "ready":
+                        # A silent no-op here would look like a regeneration
+                        # that produced identical output.
+                        return detail_response(
+                            request,
+                            db,
+                            application_id,
+                            error=(
+                                "La régénération n'est possible que sur une "
+                                "candidature « ready » (statut actuel : "
+                                f"« {status} »)."
+                            ),
+                            status_code=409,
+                        )
+                    archive_artifacts(artifacts_root, application_id)
+                    transition(
+                        db,
+                        application_id,
+                        "queued",
+                        detail={"via": "dashboard regenerate"},
+                    )
+                    try:
+                        approve_application(
+                            db,
+                            application_id,
+                            via="dashboard regenerate",
+                            advisor=advisor,
+                            toolchain=toolchain,
+                            output_root=artifacts_root,
+                            # No terminal is attached to a browser request.
+                            allow_interactive_advisor=False,
+                        )
+                    except ApplicationNotFoundError as exc:
+                        raise HTTPException(
+                            status_code=404, detail=str(exc)
+                        ) from exc
+                    except (
+                        InteractiveAdvisorRequired,
+                        ApplicationNotQueuedError,
+                    ) as exc:
+                        return detail_response(
+                            request,
+                            db,
+                            application_id,
+                            error=str(exc),
+                            status_code=409,
+                        )
+                    except ApplicationGenerationError as exc:
+                        # The generation path has already rolled the
+                        # application back to 'queued'; the validator's own
+                        # message is what the human needs to see, verbatim.
+                        return detail_response(
+                            request,
+                            db,
+                            application_id,
+                            error=str(exc),
+                            status_code=422,
+                        )
+        except GenerationInFlight as exc:
+            # Deliberately touches no database, exactly like /refresh's own
+            # single-flight refusal: the request that owns the flight is
+            # holding the writer lock.
+            return JSONResponse({"detail": str(exc)}, status_code=409)
         return RedirectResponse(
             url=f"/application/{application_id}",
             status_code=303,
