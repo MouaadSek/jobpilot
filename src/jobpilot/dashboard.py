@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from collections.abc import Iterator
+import webbrowser
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import parse_qs
@@ -24,6 +25,7 @@ from jobpilot.apply_assist import (
     WTTJApplyError,
     launch_application_assist,
     launch_wttj_application,
+    open_manually,
 )
 from jobpilot.apply_flow import (
     APPLICATION_LOCK,
@@ -36,6 +38,7 @@ from jobpilot.apply_flow import (
     archive_artifacts,
     generation_single_flight,
 )
+from jobpilot.clipboard import copy_text
 from jobpilot.config import get_settings
 from jobpilot.db import connect
 from jobpilot.facts import FactBankError, load_fact_bank
@@ -58,8 +61,9 @@ from jobpilot.review import (
     status_tabs,
     variant_decision,
 )
+from jobpilot.routing import Route, RouteError, resolve_route
 from jobpilot.scheduler import scheduler_status
-from jobpilot.state import IllegalTransition, current_status, transition
+from jobpilot.state import IllegalTransition, current_status, log_event, transition
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 ALLOWED_ARTIFACTS = frozenset(
@@ -109,6 +113,44 @@ async def _posted_body(request: Request) -> str:
     return parse_qs(raw, keep_blank_values=True).get("body", [""])[0]
 
 
+async def _posted_plan_hash(request: Request) -> str:
+    """Read the plan_hash the confirmation page put in the form."""
+
+    raw = (await request.body()).decode("utf-8")
+    return parse_qs(raw, keep_blank_values=True).get("plan_hash", [""])[0]
+
+
+def _record_apply_route(
+    db: sqlite3.Connection, application_id: int, route_id: str
+) -> None:
+    """Record which route the human confirmed. Not a status write.
+
+    The eventual decision about how much of the apply step to automate should
+    rest on which routes actually carry the traffic, not on instinct.
+    """
+
+    db.execute(
+        "UPDATE applications SET apply_route = ? WHERE id = ?",
+        (route_id, application_id),
+    )
+    log_event(db, application_id, "apply_route_selected", {"route": route_id})
+
+
+def _manual_open_warning(opened: bool, copied: bool) -> str:
+    """Say which half of manual_open did not happen, rather than implying both did."""
+
+    problems = []
+    if not opened:
+        problems.append("le navigateur n'a pas pu être ouvert")
+    if not copied:
+        problems.append("la lettre n'a pas pu être copiée dans le presse-papiers")
+    return (
+        "Candidature à finaliser à la main : "
+        + " et ".join(problems)
+        + ". L'offre reste « ready » jusqu'à « Marquer comme envoyée »."
+    )
+
+
 async def _posted_cold_send(request: Request) -> tuple[str, bool]:
     """Read editable body and the named-mailbox confirmation checkbox."""
 
@@ -150,6 +192,8 @@ def create_app(
     sender: Any | None = None,
     refresh_runner: RefreshRunner | None = None,
     fact_bank_path: Path | None = None,
+    opener: Callable[[str], bool] | None = None,
+    copier: Callable[[str], bool] | None = None,
 ) -> FastAPI:
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
@@ -158,6 +202,8 @@ def create_app(
     templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)
     refresher = refresh_runner or RefreshRunner()
+    open_url = opener or webbrowser.open
+    copy_letter = copier or copy_text
 
     def advisor_mode() -> str:
         """Name the advisor a web approval would actually use, or why it can't."""
@@ -475,6 +521,123 @@ def create_app(
             url=f"/application/{application_id}",
             status_code=303,
         )
+
+    def apply_plan_response(
+        request: Request,
+        db: sqlite3.Connection,
+        application_id: int,
+        *,
+        route: Route,
+        error: str | None = None,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        detail = application_detail(db, application_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="application not found")
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "apply",
+                "application": detail,
+                "route": route.as_dict(),
+                "error": error,
+            },
+            status_code=status_code,
+        )
+
+    @app.get("/application/{application_id}/apply-plan", response_class=HTMLResponse)
+    def apply_plan(
+        request: Request,
+        application_id: int,
+        db: Database,
+    ) -> Response:
+        """Say what the apply button will do, before it does it.
+
+        Click one of two. The plan_hash rendered into the form is what the
+        second click carries back, so an offer re-ingested in between cannot be
+        applied to under a plan the human never saw.
+        """
+
+        try:
+            route = resolve_route(db, application_id, output_root=artifacts_root)
+        except RouteError as exc:
+            return detail_response(
+                request, db, application_id, error=str(exc), status_code=409
+            )
+        return apply_plan_response(request, db, application_id, route=route)
+
+    @app.post("/application/{application_id}/apply")
+    def apply(
+        request: Request,
+        application_id: int,
+        db: Database,
+        plan_hash: str = Depends(_posted_plan_hash),
+    ) -> Response:
+        """Run the confirmed route. Adds no automation and flips no gate."""
+
+        with APPLICATION_LOCK:
+            try:
+                route = resolve_route(db, application_id, output_root=artifacts_root)
+            except RouteError as exc:
+                return detail_response(
+                    request, db, application_id, error=str(exc), status_code=409
+                )
+            if plan_hash != route.plan_hash:
+                # The offer was re-ingested, or a contact was added, between the
+                # two clicks. Show the new plan and ask again rather than doing
+                # something the human did not agree to.
+                return apply_plan_response(
+                    request,
+                    db,
+                    application_id,
+                    route=route,
+                    error=(
+                        "L'offre a changé depuis l'affichage du plan. "
+                        "Voici le nouveau plan : confirmez à nouveau."
+                    ),
+                    status_code=409,
+                )
+
+            _record_apply_route(db, application_id, route.id)
+
+            if route.id == "wttj_inline":
+                return wttj_apply(request, application_id, db)
+            if route.id == "ats_prefill":
+                return prefill(request, application_id, db)
+            if route.id == "email":
+                # The existing two-step email confirmation is untouched: this
+                # route hands over to it rather than sending anything itself.
+                return RedirectResponse(
+                    url=f"/application/{application_id}/email", status_code=303
+                )
+            if route.id == "manual_open":
+                opened, copied = open_manually(
+                    db,
+                    application_id,
+                    route.target,
+                    output_root=artifacts_root,
+                    opener=open_url,
+                    copier=copy_letter,
+                )
+                if not opened or not copied:
+                    return detail_response(
+                        request,
+                        db,
+                        application_id,
+                        error=_manual_open_warning(opened, copied),
+                        status_code=200,
+                    )
+                return RedirectResponse(
+                    url=f"/application/{application_id}", status_code=303
+                )
+            return detail_response(
+                request,
+                db,
+                application_id,
+                error=f"Route « {route.id} » pas encore implémentée.",
+                status_code=409,
+            )
 
     @app.post("/application/{application_id}/regenerate")
     def regenerate(

@@ -154,6 +154,15 @@
       animation: spin .7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .plan {
+      background: var(--panel-inset, #f3f5f8);
+      border-left: 4px solid var(--primary);
+      padding: 12px 14px;
+      margin: 14px 0;
+      font-weight: 600;
+    }
+    .unavailable { list-style: none; padding: 0; margin: 8px 0; }
+    .unavailable li { padding: 3px 0; }
     @media (prefers-reduced-motion: reduce) {
       form[data-busy].busy button::before { animation: none; }
     }
@@ -570,6 +579,51 @@
           </div>
         </form>
       </section>
+
+    {% elif view == "apply" %}
+      <section class="panel">
+        <a class="back" href="/application/{{ application.id }}">← Application</a>
+        <h2>Confirmer la candidature</h2>
+        <div class="muted">
+          {{ application.title or "Application" }} — {{ application.company or "Unknown company" }}
+        </div>
+
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+        <dl class="meta">
+          <div><dt>Méthode</dt><dd>{{ route.label }}</dd></div>
+          <div><dt>Cible</dt><dd>{{ route.target or "—" }}</dd></div>
+          <div>
+            <dt>Pièces</dt>
+            <dd>
+              {% if route.artifacts %}
+                {% for name in route.artifacts %}
+                  <a href="/files/{{ application.id }}/{{ name }}">{{ name }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </dd>
+          </div>
+        </dl>
+
+        <p class="plan">{{ route.sentence }}</p>
+
+        {% if route.unavailable %}
+          <h3>Méthodes écartées</h3>
+          <ul class="unavailable">
+            {% for item in route.unavailable %}
+              <li><span class="name">{{ item.label }} — </span><span class="skipped">{{ item.reason }}</span></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        <form method="post" action="/application/{{ application.id }}/apply" data-busy>
+          <input type="hidden" name="plan_hash" value="{{ route.plan_hash }}">
+          <div class="actions">
+            <button type="submit" data-label="Confirmation">Confirmer et postuler</button>
+            <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+          </div>
+        </form>
+      </section>
     {% else %}
       <section class="panel">
         <h2>{{ application.title or "Application" }}</h2>
@@ -598,6 +652,7 @@
           </div>
         {% elif application.status == "ready" %}
           <div class="actions">
+            <a class="btn" href="/application/{{ application.id }}/apply-plan">Postuler</a>
             {% if wttj_eligible %}
               <a class="btn" href="/application/{{ application.id }}/wttj">Postuler sur WTTJ</a>
             {% endif %}

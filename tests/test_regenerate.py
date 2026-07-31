@@ -361,6 +361,7 @@ def test_templates_post_status_changes_only_to_known_endpoints() -> None:
     endpoints = {action.rsplit("/", 1)[-1] for action in posted}
 
     assert endpoints <= {
+        "apply",
         "approve",
         "skip",
         "regenerate",

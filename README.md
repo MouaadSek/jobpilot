@@ -654,6 +654,47 @@ returns `409` with the current status rather than silently doing nothing. When
 the validator rejects a generation, the application returns to `queued` and the
 validator's own message is shown verbatim on the detail page.
 
+### Postuler (unified apply, two clicks)
+
+A `ready` application carries one **Postuler** button. It opens a confirmation
+page that names the resolved route, states in plain French exactly what the
+second click will do, lists the artefacts involved, and shows any
+higher-precedence route that was skipped **with its reason**.
+
+`routing.resolve_route()` is a pure function — no writes, no network, no browser
+— with fixed precedence:
+
+| Order | Route | Chosen when | Requires |
+|---|---|---|---|
+| 1 | `wttj_inline` | WTTJ offer with an apply URL | `WTTJ_API_KEY`, `APPLICANT_*`, `cv.pdf` |
+| 2 | `ats_prefill` | `ats` offer whose URL matches a known adapter | `APPLICANT_*`, `cv.pdf` |
+| 3 | `learned_form` | a mapping exists for the offer domain | complete mapping |
+| 4 | `email` | `offers.contact_email` is set | `SMTP_USERNAME` + `SMTP_PASSWORD` |
+| 5 | `manual_open` | always | — |
+
+`manual_open` is a legitimate terminal route, not a failure: it opens the offer,
+copies the letter to the clipboard, and leaves **Marquer comme envoyée** to the
+human. For the current data it is the common case — La Bonne Alternance offers
+carry no `contact_email` by construction and `SMTP_*` is not configured.
+
+A route whose requirement is unmet is shown as unavailable with the reason
+(« SMTP non configuré », « WTTJ_API_KEY manquante ») and is never selected, so
+no route can be chosen and then fail at click time.
+
+The confirmation form carries a `plan_hash` computed from the route id, the
+target and the artefact paths. `POST …/apply` re-resolves and returns `409` with
+the new plan if the hash differs, so an offer re-ingested or a contact added
+between the two clicks cannot be applied to under a plan nobody saw. The hash is
+stateless: no schema, no stored token, nothing to expire.
+
+Nothing about sending changed. `wttj_inline` goes through the existing
+`launch_wttj_application` and stops at a filled, unsubmitted form while
+`WTTJ_AUTO_SUBMIT_ENABLED=false`; `ats_prefill` goes through the existing prefill
+and never submits; `email` hands over to the existing two-step email
+confirmation rather than sending anything itself; cold outreach is not reachable
+from this button at all. The route actually taken is recorded in
+`applications.apply_route` (migration 006, nullable).
+
 ### Fact bank and scheduler status
 
 **Faits** in the header opens `/facts`, a read-only rendering of the fact bank

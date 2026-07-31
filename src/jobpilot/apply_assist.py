@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 from urllib.parse import urlparse
 
+from jobpilot.clipboard import copy_text
 from jobpilot.config import Settings, get_settings
 from jobpilot.logging_conf import get_logger
 from jobpilot.state import log_event, transition
@@ -1091,3 +1092,80 @@ def launch_application_assist(
 
     log_event(db, application_id, "prefill_launched", {"adapter": adapter.name})
     return AssistResult("prefill_launched", adapter=adapter.name)
+
+
+class _TextParser(HTMLParser):
+    """Strip a generated letter's markup down to what a human would paste."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    def handle_startendtag(self, tag: str, attrs: object) -> None:
+        if tag == "br":
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"p", "div", "li", "br"}:
+            self._parts.append("\n\n")
+
+    @property
+    def text(self) -> str:
+        joined = "".join(self._parts)
+        lines = [line.strip() for line in joined.splitlines()]
+        return "\n".join(line for line in lines if line).strip()
+
+
+def letter_plain_text(output_root: Path, application_id: int) -> str:
+    """The generated letter as plain text, or '' when it was never generated."""
+
+    path = Path(output_root) / str(application_id) / "letter_body.html"
+    if not path.is_file():
+        return ""
+    parser = _TextParser()
+    parser.feed(path.read_text(encoding="utf-8"))
+    parser.close()
+    return parser.text
+
+
+def open_manually(
+    db: sqlite3.Connection,
+    application_id: int,
+    url: str | None,
+    *,
+    output_root: Path | None = None,
+    settings: Settings | None = None,
+    opener: Callable[[str], bool] = webbrowser.open,
+    copier: Callable[[str], bool] = copy_text,
+    via: str = "dashboard",
+) -> tuple[bool, bool]:
+    """The manual_open route: open the offer, copy the letter, submit nothing.
+
+    A legitimate terminal route rather than a degradation, so it records what it
+    managed to do — a browser that would not open and a clipboard that would not
+    take the letter are both things the human needs told, not hidden.
+    """
+
+    configured = settings or get_settings()
+    opened = False
+    if url:
+        try:
+            opened = bool(opener(url))
+        except Exception as exc:  # browser integration is platform-owned
+            log.warning(
+                "manual open failed for application %d: %s", application_id, exc
+            )
+    letter = letter_plain_text(
+        Path(output_root or configured.output_dir), application_id
+    )
+    copied = bool(letter) and bool(copier(letter))
+    log_event(
+        db,
+        application_id,
+        "apply_url_opened",
+        {"via": via, "route": "manual_open", "opened": opened, "letter_copied": copied},
+    )
+    return opened, copied
