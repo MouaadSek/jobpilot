@@ -75,17 +75,50 @@ class TailoringResponseError(TailoringProviderError):
     """Raised when a provider returns an unusable response."""
 
 
+#: How many ids a rejection may name. A large entry must not blow the retry prompt.
+MAX_SUGGESTED_FACT_IDS = 15
+
+#: Floor on the shared-name test below, so a short entry slug cannot be matched
+#: by one or two coincidental characters.
+_MIN_SHARED_ENTRY_CHARS = 3
+
+
 class UnknownFactIdError(TailoringError):
     """Raised when a citation matches no fact id, even after normalisation.
 
     ``section`` is the fact-bank section the citation was aiming at, when its own
     prefix says so, and drives the valid-id list fed back on the retry.
+
+    ``suggestions`` are the real claim ids of the entry the citation came closest
+    to naming. Task 22c allows exactly one retry, and a message that says only
+    what is wrong spends that retry re-guessing: the Baïfall id failed twice for
+    precisely this reason. Saying what *would* be valid is the whole fix.
     """
 
-    def __init__(self, fact_id: str, *, section: str | None = None) -> None:
-        super().__init__(f"unknown fact id in sourced content: {fact_id}")
+    def __init__(
+        self,
+        fact_id: str,
+        *,
+        section: str | None = None,
+        suggestions: Sequence[str] = (),
+        entry_id: str | None = None,
+    ) -> None:
+        message = f"unknown fact id in sourced content: {fact_id}"
+        if suggestions:
+            shown = list(suggestions)[:MAX_SUGGESTED_FACT_IDS]
+            more = len(suggestions) - len(shown)
+            where = f" under {entry_id!r}" if entry_id else ""
+            message += (
+                f". Valid ids{where}: {', '.join(shown)}"
+                + (f" (+{more} more)" if more > 0 else "")
+            )
+        elif entry_id is None:
+            message += ". No entry in the bank has a similar id."
+        super().__init__(message)
         self.fact_id = fact_id
         self.section = section
+        self.suggestions: tuple[str, ...] = tuple(suggestions)
+        self.entry_id = entry_id
 
 
 class AmbiguousFactIdError(TailoringError):
@@ -1723,7 +1756,17 @@ def validate_provenance(
         for source_id in bullet.sources:
             claim = bank.claims.get(source_id)
             if claim is None:
-                raise TailoringError(f"unknown fact id in sourced content: {source_id}")
+                # UnknownFactIdError rather than a bare TailoringError so this
+                # path reaches the retry's valid-id block too. It is the path the
+                # Baïfall citation actually took, and it was the one path that
+                # told the model nothing.
+                entry_id, suggestions = nearest_entry_claim_ids(source_id, bank)
+                raise UnknownFactIdError(
+                    source_id,
+                    section=_guessed_section(source_id),
+                    suggestions=suggestions,
+                    entry_id=entry_id,
+                )
             if claim.section == "skills" and not claim.verified:
                 raise TailoringError(f"unverified skill cannot be claimed: {source_id}")
             if claim.needs_review:
@@ -1956,7 +1999,55 @@ def resolve_fact_id(
         if found:
             raise AmbiguousFactIdError(candidate, found)
 
-    raise UnknownFactIdError(candidate, section=section_hint or _guessed_section(candidate))
+    entry_id, suggestions = nearest_entry_claim_ids(candidate, bank)
+    raise UnknownFactIdError(
+        candidate,
+        section=section_hint or _guessed_section(candidate),
+        suggestions=suggestions,
+        entry_id=entry_id,
+    )
+
+
+def _shared_prefix(left: str, right: str) -> str:
+    shared = 0
+    for a, b in zip(left, right, strict=False):
+        if a != b:
+            break
+        shared += 1
+    return left[:shared]
+
+
+def nearest_entry_claim_ids(
+    fact_id: str, bank: FactBank
+) -> tuple[str | None, tuple[str, ...]]:
+    """The entry a bad citation came closest to naming, and its real claim ids.
+
+    Nearest by longest shared id prefix, measured on the entry's own name rather
+    than the whole id: ``experience.`` is common to every experience entry, and a
+    single coincidental letter after it ("totally_made_up" vs "testronic") is not
+    nearness either. The citation has to share at least half of the entry's name,
+    which is what the real failure looked like — ``experience.baifall.mission``
+    naming the entry ``experience.baifall_dream``.
+
+    Returns ``(entry_id, claim_ids)``, or ``(None, ())`` when nothing is close,
+    so the caller says that plainly instead of dumping the bank.
+    """
+
+    candidate = fact_id.strip()
+    best_entry = None
+    best_shared = 0
+    for entry in (*bank.experience, *bank.projects):
+        section, _, slug = entry.id.partition(".")
+        if not slug or not candidate.startswith(f"{section}."):
+            continue
+        shared = len(_shared_prefix(candidate[len(section) + 1 :], slug))
+        if shared < max(_MIN_SHARED_ENTRY_CHARS, len(slug) / 2):
+            continue
+        if shared > best_shared:
+            best_entry, best_shared = entry, shared
+    if best_entry is None:
+        return None, ()
+    return best_entry.id, tuple(claim.id for claim in best_entry.facts)
 
 
 def _guessed_section(raw_id: str) -> str | None:
