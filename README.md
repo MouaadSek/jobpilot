@@ -729,6 +729,48 @@ dashboard and open the browser. To start it at login: press `Win+R`, enter
 Documented rather than automated — a script that installs itself into someone's
 login is harder to remove than to add.
 
+### Form learning (an unknown form costs effort once)
+
+An unknown domain is opened in a visible browser, the human fills and submits it
+**themselves**, and what is recorded is the mapping — which selector holds which
+profile field. The next offer on that domain arrives prefilled; the human still
+reviews and still presses submit.
+
+Three rules, because this table decides what gets typed into a stranger's form:
+
+**Never a value.** Only selectors, labels and profile-field names are stored.
+`apply_assist.observable_controls` strips `value`, `placeholder` and the
+checked/selected flags before `form_learning` sees a control, so there is one
+enforcement point rather than a discipline. A test records a full cycle and then
+scans every column of `form_mappings` for sentinel values.
+
+**`profile_field` is a closed enum** — `full_name`, `first_name`, `last_name`,
+`email`, `phone`, `linkedin_url`, `cv_path`, `letter_path`. Anything else is
+rejected at write time.
+
+**Passwords, payment details and identity documents are never mapped.** Refused:
+any `input[type=password]`, and anything whose name, id, label, aria-label or
+autocomplete matches a password (`mot de passe`, `current-password`, OTP), a
+payment instrument (card number, CVV/CVC/CCV, IBAN/BIC/SWIFT/RIB, expiry,
+bank account, PayPal, `cc-number`/`cc-csc`/`cc-exp`) or an identity document
+(SSN/NIR/numéro de sécurité sociale, passport, CNI or other national ID,
+driving licence, titre de séjour, tax number). Separators are folded first, so
+`card_number` and `mot-de-passe` match. A refusal is logged, nothing is written,
+and because nothing is written the field is re-detected and re-refused on every
+later visit — which is what "left for the human permanently" means.
+
+**Submission stays gated per domain.** `form_domains.submit_enabled` defaults to
+`0`; learning a domain does not even create a row. Prefill is automatic, pressing
+submit is not, and flipping the flag is a separate decision with its own
+evidence, per domain.
+
+Selectors are brittle. A mapping whose selector no longer matches the page is
+**discarded with a log**, not guessed around. If that leaves the domain without
+a complete mapping, `resolve_route` stops offering `learned_form` and the
+application falls back to `manual_open` — correct behaviour, not a bug.
+
+Migration 007 adds `form_mappings` and `form_domains`.
+
 ### Fact bank and scheduler status
 
 **Faits** in the header opens `/facts`, a read-only rendering of the fact bank

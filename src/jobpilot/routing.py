@@ -186,10 +186,12 @@ def offer_domain(url: str | None) -> str | None:
 
 
 def has_form_mapping(db: sqlite3.Connection, domain: str) -> bool:
-    """Whether a complete learned mapping exists for ``domain``.
+    """Whether a *complete* learned mapping exists for ``domain``.
 
+    Complete means it covers ``form_learning.REQUIRED_PROFILE_FIELDS``; a domain
+    where only the phone field was ever learned is not worth routing to.
     Tolerates the table being absent so this module works both before and after
-    migration 007; a database without form learning simply has no mappings.
+    migration 007.
     """
 
     table = db.execute(
@@ -197,10 +199,12 @@ def has_form_mapping(db: sqlite3.Connection, domain: str) -> bool:
     ).fetchone()
     if table is None:
         return False
-    row = db.execute(
-        "SELECT count(*) AS n FROM form_mappings WHERE domain = ?", (domain,)
-    ).fetchone()
-    return bool(row and row["n"])
+    # Imported here rather than at module level: form_learning imports
+    # apply_assist, which imports config, and routing is imported from
+    # apply-time code paths that must not pay for that at import time.
+    from jobpilot.form_learning import mapping_is_complete
+
+    return mapping_is_complete(db, domain)
 
 
 # ----- one function per route, in precedence order -----

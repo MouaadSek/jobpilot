@@ -1169,3 +1169,36 @@ def open_manually(
         {"via": via, "route": "manual_open", "opened": opened, "letter_copied": copied},
     )
     return opened, copied
+
+
+#: Attributes that could carry what a human typed. Form learning never sees them.
+_VALUE_BEARING_ATTRIBUTES = frozenset({"value", "placeholder", "checked", "selected"})
+
+
+def observable_controls(html: str) -> tuple[dict[str, str], ...]:
+    """Every fillable control's *shape*, for form learning. Never its contents.
+
+    ``value``, ``placeholder`` and the checked/selected flags are stripped here
+    rather than at the caller, so there is exactly one place where "we do not
+    read what the human typed" is enforced.
+    """
+
+    return tuple(
+        {
+            "tag": control.tag,
+            **{
+                key: value
+                for key, value in control.attributes.items()
+                if key not in _VALUE_BEARING_ATTRIBUTES
+            },
+        }
+        for control in _controls_from_html(html)
+    )
+
+
+def selector_matches_html(html: str, selector: str) -> bool:
+    """Whether a stored selector still finds a control on the current page."""
+
+    return any(
+        _selector_matches(control, selector) for control in _controls_from_html(html)
+    )
