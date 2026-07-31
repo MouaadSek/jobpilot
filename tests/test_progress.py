@@ -31,10 +31,12 @@ from jobpilot.progress import (
 from tests.test_dashboard import _offer_application
 from tests.test_tailoring import _Advisor, _Toolchain
 
-TEMPLATE = (
-    Path(__file__).resolve().parents[1] / "src" / "jobpilot" / "templates" /
-    "dashboard.html"
-)
+_ROOT = Path(__file__).resolve().parents[1] / "src" / "jobpilot"
+# Item 7 split the single template into a shell, a script partial and a
+# stylesheet. These snapshots follow the markup to the file that now owns it.
+SHELL = _ROOT / "templates" / "base.html"
+SCRIPT = _ROOT / "templates" / "partials" / "console.js.html"
+STYLESHEET = _ROOT / "static" / "console.css"
 
 
 @pytest.fixture(autouse=True)
@@ -284,7 +286,7 @@ def test_the_progress_endpoint_touches_no_database(
 
 
 def test_no_polling_loop_is_faster_than_one_hertz() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    markup = SCRIPT.read_text(encoding="utf-8")
 
     intervals = [int(value) for value in re.findall(r"setInterval\([^,]+,\s*(\d+)", markup)]
 
@@ -293,14 +295,14 @@ def test_no_polling_loop_is_faster_than_one_hertz() -> None:
 
 
 def test_every_polling_loop_stops_when_the_page_is_hidden() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    markup = SCRIPT.read_text(encoding="utf-8")
 
     assert markup.count("visibilitychange") >= 2
     assert markup.count("document.hidden") >= 2
 
 
 def test_buttons_that_start_work_are_disabled_with_a_label() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    markup = SCRIPT.read_text(encoding="utf-8")
 
     assert "button.disabled = true" in markup
     assert "button.dataset.label" in markup
@@ -308,7 +310,7 @@ def test_buttons_that_start_work_are_disabled_with_a_label() -> None:
 
 
 def test_the_progress_region_is_a_live_region() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    markup = SHELL.read_text(encoding="utf-8")
 
     assert 'id="progress-region"' in markup
     assert 'role="status"' in markup
@@ -316,7 +318,7 @@ def test_the_progress_region_is_a_live_region() -> None:
 
 
 def test_a_failed_poll_says_what_to_do_rather_than_a_status_code() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    markup = SCRIPT.read_text(encoding="utf-8")
 
     assert "Suivi de progression indisponible" in markup
     assert "Rechargez la page" in markup
@@ -324,7 +326,10 @@ def test_a_failed_poll_says_what_to_do_rather_than_a_status_code() -> None:
 
 
 def test_the_spinner_respects_reduced_motion() -> None:
-    markup = TEMPLATE.read_text(encoding="utf-8")
+    """The token system disables motion wholesale rather than per-animation."""
 
-    assert "prefers-reduced-motion" in markup
-    assert markup.count("prefers-reduced-motion") >= 2
+    styles = STYLESHEET.read_text(encoding="utf-8")
+
+    assert "prefers-reduced-motion" in styles
+    assert "animation-duration: 0.001ms !important" in styles
+    assert "transition-duration: 0.001ms !important" in styles

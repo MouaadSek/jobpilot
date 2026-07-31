@@ -1,0 +1,39 @@
+  <section class="panel">
+    <a class="back" href="/application/{{ application.id }}">← Candidature</a>
+    <h2>Confirmer la candidature WTTJ</h2>
+    <div class="muted">
+      {{ application.title or "Candidature" }} — {{ application.company or "Entreprise inconnue" }}
+    </div>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+    <dl class="meta">
+      <div><dt>Offre</dt><dd><a href="{{ application.url }}" rel="noreferrer">Voir l'offre WTTJ</a></dd></div>
+      <div><dt>CV</dt><dd><a href="/files/{{ application.id }}/cv.pdf">cv.pdf</a></dd></div>
+      <div><dt>Lettre</dt><dd><a href="/files/{{ application.id }}/motivation_letter.pdf">motivation_letter.pdf</a></dd></div>
+      <div>
+        <dt>Mode</dt>
+        <dd>{% if wttj_live_mode %}Envoi réel{% else %}Simulation (dry-run){% endif %}</dd>
+      </div>
+    </dl>
+
+    {% if wttj_live_mode %}
+      <div class="error" role="alert">
+        Mode envoi réel activé : après les contrôles de sécurité, le
+        formulaire WTTJ pourra être soumis. Vérifiez l'offre et les deux
+        pièces avant de confirmer.
+      </div>
+    {% else %}
+      <p class="muted">
+        Mode simulation : le formulaire sera rempli et capturé, mais
+        il ne sera pas soumis.
+      </p>
+    {% endif %}
+
+    <form method="post" action="/application/{{ application.id }}/wttj/apply" data-busy>
+      <div class="actions">
+        <button type="submit" data-label="Confirmer et postuler">Confirmer et postuler</button>
+        <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+      </div>
+    </form>
+  </section>

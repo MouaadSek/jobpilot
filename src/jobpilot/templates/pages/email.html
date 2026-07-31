@@ -1,0 +1,27 @@
+  <section class="panel">
+    <a class="back" href="/application/{{ application.id }}">← Candidature</a>
+    <h2>Confirmer l'envoi par email</h2>
+    <div class="muted">{{ application.title or "Candidature" }} — {{ application.company or "Entreprise inconnue" }}</div>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+    <dl class="meta">
+      <div><dt>Destinataire</dt><dd>{{ prep.recipient or "—" }}</dd></div>
+      <div><dt>Objet</dt><dd>{{ prep.subject }}</dd></div>
+    </dl>
+
+    <h3>Pièces jointes</h3>
+    <ul>
+      {% for name in prep.attachments %}<li>{{ name }}</li>{% endfor %}
+    </ul>
+
+    <form method="post" action="/application/{{ application.id }}/email/send" data-busy>
+      <h3>Message</h3>
+      <textarea name="body" rows="14" class="body-edit">{{ prep.body }}</textarea>
+      <div class="actions">
+        <button type="submit" data-label="Confirmer et envoyer"{% if not can_send %} disabled{% endif %}>Confirmer et envoyer</button>
+        <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+      </div>
+      {% if not can_send %}<p class="muted">L'envoi est bloqué : {{ error }}.</p>{% endif %}
+    </form>
+  </section>

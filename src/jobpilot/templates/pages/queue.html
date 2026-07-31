@@ -1,0 +1,94 @@
+  <section class="panel" id="refresh-panel"
+           data-status='{{ refresh_status|tojson }}'>
+    <div class="refresh-head">
+      <h2>Actualiser les offres</h2>
+      <button type="button" id="refresh-button">Actualiser les offres</button>
+    </div>
+    <p class="muted" id="refresh-stage">Aucune actualisation lancée.</p>
+    <ul class="refresh-log" id="refresh-log"></ul>
+  </section>
+
+  <nav class="tabs" aria-label="Candidatures par statut">
+    {% for tab in tabs %}
+      <a class="chip{% if tab.active %} active{% endif %}"
+         href="/?status={{ tab.status }}"
+         {% if tab.active %}aria-current="page"{% endif %}>
+        {{ tab.status }} <span class="n">{{ tab.count }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+  <section class="panel">
+    <h2>{% if status == "queued" %}File de revue{% else %}{{ status }}{% endif %}</h2>
+    {% if applications %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Intitulé</th>
+              <th>Entreprise</th>
+              <th>Ville</th>
+              <th>Contrat</th>
+              <th>Source</th>
+              <th>Publiée</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for application in applications %}
+              <tr>
+                <td class="score">
+                  {% if application.score is not none %}
+                    {{ "%.2f"|format(application.score) }}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="title">{{ application.title or "Offre sans intitulé" }}</td>
+                <td>{{ application.company or "—" }}</td>
+                <td>{{ application.city or "—" }}</td>
+                <td>{{ application.contract_type or "—" }}</td>
+                <td>{{ application.source or "—" }}</td>
+                <td {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</td>
+                <td><a href="/application/{{ application.id }}">Examiner</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        <strong>Aucune candidature au statut « {{ status }} ».</strong>
+        Lancez « Actualiser les offres » pour en récupérer, ou passez par
+        « À trier » pour remonter une offre sous le seuil.
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Planification</h2>
+    <p class="muted">
+      Démon : <strong>{{ scheduler.daemon.state }}</strong> — {{ scheduler.daemon.detail }}
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Source</th><th>Dernier lancement</th><th>Résultat</th></tr>
+        </thead>
+        <tbody>
+          {% for source in scheduler.sources %}
+            <tr>
+              <td>{{ source.name }}</td>
+              <td {% if source.last_run_at %}title="{{ source.last_run_at }}"{% endif %}>
+                {{ source.last_run_at or "jamais" }}
+              </td>
+              <td class="muted">inconnu (non enregistré)</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">
+      Seule la date du dernier lancement est stockée : le détail d'un cycle
+      passé n'est pas conservé. Les résultats d'une actualisation lancée
+      depuis cette page apparaissent ci-dessus.
+    </p>
+  </section>

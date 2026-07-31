@@ -19,6 +19,7 @@ from fastapi.responses import (
     RedirectResponse,
     Response,
 )
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from jobpilot.apply_assist import (
@@ -102,6 +103,7 @@ from jobpilot.tracker import (
 )
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 ALLOWED_ARTIFACTS = frozenset(
     {
         "tailored_cv.html",
@@ -275,6 +277,9 @@ def create_app(
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
     app = FastAPI(title="JobPilot Review Dashboard", docs_url=None, redoc_url=None)
+    # The design system lives in a real stylesheet rather than a <style> block,
+    # so it is cacheable, diffable and has one place to change a token.
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["ymd"] = _ymd
     artifacts_root = Path(output_root or get_settings().output_dir)

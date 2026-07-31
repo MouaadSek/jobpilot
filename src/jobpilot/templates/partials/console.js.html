@@ -1,0 +1,196 @@
+    (() => {
+      const panel = document.getElementById("refresh-panel");
+      if (!panel) return;
+      const button = document.getElementById("refresh-button");
+      const stageLine = document.getElementById("refresh-stage");
+      const logList = document.getElementById("refresh-log");
+      const STAGES = {
+        ingesting: "Récupération des offres…",
+        loading_model: "Chargement du modèle…",
+        scoring: "Scoring des nouvelles offres…",
+        done: "Actualisation terminée.",
+      };
+      let polling = null;
+
+      const sourceLine = (source) => {
+        if (source.state === "done") {
+          return `récupérées ${source.fetched} · insérées ${source.inserted}` +
+                 ` · doublons ${source.duplicates}`;
+        }
+        if (source.state === "skipped") {
+          return `ignorée : ${source.message || "raison inconnue"}`;
+        }
+        if (source.state === "failed") {
+          return `échec : ${source.message || "erreur inconnue"}`;
+        }
+        return source.state === "running" ? "en cours…" : "en attente";
+      };
+
+      const render = (status) => {
+        const parts = [];
+        if (status.running) {
+          parts.push(STAGES[status.stage] || "Actualisation en cours…");
+        } else if (status.finished_at) {
+          parts.push(STAGES.done);
+        } else {
+          parts.push("Aucune actualisation lancée.");
+        }
+        if (status.queued !== null && status.queued !== undefined) {
+          parts.push(`${status.queued} offre(s) nouvellement en file.`);
+        }
+        if (status.error) parts.push(`Erreur : ${status.error}`);
+        stageLine.textContent = parts.join(" ");
+        stageLine.classList.toggle("error", Boolean(status.error));
+        logList.replaceChildren(...status.sources.map((source) => {
+          const item = document.createElement("li");
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = `${source.name} — `;
+          const detail = document.createElement("span");
+          detail.className = source.state;
+          detail.textContent = sourceLine(source);
+          item.append(name, detail);
+          return item;
+        }));
+        button.disabled = status.running;
+        button.textContent = status.running
+          ? "Actualisation en cours…"
+          : "Actualiser les offres";
+      };
+
+      const poll = async () => {
+        const response = await fetch("/refresh/status");
+        const status = await response.json();
+        render(status);
+        if (!status.running) {
+          clearInterval(polling);
+          polling = null;
+          // The queue itself is server-rendered, so reload to show new offers.
+          window.location.reload();
+        }
+      };
+
+      const startPolling = () => {
+        if (polling === null && !document.hidden) polling = setInterval(poll, 1500);
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && polling !== null) {
+          clearInterval(polling);
+          polling = null;
+        }
+      });
+
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        const response = await fetch("/refresh", { method: "POST" });
+        render(await response.json());
+        startPolling();
+        if (window.jobpilotProgress) window.jobpilotProgress.start();
+      });
+
+      const initial = JSON.parse(panel.dataset.status);
+      render(initial);
+      if (initial.running) startPolling();
+    })();
+
+    // One progress loop for the whole page. Generation, regeneration and apply
+    // all run inside the request, so this is what distinguishes "working" from
+    // "wedged". It never polls faster than 1 Hz and stops entirely when the tab
+    // is hidden — a background tab has nobody reading it.
+    (() => {
+      const region = document.getElementById("progress-region");
+      if (!region) return;
+      let timer = null;
+      let interval = 1000;
+
+      const seconds = (value) => {
+        const total = Math.round(value);
+        if (total < 60) return `${total} s`;
+        return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, "0")} s`;
+      };
+
+      const render = (operations) => {
+        region.replaceChildren(...operations.map((op) => {
+          const row = document.createElement("div");
+          row.className = op.error ? "progress-op failed" : "progress-op";
+
+          if (op.running && !op.error) {
+            const spinner = document.createElement("span");
+            spinner.className = "op-spinner";
+            row.append(spinner);
+          }
+
+          const label = document.createElement("span");
+          label.className = "op-label";
+          label.textContent = op.label;
+          row.append(label);
+
+          const step = document.createElement("span");
+          step.className = "op-step";
+          if (op.error) {
+            step.textContent = op.error;
+          } else {
+            step.textContent = op.total
+              ? `${op.step} · ${op.done}/${op.total}`
+              : op.step;
+          }
+          row.append(step);
+
+          const elapsed = document.createElement("span");
+          elapsed.className = "op-elapsed";
+          elapsed.textContent = seconds(op.elapsed_seconds);
+          row.append(elapsed);
+          return row;
+        }));
+        region.hidden = operations.length === 0;
+      };
+
+      const poll = async () => {
+        try {
+          const response = await fetch("/progress");
+          if (!response.ok) throw new Error(`statut ${response.status}`);
+          const body = await response.json();
+          interval = Math.max(1000, body.poll_interval_ms || 1000);
+          render(body.operations || []);
+          if (!(body.operations || []).some((op) => op.running)) stop();
+        } catch (err) {
+          render([{
+            label: "Suivi de progression indisponible",
+            step: "Rechargez la page pour reprendre le suivi. Le travail en cours continue.",
+            elapsed_seconds: 0,
+            running: false,
+            error: String(err.message || err),
+          }]);
+          stop();
+        }
+      };
+
+      const start = () => {
+        if (timer !== null || document.hidden) return;
+        poll();
+        timer = setInterval(poll, interval);
+      };
+      const stop = () => {
+        if (timer !== null) { clearInterval(timer); timer = null; }
+      };
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stop();
+      });
+
+      window.jobpilotProgress = { start, stop };
+      // Something may already be running when the page loads.
+      start();
+    })();
+
+    document.querySelectorAll("form[data-busy]").forEach((form) => {
+      form.addEventListener("submit", () => {
+        document.querySelectorAll("button").forEach((button) => {
+          button.disabled = true;
+        });
+        form.classList.add("busy");
+        const button = form.querySelector("button");
+        button.textContent = `${button.dataset.label}…`;
+        if (window.jobpilotProgress) window.jobpilotProgress.start();
+      });
+    });

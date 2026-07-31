@@ -1,0 +1,143 @@
+  <section class="panel">
+    <h2>{{ application.title or "Candidature" }}</h2>
+    <div class="muted">{{ application.company or "Entreprise inconnue" }}</div>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    {% if wttj_alert and not error %}<div class="error" role="alert">{{ wttj_alert }}</div>{% endif %}
+
+    <dl class="meta">
+      <div><dt>Statut</dt><dd>{{ application.status }}</dd></div>
+      <div><dt>Score</dt><dd>{% if application.final_score is not none %}{{ "%.2f"|format(application.final_score) }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Ville</dt><dd>{{ application.city or "—" }}</dd></div>
+      <div><dt>Contrat</dt><dd>{{ application.contract_type or "—" }}</dd></div>
+      <div><dt>Source</dt><dd>{{ application.source or "—" }}</dd></div>
+      <div><dt>Publiée</dt><dd {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</dd></div>
+    </dl>
+
+    {% if application.status == "queued" %}
+      <div class="actions">
+        <form method="post" action="/application/{{ application.id }}/approve" data-busy>
+          <button type="submit" data-label="Génération">Approuver et générer</button>
+        </form>
+        <form method="post" action="/application/{{ application.id }}/skip" data-busy>
+          <button class="secondary" type="submit" data-label="Mise de côté">Écarter</button>
+        </form>
+      </div>
+    {% elif application.status == "ready" %}
+      <div class="actions">
+        <a class="btn" href="/application/{{ application.id }}/apply-plan">Postuler</a>
+        {% if wttj_eligible %}
+          <a class="btn" href="/application/{{ application.id }}/wttj">Postuler sur WTTJ</a>
+        {% endif %}
+        {% if prefill_eligible %}
+          <form method="post" action="/application/{{ application.id }}/prefill" data-busy>
+            <button type="submit" data-label="Ouvrir et pré-remplir">Ouvrir et pré-remplir</button>
+          </form>
+        {% endif %}
+        {% if application.contact_email %}
+          <a class="btn" href="/application/{{ application.id }}/email">Préparer l'envoi par email</a>
+        {% endif %}
+        <form method="post" action="/application/{{ application.id }}/mark-sent" data-busy>
+          <button class="secondary" type="submit" data-label="Marquer comme envoyée">Marquer comme envoyée</button>
+        </form>
+        <form method="post" action="/application/{{ application.id }}/regenerate" data-busy>
+          <button class="secondary" type="submit" data-label="Génération">Régénérer</button>
+        </form>
+      </div>
+    {% endif %}
+
+    {% if variant_decision %}
+      <h3>Choix du CV</h3>
+      <div class="panel-inset{% if variant_decision.agreed is false %} disagreement{% endif %}">
+        <p>
+          <strong>{{ variant_decision.document_variant or variant_decision.variant }}</strong>
+          <span class="muted">
+            — choisi par
+            {% if variant_decision.variant_selected_by == "advisor" %}le modèle{% else %}le routage par mots-clés{% endif %}
+          </span>
+        </p>
+        {% if variant_decision.routing_justification %}
+          <p>{{ variant_decision.routing_justification }}</p>
+        {% endif %}
+        {% if variant_decision.routing_runner_up %}
+          <p class="muted">Second choix : {{ variant_decision.routing_runner_up }}</p>
+        {% endif %}
+        {% if variant_decision.agreed is false %}
+          <p class="muted">
+            Désaccord : le routage par mots-clés suggérait
+            <strong>{{ variant_decision.routing_variant }}</strong>.
+          </p>
+        {% elif variant_decision.agreed %}
+          <p class="muted">
+            Le routage par mots-clés suggérait le même CV.
+          </p>
+        {% endif %}
+        {% if variant_decision.routing_fallback_reason %}
+          <p class="muted">
+            Repli sur le routage par mots-clés : {{ variant_decision.routing_fallback_reason }}
+          </p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <h3>Offer</h3>
+    {% if application.url %}<p><a href="{{ application.url }}" rel="noreferrer">Ouvrir l'offre d'origine</a></p>{% endif %}
+    <pre class="description">{{ application.description or "No description stored." }}</pre>
+
+    <h3>Détail du score</h3>
+    <div class="score-grid">
+      <div><strong>Semantic</strong><br>{% if application.semantic_score is not none %}{{ "%.3f"|format(application.semantic_score) }}{% else %}—{% endif %}</div>
+      <div><strong>Keywords</strong><br>{% if application.keyword_score is not none %}{{ "%.3f"|format(application.keyword_score) }}{% else %}—{% endif %}</div>
+      <div><strong>Bonus</strong><br>{% if application.bonus_score is not none %}{{ "%.3f"|format(application.bonus_score) }}{% else %}—{% endif %}</div>
+      <div><strong>Final</strong><br>{% if application.final_score is not none %}{{ "%.2f"|format(application.final_score) }}{% else %}—{% endif %}</div>
+    </div>
+
+    {% if application.status == "ready" %}
+      <h3>Documents générés</h3>
+      <p class="muted">
+        Relisez les deux pièces ici avant d'envoyer. Prévisualiser ne
+        déclenche aucun envoi.
+      </p>
+      <div class="artifacts">
+        <div class="artifact">
+          <div class="artifact-actions">
+            <strong>CV</strong>
+            <a class="btn secondary" href="/files/{{ application.id }}/cv.pdf" target="_blank" rel="noopener">Prévisualiser</a>
+            <a class="btn secondary" href="/files/{{ application.id }}/cv.pdf?download=1">Télécharger</a>
+          </div>
+          <iframe title="Prévisualisation du CV" src="/files/{{ application.id }}/cv.pdf"></iframe>
+        </div>
+        <div class="artifact">
+          <div class="artifact-actions">
+            <strong>Lettre de motivation</strong>
+            <a class="btn secondary" href="/files/{{ application.id }}/motivation_letter.pdf" target="_blank" rel="noopener">Prévisualiser</a>
+            <a class="btn secondary" href="/files/{{ application.id }}/motivation_letter.pdf?download=1">Télécharger</a>
+          </div>
+          <iframe title="Prévisualisation de la lettre" src="/files/{{ application.id }}/motivation_letter.pdf"></iframe>
+        </div>
+      </div>
+      </div>
+      <h3>Ligne de suivi</h3>
+      <pre class="tracker">{{ tracker_row or "Ligne de suivi indisponible." }}</pre>
+    {% endif %}
+
+    <h3>Historique</h3>
+    {% if events %}
+      <div class="table-wrap">
+        <table class="events">
+          <thead><tr><th>Horodatage</th><th>Événement</th><th>Détail</th></tr></thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td>{{ event.created_at }}</td>
+                <td>{{ event.event }}</td>
+                <td>{{ event.detail }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucun événement enregistré.</p>
+    {% endif %}
+  </section>

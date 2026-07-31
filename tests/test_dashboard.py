@@ -166,7 +166,7 @@ def test_approve_uses_shared_flow_and_finishes_ready_with_artifacts(
     assert (tmp_path / str(application_id) / "tracker.tsv").is_file()
     assert f"/files/{application_id}/cv.pdf" in detail.text
     assert f"/files/{application_id}/motivation_letter.pdf" in detail.text
-    assert "Tracker row" in detail.text
+    assert "Ligne de suivi" in detail.text
 
     events = _events(dashboard_db, application_id)
     assert [row["event"] for row in events] == [
@@ -898,7 +898,8 @@ def test_dashboard_shows_the_resolved_advisor_mode(
     with _no_advisor_client(dashboard_db, tmp_path) as client:
         page = client.get("/")
 
-    assert "tailoring : anthropic" in page.text
+    assert "tailoring" in page.text
+    assert "anthropic" in page.text
 
 
 def test_approve_with_configured_api_advisor_is_unaffected(

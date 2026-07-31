@@ -1,0 +1,35 @@
+  <section class="panel">
+    <h2>Outreach drafts</h2>
+    <p class="muted">Cold emails awaiting confirmation. No message is sent from this list.</p>
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    {% if drafts %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Recipient</th>
+              <th>Subject</th>
+              <th>Entreprise</th>
+              <th>Statut</th>
+              <th>Scheduled</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for draft in drafts %}
+              <tr>
+                <td>{{ draft.to_email }}</td>
+                <td class="title">{{ draft.subject }}</td>
+                <td>{{ draft.company or "—" }}</td>
+                <td>{{ draft.status }}</td>
+                <td>{{ draft.scheduled_at }}</td>
+                <td><a href="/outreach/{{ draft.queue_id }}">Examiner</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">No cold outreach drafts awaiting review.</div>
+    {% endif %}
+  </section>

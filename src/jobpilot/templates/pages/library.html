@@ -1,0 +1,77 @@
+  <section class="panel">
+    <h2>Bibliothèque de documents</h2>
+    <p class="muted">
+      Chaque CV et chaque lettre générés, y compris les versions remplacées
+      par une régénération. Consultation seule.
+    </p>
+
+    <form method="get" action="/library" class="filters">
+      <label>
+        Entreprise
+        <input type="search" name="q" value="{{ search }}" placeholder="Advens…">
+      </label>
+      <button type="submit" data-label="Recherche">Rechercher</button>
+      {% if search %}<a class="btn secondary" href="/library">Effacer</a>{% endif %}
+      <span class="muted">{{ entries|length }} candidature(s)</span>
+    </form>
+
+    {% if entries %}
+      {% for entry in entries %}
+        <article class="library-entry">
+          <header class="library-head">
+            <div>
+              <strong>{{ entry.company or "Entreprise inconnue" }}</strong>
+              <span class="muted">— {{ entry.title or "Sans intitulé" }}</span>
+            </div>
+            <div class="library-meta muted">
+              <span>{{ entry.status }}</span>
+              {% if entry.variant %}<span>CV : {{ entry.variant }}</span>{% endif %}
+              {% if entry.apply_route %}<span>Voie : {{ entry.apply_route }}</span>{% endif %}
+              <a href="/application/{{ entry.application_id }}">Ouvrir</a>
+            </div>
+          </header>
+
+          {% if entry.current %}
+            <div class="generation">
+              <span class="gen-label">Version actuelle</span>
+              <span class="muted" {% if entry.current.generated_at %}title="{{ entry.current.generated_at }}"{% endif %}>
+                {{ entry.current.generated_at|ymd or "date inconnue" }}
+              </span>
+              {% for name in entry.current.artifacts %}
+                <a class="btn secondary" href="/files/{{ entry.application_id }}/{{ name }}" target="_blank" rel="noopener">Prévisualiser {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                <a class="btn secondary" href="/files/{{ entry.application_id }}/{{ name }}?download=1">Télécharger {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if entry.archives %}
+            <details class="archives">
+              <summary>{{ entry.archives|length }} version(s) précédente(s)</summary>
+              {% for archive in entry.archives %}
+                <div class="generation">
+                  <span class="gen-label">Archivée</span>
+                  <span class="muted" {% if archive.generated_at %}title="{{ archive.generated_at }}"{% endif %}>
+                    {{ archive.generated_at|ymd or archive.stamp }}
+                  </span>
+                  {% for name in archive.artifacts %}
+                    <a class="btn secondary" href="/files/{{ entry.application_id }}/archive/{{ archive.stamp }}/{{ name }}" target="_blank" rel="noopener">Prévisualiser {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                    <a class="btn secondary" href="/files/{{ entry.application_id }}/archive/{{ archive.stamp }}/{{ name }}?download=1">Télécharger {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </details>
+          {% endif %}
+        </article>
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        {% if search %}
+          <strong>Aucune candidature ne correspond à « {{ search }} ».</strong>
+          Effacez la recherche pour revoir toute la bibliothèque.
+        {% else %}
+          <strong>Aucun document généré pour l'instant.</strong>
+          Approuvez une candidature depuis la file pour produire un CV et une lettre.
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>

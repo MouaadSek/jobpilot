@@ -1,0 +1,591 @@
+/* JobPilot review console — the whole design system.
+ *
+ * One operator, one screen, used daily and often at 2am to read two PDFs
+ * carefully and decide whether to send them to an employer. Not a marketing
+ * page: there are no visitors to impress, so every decision below answers
+ * "does this help someone read and decide", not "does this look impressive".
+ *
+ * WHY DARK, given long text gets read here. The documents themselves render
+ * inside PDF viewers with their own white page, so the shell's luminance does
+ * not affect the reading surface — it surrounds it. A dark surround around a
+ * white page is easier at night than a white surround, which is the actual
+ * usage. Prose that IS on our surface (offer descriptions) gets the
+ * full-strength text colour, a raised panel and a capped measure.
+ *
+ * WHY NOT NEAR-BLACK + ACID GREEN. That palette is both the AI default and the
+ * exact look of every SOC dashboard screenshot. The ground here is a deep
+ * blue-slate, and three accents each do real work: azure for what the OPERATOR
+ * does (actions, links), amber for what the SYSTEM reports (scores, live
+ * telemetry, counts), coral for what has FAILED. Colour is never the only
+ * signal — every state also carries a word.
+ *
+ * Contrast is verified, not eyeballed. On the ground, body text is 15.6:1,
+ * secondary text 7.5:1, and all three accents are above 6.8:1 — AAA for body
+ * text, comfortably AA everywhere else.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Colour: a five-step neutral ramp, three working accents ---- */
+  --ground: #0f1420;      /* page */
+  --panel: #161d2c;       /* cards, tables */
+  --raised: #1c2437;      /* inputs, prose blocks, nested surfaces */
+  --rule: #2b3446;        /* hairlines; never carries text */
+  --text: #e8ecf5;        /* body — 15.6:1 on ground */
+  --dim: #9aa6bd;         /* secondary — 7.5:1 on ground */
+
+  --action: #6f9bff;      /* the operator's intent: buttons, links */
+  --action-deep: #4d7fe8;
+  --amber: #e8a33d;       /* the system's report: scores, live values */
+  --alert: #ff7a6b;       /* failure, refusal, danger */
+  --ok: #4fc3a1;          /* completed, sent, verified */
+
+  /* ---- Type: system stacks only. A loopback tool must not need the network
+         to render, so there are no webfont imports anywhere. The "futuristic"
+         reading comes from how DATA is set, not from a novelty display face. */
+  --face-display: ui-sans-serif, -apple-system, "SF Pro Display",
+    "Segoe UI Variable Display", "Segoe UI", Roboto, system-ui, sans-serif;
+  --face-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, sans-serif;
+  --face-data: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+    Menlo, Consolas, monospace;
+
+  /* ---- Type scale: 1.25 from a 15px base. Dense on purpose. ---- */
+  --t-micro: 11px;
+  --t-small: 12.5px;
+  --t-body: 15px;
+  --t-lead: 17px;
+  --t-h3: 19px;
+  --t-h2: 24px;
+  --t-h1: 30px;
+  --leading-tight: 1.25;
+  --leading-body: 1.55;
+
+  /* ---- Spacing: 4px base ---- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* ---- Radii ---- */
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+  --r-pill: 999px;
+
+  /* ---- Motion. Everything is disabled under prefers-reduced-motion. ---- */
+  --motion-fast: 120ms;
+  --motion: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  --rail: 224px;
+  --measure: 78ch;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--ground); }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--face-body);
+  font-size: var(--t-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--face-display);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.011em;
+  margin-top: 0;
+}
+h1 { font-size: var(--t-h1); margin-bottom: var(--s1); }
+h2 { font-size: var(--t-h2); margin-bottom: var(--s3); }
+h3 { font-size: var(--t-h3); margin: var(--s5) 0 var(--s3); }
+
+a { color: var(--action); text-underline-offset: 2px; }
+a:hover { color: #8fb2ff; }
+
+.muted { color: var(--dim); }
+
+/* Keyboard focus is never removed, only styled. */
+:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ---------- Layout: instrument rail + workspace ---------- */
+
+.console {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid var(--rule);
+  background: var(--panel);
+  padding: var(--s5) var(--s4);
+}
+
+.wordmark {
+  font-family: var(--face-data);
+  font-size: var(--t-small);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 var(--s5);
+}
+.wordmark b { color: var(--text); font-weight: 700; }
+
+.rail-nav { display: grid; gap: 2px; }
+.rail-nav a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-md);
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--t-body);
+  transition: background var(--motion-fast) var(--ease);
+}
+.rail-nav a:hover { background: var(--raised); }
+/* Current page is marked by a rule and a weight change, not by colour alone. */
+.rail-nav a[aria-current="page"] {
+  background: var(--raised);
+  box-shadow: inset 2px 0 0 var(--action);
+  font-weight: 650;
+}
+.rail-nav .n {
+  margin-left: auto;
+  font-family: var(--face-data);
+  font-size: var(--t-small);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace { padding: var(--s4) var(--s6) var(--s7); min-width: 0; }
+.shell { width: min(1180px, 100%); margin: 0 auto; }
+
+/* ---------- Signature element: the telemetry strip ----------
+ * The one place the design is loud. A single monospaced band of live system
+ * state, always visible, set like an instrument readout. It earns the space by
+ * being real data the operator actually wants at a glance — never decoration.
+ */
+.telemetry {
+  /* Sticky so "current state always visible" is literal, not aspirational:
+     it stays put while a long table scrolls underneath. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--panel), var(--ground));
+  font-family: var(--face-data);
+  margin-bottom: var(--s5);
+  overflow: hidden;
+}
+.telemetry .cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3) var(--s4);
+  border-right: 1px solid var(--rule);
+  min-width: 104px;
+}
+.telemetry .cell:last-child { border-right: 0; margin-left: auto; text-align: right; }
+.telemetry .k {
+  font-size: var(--t-micro);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.telemetry .v {
+  font-size: var(--t-lead);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.15;
+}
+.telemetry .v.is-amber { color: var(--amber); }
+.telemetry .v.is-ok { color: var(--ok); }
+.telemetry .v.is-dim { color: var(--dim); font-size: var(--t-body); }
+.telemetry .v.is-alert { color: var(--alert); }
+
+/* ---------- Surfaces ---------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+}
+.panel + .panel { margin-top: var(--s4); }
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s4);
+}
+.page-head p { margin: var(--s1) 0 0; max-width: var(--measure); }
+
+/* ---------- Status vocabulary ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  padding: 3px 10px;
+  font-family: var(--face-data);
+  font-size: var(--t-small);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip .n { color: var(--dim); font-variant-numeric: tabular-nums; }
+.chip:hover { border-color: var(--action); }
+.chip.active {
+  border-color: var(--action);
+  box-shadow: inset 0 0 0 1px var(--action);
+  font-weight: 650;
+}
+.counts, .tabs { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); }
+
+.badge { /* legacy alias so partials can share one vocabulary */
+  display: inline-flex; align-items: center; gap: var(--s2);
+  border: 1px solid var(--rule); border-radius: var(--r-pill);
+  background: var(--raised); padding: 3px 10px;
+  font-family: var(--face-data); font-size: var(--t-small);
+}
+.badge strong { color: var(--amber); font-variant-numeric: tabular-nums; }
+
+.state {
+  font-family: var(--face-data);
+  font-size: var(--t-small);
+  letter-spacing: 0.04em;
+}
+.state::before { content: "● "; }
+.state.is-ready, .state.is-applied { color: var(--ok); }
+.state.is-queued, .state.is-generating { color: var(--amber); }
+.state.is-skipped, .state.is-rejected, .state.is-ghosted { color: var(--dim); }
+
+/* ---------- Tables: one treatment everywhere ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+}
+table { width: 100%; border-collapse: collapse; background: var(--panel); }
+th, td {
+  border-bottom: 1px solid var(--rule);
+  padding: var(--s3);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background var(--motion-fast) var(--ease); }
+tbody tr:hover { background: var(--raised); }
+th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--raised);
+  color: var(--dim);
+  font-family: var(--face-data);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+td.title { min-width: 240px; white-space: normal; }
+/* Numbers and identifiers are data: monospaced and tabular so columns align. */
+td .num, .score, td time { font-family: var(--face-data); font-variant-numeric: tabular-nums; }
+.score { color: var(--amber); font-weight: 650; }
+
+table.dense th, table.dense td { padding: var(--s2) var(--s3); font-size: var(--t-small); }
+table.dense td.row-actions { display: flex; gap: var(--s2); white-space: nowrap; }
+table.dense td.row-actions button { padding: var(--s1) var(--s2); font-size: var(--t-micro); }
+
+/* ---------- Empty states: say what to do next ---------- */
+
+.empty {
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--s6) var(--s5);
+  color: var(--dim);
+  text-align: center;
+}
+.empty strong { display: block; color: var(--text); margin-bottom: var(--s1); }
+
+/* ---------- Buttons: one hierarchy ---------- */
+
+button, .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: var(--s2) var(--s4);
+  background: var(--action);
+  color: #0f1420;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  min-height: 34px;
+  transition: background var(--motion-fast) var(--ease),
+              border-color var(--motion-fast) var(--ease);
+}
+button:hover, .btn:hover { background: var(--action-deep); color: #0f1420; }
+button.secondary, .btn.secondary {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--text);
+}
+button.secondary:hover, .btn.secondary:hover {
+  background: var(--raised);
+  border-color: var(--action);
+  color: var(--text);
+}
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+.actions { display: flex; gap: var(--s3); margin: var(--s4) 0; flex-wrap: wrap; }
+
+/* Long jobs run inside the request, so the button has to say the page is
+   working and not merely unresponsive. */
+form[data-busy].busy button::before {
+  content: "";
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid rgb(15 20 32 / 30%);
+  border-top-color: #0f1420;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Forms ---------- */
+
+label { font-size: var(--t-small); color: var(--dim); }
+input[type="search"], input[type="text"], select, textarea {
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--s2) var(--s3);
+  font: inherit;
+  font-size: var(--t-small);
+}
+select { cursor: pointer; }
+.filters {
+  display: flex;
+  gap: var(--s4);
+  align-items: end;
+  flex-wrap: wrap;
+  margin: var(--s4) 0;
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--rule);
+}
+.filters label { display: flex; flex-direction: column; gap: var(--s1); }
+.filters label.checkbox { flex-direction: row; align-items: center; gap: var(--s2); }
+.body-edit {
+  width: 100%;
+  font-family: var(--face-body);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s2);
+  resize: vertical;
+}
+.checkbox-row { display: flex; gap: var(--s2); align-items: flex-start; margin: var(--s3) 0; }
+
+/* ---------- Notices ---------- */
+
+.error {
+  margin: var(--s4) 0;
+  border: 1px solid var(--alert);
+  border-left-width: 3px;
+  border-radius: var(--r-md);
+  background: rgb(255 122 107 / 9%);
+  color: var(--text);
+  padding: var(--s3) var(--s4);
+}
+.plan {
+  background: var(--raised);
+  border-left: 3px solid var(--action);
+  border-radius: var(--r-sm);
+  padding: var(--s3) var(--s4);
+  margin: var(--s4) 0;
+  font-weight: 600;
+}
+.unavailable { list-style: none; padding: 0; margin: var(--s2) 0; font-family: var(--face-data); font-size: var(--t-small); }
+.unavailable li { padding: 2px 0; }
+.unavailable .skipped { color: var(--alert); }
+
+/* ---------- Detail page ---------- */
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--s3);
+  margin: var(--s4) 0;
+}
+.meta div {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  padding: var(--s3);
+}
+.meta dt {
+  font-family: var(--face-data);
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.meta dd { margin: var(--s1) 0 0; }
+
+/* Prose that lives on OUR surface, not inside a PDF: full-strength text,
+   raised panel, capped measure. This is the 2am reading case. */
+.description, .tracker {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--text);
+  padding: var(--s4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--face-body);
+  font-size: var(--t-body);
+  line-height: var(--leading-body);
+  max-width: var(--measure);
+}
+.tracker { font-family: var(--face-data); font-size: var(--t-small); max-width: none; }
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--s3);
+}
+.score-grid div {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--action);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  padding: var(--s2) var(--s3);
+  font-family: var(--face-data);
+  font-variant-numeric: tabular-nums;
+}
+.score-grid strong { font-family: var(--face-body); color: var(--dim); font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.artifacts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+.artifact { border: 1px solid var(--rule); border-radius: var(--r-md); padding: var(--s3); background: var(--raised); }
+.artifact-actions { display: flex; gap: var(--s2); align-items: center; margin-bottom: var(--s2); flex-wrap: wrap; }
+.artifact-actions strong { margin-right: auto; }
+.artifact-actions .btn { padding: var(--s1) var(--s3); font-size: var(--t-small); }
+iframe { width: 100%; height: 460px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: #fff; }
+
+.panel-inset {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  padding: var(--s4);
+}
+.panel-inset.disagreement { border-left: 3px solid var(--amber); }
+
+/* ---------- Library ---------- */
+
+.library-entry { border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--raised); padding: var(--s4); margin: var(--s3) 0; }
+.library-head { display: flex; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; align-items: baseline; }
+.library-meta { display: flex; gap: var(--s3); font-family: var(--face-data); font-size: var(--t-small); }
+.generation { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: var(--s3); }
+.generation .btn { padding: var(--s1) var(--s3); font-size: var(--t-micro); }
+.gen-label { font-family: var(--face-data); font-size: var(--t-micro); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--amber); }
+.archives { margin-top: var(--s3); }
+.archives summary { cursor: pointer; color: var(--dim); font-size: var(--t-small); }
+.archives summary:hover { color: var(--text); }
+
+/* ---------- Progress ---------- */
+
+.progress-region { display: grid; gap: var(--s2); margin-bottom: var(--s4); }
+.progress-op {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--action);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-small);
+}
+.progress-op.failed { border-left-color: var(--alert); background: rgb(255 122 107 / 8%); }
+.progress-op .op-label { font-weight: 650; }
+.progress-op .op-step, .progress-op .op-elapsed { color: var(--dim); font-family: var(--face-data); }
+.progress-op .op-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; }
+.progress-op .op-spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  border: 2px solid var(--rule);
+  border-top-color: var(--action);
+  animation: spin 0.8s linear infinite;
+}
+
+/* ---------- Refresh panel ---------- */
+
+.refresh-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; }
+.refresh-head h2 { margin-bottom: 0; }
+#refresh-log { list-style: none; padding: 0; margin: var(--s3) 0 0; font-family: var(--face-data); font-size: var(--t-small); display: grid; gap: 2px; }
+#refresh-log .name { color: var(--dim); }
+#refresh-log .done { color: var(--ok); }
+#refresh-log .running { color: var(--amber); }
+#refresh-log .failed { color: var(--alert); }
+#refresh-log .skipped { color: var(--dim); }
+#refresh-stage { font-family: var(--face-data); font-size: var(--t-small); color: var(--dim); }
+#refresh-stage.error { color: var(--alert); }
+
+.pager { display: flex; gap: var(--s3); align-items: center; margin-top: var(--s4); font-family: var(--face-data); font-size: var(--t-small); }
+.back { text-decoration: none; font-size: var(--t-small); display: inline-block; margin-bottom: var(--s3); }
+
+/* ---------- Responsive: laptop is the floor. Mobile is not a requirement. --- */
+
+@media (max-width: 1080px) {
+  .console { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .rail-nav { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; }
+  .workspace { padding: var(--s4); }
+  .artifacts { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

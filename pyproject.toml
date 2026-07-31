@@ -59,7 +59,7 @@ packages = ["jobpilot", "jobpilot.sources"]
 jobpilot = "src/jobpilot"
 
 [tool.setuptools.package-data]
-jobpilot = ["templates/*.html"]
+jobpilot = ["templates/*.html", "templates/pages/*.html", "templates/partials/*.html", "static/*.css"]
 
 [tool.ruff]
 line-length = 100

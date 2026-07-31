@@ -1,0 +1,68 @@
+  <section class="panel">
+    <h2>Suivi des candidatures</h2>
+
+    <div class="counts">
+      <span class="badge">Envoyées cette semaine <strong>{{ counts.sent_this_week }}</strong></span>
+      <span class="badge">Envoyées au total <strong>{{ counts.sent_total }}</strong></span>
+      <span class="badge">Prêtes <strong>{{ counts.ready }}</strong></span>
+      <span class="badge">En file <strong>{{ counts.queued }}</strong></span>
+    </div>
+
+    <form method="get" action="/tracker" class="filters">
+      <label>
+        Statut
+        <select name="status" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for name in statuses %}
+            <option value="{{ name }}" {% if status == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Tri
+        <select name="sort" onchange="this.form.submit()">
+          <option value="recent" {% if sort == "recent" %}selected{% endif %}>Activité récente</option>
+          <option value="company" {% if sort == "company" %}selected{% endif %}>Entreprise</option>
+          <option value="score" {% if sort == "score" %}selected{% endif %}>Score</option>
+          <option value="status" {% if sort == "status" %}selected{% endif %}>Statut</option>
+          <option value="applied" {% if sort == "applied" %}selected{% endif %}>Date d'envoi</option>
+        </select>
+      </label>
+      <a class="btn secondary" href="/tracker.csv?sort={{ sort }}{% if status %}&status={{ status }}{% endif %}">Exporter en CSV</a>
+      <span class="muted">{{ rows|length }} candidature(s)</span>
+    </form>
+
+    {% if rows %}
+      <div class="table-wrap">
+        <table class="dense">
+          <thead>
+            <tr>{% for key, label in columns %}<th>{{ label }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td><a href="/application/{{ row.application_id }}">{{ row.company or "—" }}</a></td>
+                <td>{{ row.title or "—" }}</td>
+                <td>{{ row.source or "—" }}</td>
+                <td class="score">{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>
+                <td><span class="state is-{{ row.status }}">{{ row.status }}</span></td>
+                <td {% if row.applied_at %}title="{{ row.applied_at }}"{% endif %}>{{ row.applied_at|ymd or "—" }}</td>
+                <td>{{ row.apply_route or "—" }}</td>
+                <td>{{ row.variant or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        {% if status %}
+          <strong>Aucune candidature au statut « {{ status }} ».</strong>
+          Choisissez « Tous » pour revoir l'ensemble du suivi.
+        {% else %}
+          <strong>Aucune candidature pour l'instant.</strong>
+          Approuvez une offre depuis la file pour en créer une.
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>

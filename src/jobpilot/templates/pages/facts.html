@@ -1,0 +1,72 @@
+  <section class="panel">
+    <h2>Banque de faits</h2>
+    <p class="muted">
+      Lecture seule : seul le contenu ci-dessous peut apparaître dans un CV
+      ou une lettre générés. L'édition se fait dans config/fact_bank.yaml.
+    </p>
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    {% if bank %}
+      <h3>Expérience</h3>
+      {% for entry in bank.experience %}
+        <p><strong>{{ entry.employer }}</strong> — {{ entry.role }} — {{ entry.dates }} — {{ entry.location }}</p>
+        <ul>
+          {% for claim in entry.facts %}
+            <li><code>{{ claim.id }}</code> : {{ claim.text }}{% if claim.needs_review %} <em>[à revoir]</em>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+
+      <h3>Projets</h3>
+      {% for entry in bank.projects %}
+        <p><strong>{{ entry.title }}</strong> [{{ entry.stack|join(", ") }}]</p>
+        <ul>
+          {% for claim in entry.facts %}
+            <li><code>{{ claim.id }}</code> : {{ claim.text }}{% if claim.needs_review %} <em>[à revoir]</em>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+
+      <h3>Formation</h3>
+      <ul>
+        {% for entry in bank.education %}
+          <li><code>{{ entry.id }}</code> : {{ entry.diploma }}, {{ entry.institution }}, {{ entry.location }}, {{ entry.dates }}{% if entry.needs_review %} <em>[à revoir]</em>{% endif %}</li>
+        {% endfor %}
+      </ul>
+
+      <h3>Certifications</h3>
+      <ul>
+        {% for entry in bank.certifications %}
+          <li><code>{{ entry.id }}</code> : {{ entry.name }}, obtenu {{ entry.obtained }}{% if entry.needs_review %} <em>[à revoir]</em>{% endif %}</li>
+        {% endfor %}
+      </ul>
+
+      <h3>Langues</h3>
+      <ul>
+        {% for entry in bank.languages %}
+          <li><code>{{ entry.id }}</code> : {{ entry.name }}, {{ entry.level }}{% if entry.needs_review %} <em>[à revoir]</em>{% endif %}</li>
+        {% endfor %}
+      </ul>
+
+      <h3>Compétences</h3>
+      <ul>
+        {% for entry in bank.skills %}
+          <li>
+            <code>{{ entry.id }}</code> : {{ entry.name }}
+            [{% if entry.verified %}vérifiée{% else %}non vérifiée{% endif %}{% if entry.needs_review %}, à revoir{% endif %}]
+          </li>
+        {% endfor %}
+      </ul>
+
+      <h3>Verrouillé</h3>
+      <dl class="meta">
+        <div><dt>Nom</dt><dd>{{ bank.locked.name }}</dd></div>
+        <div><dt>E-mail</dt><dd>{{ bank.locked.email }}</dd></div>
+        <div><dt>Téléphone</dt><dd>{{ bank.locked.phone }}</dd></div>
+        <div><dt>LinkedIn</dt><dd>{{ bank.locked.linkedin }}</dd></div>
+        <div><dt>Employeurs</dt><dd>{{ bank.locked.employer_names|join(", ") }}</dd></div>
+        <div><dt>Diplômes</dt><dd>{{ bank.locked.diplomas|join(", ") }}</dd></div>
+        <div><dt>Certifications</dt><dd>{{ bank.locked.certification_names|join(", ") }}</dd></div>
+        <div><dt>Dates</dt><dd>{{ bank.locked.dates|join(", ") }}</dd></div>
+      </dl>
+    {% endif %}
+  </section>

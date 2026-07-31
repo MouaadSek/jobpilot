@@ -1,0 +1,38 @@
+  <section class="panel">
+    <a class="back" href="/outreach">← Outreach drafts</a>
+    <h2>Confirmer l'envoi du cold email</h2>
+    <div class="muted">{{ application.company or "Entreprise inconnue" }}</div>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    {% if not cold_send_enabled %}
+      <p class="muted">
+        Live cold sending is disabled by default. Final confirmation will
+        remain blocked until COLD_SEND_ENABLED=true is explicitly configured.
+      </p>
+    {% endif %}
+
+    <dl class="meta">
+      <div><dt>Destinataire</dt><dd>{{ prep.recipient }}</dd></div>
+      <div><dt>Objet</dt><dd>{{ prep.subject }}</dd></div>
+      <div><dt>Créneau prévu</dt><dd>{{ prep.scheduled_at }}</dd></div>
+    </dl>
+
+    <form method="post" action="/outreach/{{ prep.queue_id }}/send" data-busy>
+      <h3>Message et ligne d'opposition</h3>
+      <textarea name="body" rows="16" class="body-edit">{{ prep.body }}</textarea>
+      {% if prep.personal_confirmation_required %}
+        <label class="checkbox-row">
+          <input type="checkbox" name="personal_address_confirmed" value="1" required>
+          <span>
+            Je confirme explicitement l'envoi à cette adresse professionnelle
+            nominative après avoir vérifié le destinataire.
+          </span>
+        </label>
+      {% endif %}
+      <div class="actions">
+        <button type="submit" data-label="Confirmer et envoyer"{% if not can_send %} disabled{% endif %}>Confirmer et envoyer</button>
+        <a class="btn secondary" href="/outreach">Annuler</a>
+      </div>
+      {% if not can_send %}<p class="muted">L'envoi est bloqué : {{ error }}.</p>{% endif %}
+    </form>
+  </section>

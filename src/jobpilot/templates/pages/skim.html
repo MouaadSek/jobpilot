@@ -1,0 +1,97 @@
+  <section class="panel">
+    <h2>Offres à trier</h2>
+    <p class="muted">
+      Ces offres passent le filtre dur mais restent sous le seuil de score.
+      Les alertes LinkedIn et Indeed n'ont qu'une description de quelques
+      lignes : elles se lisent, elles ne se notent pas.
+    </p>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+    <form method="get" action="/skim" class="filters">
+      <label>
+        Source
+        <select name="source" onchange="this.form.submit()">
+          <option value="">Toutes</option>
+          {% for name in skim_sources %}
+            <option value="{{ name }}" {% if skim.source == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Tri
+        <select name="sort" onchange="this.form.submit()">
+          <option value="recent" {% if skim.sort == "recent" %}selected{% endif %}>Plus récentes</option>
+          <option value="score" {% if skim.sort == "score" %}selected{% endif %}>Meilleur score</option>
+        </select>
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="include_ignored" value="1"
+               {% if skim.include_ignored %}checked{% endif %}
+               onchange="this.form.submit()">
+        Afficher les offres ignorées
+      </label>
+      <span class="muted">{{ skim.total }} offre(s)</span>
+    </form>
+
+    {% if skim.rows %}
+      <div class="table-wrap">
+        <table class="dense">
+          <thead>
+            <tr>
+              <th>Intitulé</th><th>Entreprise</th><th>Ville</th>
+              <th>Source</th><th>Publiée</th><th>Score</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in skim.rows %}
+              <tr>
+                <td>
+                  {% if row.url %}
+                    <a href="{{ row.url }}" rel="noreferrer">{{ row.title }}</a>
+                  {% else %}{{ row.title }}{% endif %}
+                </td>
+                <td>{{ row.company or "—" }}</td>
+                <td>{{ row.city or "—" }}</td>
+                <td>{{ row.source or "—" }}</td>
+                <td {% if row.posted_at %}title="{{ row.posted_at }}"{% endif %}>{{ row.posted_at|ymd or "—" }}</td>
+                <td class="score">{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>
+                <td class="row-actions">
+                  {% if row.application_status == "skipped" %}
+                    <span class="muted">Ignorée</span>
+                  {% else %}
+                    <form method="post" data-busy
+                          action="/skim/{{ row.offer_id }}/queue?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}">
+                      <button type="submit" data-label="Mise en file">Mettre en file</button>
+                    </form>
+                    <form method="post" data-busy
+                          action="/skim/{{ row.offer_id }}/ignore?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}">
+                      <button class="secondary" type="submit" data-label="Ignorer">Ignorer</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if skim.pages > 1 %}
+        <nav class="pager" aria-label="Pagination">
+          {% set base = "/skim?sort=" ~ skim.sort ~ ("&source=" ~ skim.source if skim.source else "") ~ ("&include_ignored=1" if skim.include_ignored else "") %}
+          {% if skim.has_previous %}
+            <a class="btn secondary" href="{{ base }}&page={{ skim.page - 1 }}">← Précédentes</a>
+          {% endif %}
+          <span class="muted">Page {{ skim.page }} sur {{ skim.pages }}</span>
+          {% if skim.has_next %}
+            <a class="btn secondary" href="{{ base }}&page={{ skim.page + 1 }}">Suivantes →</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <div class="empty">
+        <strong>Rien à trier pour l'instant.</strong>
+        Lancez « Actualiser les offres » depuis la file pour en récupérer de nouvelles.
+      </div>
+    {% endif %}
+  </section>

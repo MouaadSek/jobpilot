@@ -1,0 +1,43 @@
+  <section class="panel">
+    <a class="back" href="/application/{{ application.id }}">← Candidature</a>
+    <h2>Confirmer la candidature</h2>
+    <div class="muted">
+      {{ application.title or "Candidature" }} — {{ application.company or "Entreprise inconnue" }}
+    </div>
+
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+
+    <dl class="meta">
+      <div><dt>Méthode</dt><dd>{{ route.label }}</dd></div>
+      <div><dt>Cible</dt><dd>{{ route.target or "—" }}</dd></div>
+      <div>
+        <dt>Pièces</dt>
+        <dd>
+          {% if route.artifacts %}
+            {% for name in route.artifacts %}
+              <a href="/files/{{ application.id }}/{{ name }}">{{ name }}</a>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          {% else %}—{% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    <p class="plan">{{ route.sentence }}</p>
+
+    {% if route.unavailable %}
+      <h3>Méthodes écartées</h3>
+      <ul class="unavailable">
+        {% for item in route.unavailable %}
+          <li><span class="name">{{ item.label }} — </span><span class="skipped">{{ item.reason }}</span></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <form method="post" action="/application/{{ application.id }}/apply" data-busy>
+      <input type="hidden" name="plan_hash" value="{{ route.plan_hash }}">
+      <div class="actions">
+        <button type="submit" data-label="Confirmation">Confirmer et postuler</button>
+        <a class="btn secondary" href="/application/{{ application.id }}">Annuler</a>
+      </div>
+    </form>
+  </section>

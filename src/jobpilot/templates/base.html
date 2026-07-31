@@ -1,0 +1,84 @@
+{#
+  The console shell. Every page renders inside this.
+
+  Layout concept: instrument rail + workspace. A persistent left rail carries
+  navigation and marks the current section; the workspace holds one page. The
+  rail is sticky so the operator never loses their position in the pipeline.
+#}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}JobPilot{% endblock %}</title>
+  <link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+  <div class="console">
+    <aside class="rail">
+      <p class="wordmark"><b>JobPilot</b><br>console de revue</p>
+      <nav class="rail-nav" aria-label="Navigation principale">
+        <a href="/" {% if view == "queue" %}aria-current="page"{% endif %}>Candidatures</a>
+        <a href="/skim" {% if view == "skim" %}aria-current="page"{% endif %}>À trier</a>
+        <a href="/tracker" {% if view == "tracker" %}aria-current="page"{% endif %}>Suivi</a>
+        <a href="/library" {% if view == "library" %}aria-current="page"{% endif %}>Documents</a>
+        <a href="/outreach" {% if view == "outreach" %}aria-current="page"{% endif %}>Outreach</a>
+        <a href="/facts" {% if view == "facts" %}aria-current="page"{% endif %}>Faits</a>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <div class="shell">
+        {#
+          Signature element: the telemetry strip. One monospaced band of live
+          system state, always visible, set like an instrument readout. It earns
+          its space by carrying only real data the operator wants at a glance —
+          never decoration. Counts appear on the pages that already compute
+          them, so this adds no query of its own.
+        #}
+        <div class="telemetry">
+          {% if tabs %}
+            {% for tab in tabs %}
+              <div class="cell">
+                <span class="k">{{ tab.status }}</span>
+                <span class="v {% if tab.status in ('ready', 'applied') %}is-ok{% elif tab.count %}is-amber{% else %}is-dim{% endif %}">{{ tab.count }}</span>
+              </div>
+            {% endfor %}
+          {% elif counts %}
+            <div class="cell"><span class="k">envoyées / semaine</span><span class="v is-ok">{{ counts.sent_this_week }}</span></div>
+            <div class="cell"><span class="k">envoyées / total</span><span class="v">{{ counts.sent_total }}</span></div>
+            <div class="cell"><span class="k">prêtes</span><span class="v is-amber">{{ counts.ready }}</span></div>
+            <div class="cell"><span class="k">en file</span><span class="v is-amber">{{ counts.queued }}</span></div>
+          {% elif skim %}
+            <div class="cell"><span class="k">à trier</span><span class="v is-amber">{{ skim.total }}</span></div>
+            <div class="cell"><span class="k">page</span><span class="v">{{ skim.page }}/{{ skim.pages }}</span></div>
+            <div class="cell"><span class="k">source</span><span class="v is-dim">{{ skim.source or "toutes" }}</span></div>
+          {% elif entries is defined %}
+            <div class="cell"><span class="k">candidatures</span><span class="v">{{ entries|length }}</span></div>
+            <div class="cell"><span class="k">générations</span><span class="v is-amber">{{ entries|sum(attribute="generations") }}</span></div>
+          {% elif application %}
+            <div class="cell"><span class="k">candidature</span><span class="v">#{{ application.id }}</span></div>
+            <div class="cell">
+              <span class="k">statut</span>
+              <span class="v {% if application.status in ('ready', 'applied') %}is-ok{% else %}is-amber{% endif %}">{{ application.status }}</span>
+            </div>
+          {% else %}
+            <div class="cell"><span class="k">section</span><span class="v is-dim">{{ view }}</span></div>
+          {% endif %}
+          <div class="cell">
+            <span class="k">tailoring</span>
+            <span class="v is-dim" title="Mode de tailoring résolu depuis .env">{{ advisor_mode() }}</span>
+          </div>
+        </div>
+
+        <div id="progress-region" class="progress-region" role="status" aria-live="polite" hidden></div>
+
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <script>
+{% include "partials/console.js.html" %}
+  </script>
+</body>
+</html>
