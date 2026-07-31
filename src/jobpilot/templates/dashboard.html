@@ -172,6 +172,9 @@
     table.dense td.row-actions { display: flex; gap: 6px; }
     table.dense td.row-actions button { padding: 4px 9px; font-size: 12px; }
     .pager { display: flex; gap: 12px; align-items: center; margin-top: 14px; }
+    .artifact-actions { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .artifact-actions strong { margin-right: auto; }
+    .artifact-actions .btn { padding: 5px 11px; font-size: 13px; }
     @media (prefers-reduced-motion: reduce) {
       form[data-busy].busy button::before { animation: none; }
     }
@@ -829,16 +832,29 @@
         </div>
 
         {% if application.status == "ready" %}
-          <h3>Generated artifacts</h3>
+          <h3>Documents générés</h3>
+          <p class="muted">
+            Relisez les deux pièces ici avant d'envoyer. Prévisualiser ne
+            déclenche aucun envoi.
+          </p>
           <div class="artifacts">
             <div class="artifact">
-              <a href="/files/{{ application.id }}/cv.pdf">Open cv.pdf</a>
-              <iframe title="CV preview" src="/files/{{ application.id }}/cv.pdf"></iframe>
+              <div class="artifact-actions">
+                <strong>CV</strong>
+                <a class="btn secondary" href="/files/{{ application.id }}/cv.pdf" target="_blank" rel="noopener">Prévisualiser</a>
+                <a class="btn secondary" href="/files/{{ application.id }}/cv.pdf?download=1">Télécharger</a>
+              </div>
+              <iframe title="Prévisualisation du CV" src="/files/{{ application.id }}/cv.pdf"></iframe>
             </div>
             <div class="artifact">
-              <a href="/files/{{ application.id }}/motivation_letter.pdf">Open motivation_letter.pdf</a>
-              <iframe title="Motivation letter preview" src="/files/{{ application.id }}/motivation_letter.pdf"></iframe>
+              <div class="artifact-actions">
+                <strong>Lettre de motivation</strong>
+                <a class="btn secondary" href="/files/{{ application.id }}/motivation_letter.pdf" target="_blank" rel="noopener">Prévisualiser</a>
+                <a class="btn secondary" href="/files/{{ application.id }}/motivation_letter.pdf?download=1">Télécharger</a>
+              </div>
+              <iframe title="Prévisualisation de la lettre" src="/files/{{ application.id }}/motivation_letter.pdf"></iframe>
             </div>
+          </div>
           </div>
           <h3>Tracker row</h3>
           <pre class="tracker">{{ tracker_row or "Tracker row unavailable." }}</pre>

@@ -160,7 +160,7 @@ def test_download_names_the_file_for_the_employer(
     application_id = _ready_with_artifacts(dashboard_db, tmp_path, "Advens")
 
     with _client(dashboard_db, tmp_path) as client:
-        response = client.get(f"/files/{application_id}/cv.pdf")
+        response = client.get(f"/files/{application_id}/cv.pdf?download=1")
 
     assert response.status_code == 200
     disposition = response.headers["content-disposition"]
@@ -174,7 +174,7 @@ def test_a_company_with_a_slash_cannot_inject_a_path_separator(
     application_id = _ready_with_artifacts(dashboard_db, tmp_path, "Société Générale / IT")
 
     with _client(dashboard_db, tmp_path) as client:
-        response = client.get(f"/files/{application_id}/cv.pdf")
+        response = client.get(f"/files/{application_id}/cv.pdf?download=1")
 
     disposition = response.headers["content-disposition"]
     assert "Societe_Generale_IT_CV_Mouaad_Sekkouri.pdf" in disposition

@@ -1107,8 +1107,20 @@ def create_app(
         )
 
     @app.get("/files/{application_id}/{name}", response_class=FileResponse)
-    def artifact(application_id: int, name: str, db: Database) -> FileResponse:
-        """Serve one generated artefact under a name an employer folder can keep."""
+    def artifact(
+        application_id: int,
+        name: str,
+        db: Database,
+        download: bool = False,
+    ) -> FileResponse:
+        """Serve one generated artefact, inline by default.
+
+        Preview and download are the same bytes over the same guarded path, so
+        the traversal guard has exactly one implementation and previewing can
+        never be mistaken for an action. Reading the CV is the step that decides
+        whether an application is sent; it should not require a round trip
+        through a Downloads folder and a separate PDF viewer.
+        """
 
         detail = application_detail(db, application_id)
         if detail is None or detail["status"] != "ready":
@@ -1122,6 +1134,9 @@ def create_app(
                 company=detail["company"],
                 candidate=_candidate_name(db),
             ),
+            # Starlette sets attachment whenever `filename` is given, so inline
+            # has to be stated explicitly or every preview would download.
+            content_disposition_type="attachment" if download else "inline",
         )
 
     return app
