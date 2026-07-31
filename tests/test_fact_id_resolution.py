@@ -51,11 +51,15 @@ experience:
       - id: experience.concentrix.incidents
         text: 1500 incidents traités
 projects:
-  - id: project.lab
+  - id: project.foo
     title: Lab SIEM
     stack: ["Wazuh"]
     source_templates: ["Mouaad_Sekkouri_-_SOC__Alternance.html"]
     facts:
+      # Collides with skill.foo.bar on its key, which is the point of this bank.
+      # The entry is named project.foo so the claim legitimately extends it:
+      # Task 35 item 2 refuses a claim id that does not, and this fixture used to
+      # be one of the inconsistent banks that rule exists to catch.
       - id: project.foo.bar
         text: Règles de détection sur 12 cas d'usage
 education:

@@ -190,6 +190,29 @@ def _entry_claim(
     )
 
 
+def _reject_orphan_claim_id(entry_id: str, claim_id: str) -> None:
+    """Every claim id must extend its own entry id with a dot.
+
+    ``experience.baifall_dream`` held claims named ``experience.baifall.*`` while
+    every other entry in the bank followed ``entry.id + "." + slug``. The advisor
+    generalised from the majority and emitted an id that did not exist — on the
+    one entry the completeness floor forces onto every CV, so it failed on every
+    generation, and Task 22c's single retry burned its one attempt re-guessing
+    the same way.
+
+    Only experience and projects carry sub-claims; education, certifications,
+    languages and skills are leaf facts whose id is the claim id.
+    """
+
+    prefix = f"{entry_id}."
+    if not claim_id.startswith(prefix):
+        raise FactBankError(
+            f"claim id {claim_id!r} does not extend its entry id {entry_id!r}: "
+            f"every claim under {entry_id!r} must start with {prefix!r}. "
+            "Inconsistent ids make the advisor guess, and it guesses the majority."
+        )
+
+
 def load_fact_bank(path: Path | None = None) -> FactBank:
     """Load and strictly validate the committed fact bank."""
 
@@ -339,6 +362,7 @@ def load_fact_bank(path: Path | None = None) -> FactBank:
             raise FactBankError(f"duplicate entry id: {entry.id}")
         entry_ids.add(entry.id)
         for claim in entry.facts:
+            _reject_orphan_claim_id(entry.id, claim.id)
             register(claim)
     for entry in education:
         register(

@@ -21,24 +21,24 @@ version: 1
 source_documents: ["skill/SKILL.md"]
 source_templates: ["Mouaad_Sekkouri_-_SOC__Alternance.html"]
 experience:
-  - id: exp_concentrix
+  - id: experience.concentrix
     employer: Concentrix
     role: Support Réseau et Sécurité
     dates: 2021 - 2023
     location: Lille
     facts:
-      - id: exp_concentrix_incidents
+      - id: experience.concentrix.incidents
         text: 1500 incidents traités, 85% résolus au premier contact
-      - id: exp_concentrix_mttr
+      - id: experience.concentrix.mttr
         text: MTTR réduit de 20%
         needs_review: true
 projects:
-  - id: proj_siem
+  - id: project.siem
     title: Lab SIEM maison
     stack: ["Wazuh", "Docker"]
     source_templates: ["Mouaad_Sekkouri_-_SOC__Alternance.html"]
     facts:
-      - id: proj_siem_detection
+      - id: project.siem.detection
         text: Règles de détection sur 12 cas d'usage MITRE ATT&CK
 education:
   - id: edu_m1
@@ -117,9 +117,9 @@ def test_facts_page_renders_every_section_of_the_bank(
         assert heading in page.text
     # Experience entries carry their claims, exactly as `jobpilot facts` prints.
     assert "Concentrix" in page.text
-    assert "exp_concentrix_incidents" in page.text
+    assert "experience.concentrix.incidents" in page.text
     assert "1500 incidents traités" in page.text
-    assert "exp_concentrix_mttr" in page.text
+    assert "experience.concentrix.mttr" in page.text
     assert "[à revoir]" in page.text
     assert "Lab SIEM maison" in page.text
     assert "M1 Cybersécurité" in page.text
