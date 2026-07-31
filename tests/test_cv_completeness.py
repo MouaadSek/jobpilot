@@ -64,7 +64,7 @@ def _without_employer(experience_id: str) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("experience_id", "employer"),
     [
-        ("experience.baifall_dream", "Baïfall Dream"),
+        ("experience.baifall", "Baïfall Dream"),
         ("experience.testronic", "Testronic"),
     ],
 )
@@ -233,7 +233,7 @@ class _IncompleteAdvisor:
 
     def advise(self, offer, selection, template):  # noqa: ANN001, ANN201
         return TailoringPlan.from_mapping(
-            _without_employer("experience.baifall_dream"),
+            _without_employer("experience.baifall"),
             offer=offer,
             selection=selection,
         )

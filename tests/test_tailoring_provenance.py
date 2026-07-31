@@ -60,7 +60,7 @@ def _experience_content() -> list[dict[str, object]]:
 
     return [
         {
-            "experience_id": "experience.baifall_dream",
+            "experience_id": "experience.baifall",
             "fact_ids": [
                 "experience.baifall.specification.des.exigences.de.journalisation.et",
                 "experience.baifall.definition.des.exigences.de.securite.applicative",
