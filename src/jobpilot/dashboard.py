@@ -55,6 +55,7 @@ from jobpilot.mailer import (
     send_application_email,
     send_cold_email,
 )
+from jobpilot.progress import MIN_POLL_INTERVAL_MS, REGISTRY, refresh_operation, track
 from jobpilot.refresh import RefreshAlreadyRunning, RefreshRunner
 from jobpilot.review import (
     TAB_STATUSES,
@@ -620,6 +621,23 @@ def create_app(
             )
         return JSONResponse(snapshot.as_dict(), status_code=202)
 
+    @app.get("/progress")
+    def progress_status() -> JSONResponse:
+        """Everything slow that is happening right now.
+
+        Deliberately touches no database: a generation holds the writer lock for
+        its whole duration, so a status endpoint that needed the database could
+        not answer until the thing it describes had already finished.
+        """
+
+        operations = list(REGISTRY.snapshot())
+        refresh = refresh_operation(refresher.status().as_dict())
+        if refresh is not None:
+            operations.insert(0, refresh)
+        return JSONResponse(
+            {"operations": operations, "poll_interval_ms": MIN_POLL_INTERVAL_MS}
+        )
+
     @app.get("/refresh/status")
     def refresh_status() -> JSONResponse:
         """Poll target. Deliberately touches no database, so it never blocks."""
@@ -652,7 +670,11 @@ def create_app(
         application_id: int,
         db: Database,
     ) -> Response:
-        with APPLICATION_LOCK:
+        with APPLICATION_LOCK, track(
+            f"generate:{application_id}",
+            "Génération des documents",
+            step="Analyse de l'offre",
+        ) as progress:
             try:
                 approve_application(
                     db,
@@ -661,12 +683,14 @@ def create_app(
                     advisor=advisor,
                     toolchain=toolchain,
                     output_root=artifacts_root,
+                    on_generating=lambda: progress.advance("Rédaction du CV et de la lettre"),
                     # No terminal is attached to a browser request.
                     allow_interactive_advisor=False,
                 )
             except ApplicationNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             except InteractiveAdvisorRequired as exc:
+                progress.fail(str(exc))
                 return detail_response(
                     request,
                     db,
@@ -675,6 +699,7 @@ def create_app(
                     status_code=409,
                 )
             except ApplicationNotQueuedError as exc:
+                progress.fail(str(exc))
                 return detail_response(
                     request,
                     db,
@@ -683,6 +708,7 @@ def create_app(
                     status_code=409,
                 )
             except ApplicationGenerationError as exc:
+                progress.fail(str(exc))
                 return detail_response(
                     request,
                     db,
@@ -774,17 +800,27 @@ def create_app(
 
             _record_apply_route(db, application_id, route.id)
 
+            progress = track(
+                f"apply:{application_id}",
+                "Envoi de la candidature",
+                step=f"Voie « {route.id} »",
+            )
+
             if route.id == "wttj_inline":
-                return wttj_apply(request, application_id, db)
+                with progress:
+                    return wttj_apply(request, application_id, db)
             if route.id == "ats_prefill":
-                return prefill(request, application_id, db)
+                with progress:
+                    return prefill(request, application_id, db)
             if route.id == "email":
                 # The existing two-step email confirmation is untouched: this
                 # route hands over to it rather than sending anything itself.
+                REGISTRY.finish(progress.key, step="Confirmation requise")
                 return RedirectResponse(
                     url=f"/application/{application_id}/email", status_code=303
                 )
             if route.id == "manual_open":
+                progress.advance("Ouverture de l'offre")
                 opened, copied = open_manually(
                     db,
                     application_id,
@@ -793,6 +829,7 @@ def create_app(
                     opener=open_url,
                     copier=copy_letter,
                 )
+                REGISTRY.finish(progress.key, step="Terminé")
                 if not opened or not copied:
                     return detail_response(
                         request,
@@ -804,6 +841,9 @@ def create_app(
                 return RedirectResponse(
                     url=f"/application/{application_id}", status_code=303
                 )
+            REGISTRY.finish(
+                progress.key, step="Échec", error=f"Route « {route.id} » inconnue."
+            )
             return detail_response(
                 request,
                 db,
@@ -855,43 +895,53 @@ def create_app(
                         "queued",
                         detail={"via": "dashboard regenerate"},
                     )
-                    try:
-                        approve_application(
-                            db,
-                            application_id,
-                            via="dashboard regenerate",
-                            advisor=advisor,
-                            toolchain=toolchain,
-                            output_root=artifacts_root,
-                            # No terminal is attached to a browser request.
-                            allow_interactive_advisor=False,
-                        )
-                    except ApplicationNotFoundError as exc:
-                        raise HTTPException(
-                            status_code=404, detail=str(exc)
-                        ) from exc
-                    except (
-                        InteractiveAdvisorRequired,
-                        ApplicationNotQueuedError,
-                    ) as exc:
-                        return detail_response(
-                            request,
-                            db,
-                            application_id,
-                            error=str(exc),
-                            status_code=409,
-                        )
-                    except ApplicationGenerationError as exc:
-                        # The generation path has already rolled the
-                        # application back to 'queued'; the validator's own
-                        # message is what the human needs to see, verbatim.
-                        return detail_response(
-                            request,
-                            db,
-                            application_id,
-                            error=str(exc),
-                            status_code=422,
-                        )
+                    with track(
+                        f"generate:{application_id}",
+                        "Régénération des documents",
+                        step="Archivage de la version précédente",
+                    ) as progress:
+                        try:
+                            approve_application(
+                                db,
+                                application_id,
+                                via="dashboard regenerate",
+                                advisor=advisor,
+                                toolchain=toolchain,
+                                output_root=artifacts_root,
+                                on_generating=lambda: progress.advance(
+                                    "Rédaction du CV et de la lettre"
+                                ),
+                                # No terminal is attached to a browser request.
+                                allow_interactive_advisor=False,
+                            )
+                        except ApplicationNotFoundError as exc:
+                            raise HTTPException(
+                                status_code=404, detail=str(exc)
+                            ) from exc
+                        except (
+                            InteractiveAdvisorRequired,
+                            ApplicationNotQueuedError,
+                        ) as exc:
+                            progress.fail(str(exc))
+                            return detail_response(
+                                request,
+                                db,
+                                application_id,
+                                error=str(exc),
+                                status_code=409,
+                            )
+                        except ApplicationGenerationError as exc:
+                            # The generation path has already rolled the
+                            # application back to 'queued'; the validator's own
+                            # message is what the human needs to see, verbatim.
+                            progress.fail(str(exc))
+                            return detail_response(
+                                request,
+                                db,
+                                application_id,
+                                error=str(exc),
+                                status_code=422,
+                            )
         except GenerationInFlight as exc:
             # Deliberately touches no database, exactly like /refresh's own
             # single-flight refusal: the request that owns the flight is

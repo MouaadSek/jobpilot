@@ -183,6 +183,24 @@
     .gen-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     .archives { margin-top: 10px; }
     .archives summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+    /* Live region for slow work. Generation runs inside the request, so this is
+       the only thing telling the operator the page is working and not wedged. */
+    .progress-region { margin: 0 0 16px; display: grid; gap: 8px; }
+    .progress-op {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      border: 1px solid var(--line); border-left: 4px solid var(--primary);
+      border-radius: 7px; background: var(--paper); padding: 10px 14px; font-size: 14px;
+    }
+    .progress-op.failed { border-left-color: var(--danger); background: var(--danger-wash); }
+    .progress-op .op-label { font-weight: 650; }
+    .progress-op .op-step, .progress-op .op-elapsed { color: var(--muted); }
+    .progress-op .op-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .progress-op .op-spinner {
+      width: .85em; height: .85em; border-radius: 50%;
+      border: 2px solid rgb(23 32 51 / 18%); border-top-color: var(--primary);
+      animation: spin .8s linear infinite;
+    }
+    @media (prefers-reduced-motion: reduce) { .progress-op .op-spinner { animation: none; } }
     @media (prefers-reduced-motion: reduce) {
       form[data-busy].busy button::before { animation: none; }
     }
@@ -277,6 +295,7 @@
 </head>
 <body>
   <main class="shell">
+    <div id="progress-region" class="progress-region" role="status" aria-live="polite" hidden></div>
     <header>
       <div>
         <h1>JobPilot</h1>
@@ -1113,19 +1132,116 @@
       };
 
       const startPolling = () => {
-        if (polling === null) polling = setInterval(poll, 1500);
+        if (polling === null && !document.hidden) polling = setInterval(poll, 1500);
       };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && polling !== null) {
+          clearInterval(polling);
+          polling = null;
+        }
+      });
 
       button.addEventListener("click", async () => {
         button.disabled = true;
         const response = await fetch("/refresh", { method: "POST" });
         render(await response.json());
         startPolling();
+        if (window.jobpilotProgress) window.jobpilotProgress.start();
       });
 
       const initial = JSON.parse(panel.dataset.status);
       render(initial);
       if (initial.running) startPolling();
+    })();
+
+    // One progress loop for the whole page. Generation, regeneration and apply
+    // all run inside the request, so this is what distinguishes "working" from
+    // "wedged". It never polls faster than 1 Hz and stops entirely when the tab
+    // is hidden — a background tab has nobody reading it.
+    (() => {
+      const region = document.getElementById("progress-region");
+      if (!region) return;
+      let timer = null;
+      let interval = 1000;
+
+      const seconds = (value) => {
+        const total = Math.round(value);
+        if (total < 60) return `${total} s`;
+        return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, "0")} s`;
+      };
+
+      const render = (operations) => {
+        region.replaceChildren(...operations.map((op) => {
+          const row = document.createElement("div");
+          row.className = op.error ? "progress-op failed" : "progress-op";
+
+          if (op.running && !op.error) {
+            const spinner = document.createElement("span");
+            spinner.className = "op-spinner";
+            row.append(spinner);
+          }
+
+          const label = document.createElement("span");
+          label.className = "op-label";
+          label.textContent = op.label;
+          row.append(label);
+
+          const step = document.createElement("span");
+          step.className = "op-step";
+          if (op.error) {
+            step.textContent = op.error;
+          } else {
+            step.textContent = op.total
+              ? `${op.step} · ${op.done}/${op.total}`
+              : op.step;
+          }
+          row.append(step);
+
+          const elapsed = document.createElement("span");
+          elapsed.className = "op-elapsed";
+          elapsed.textContent = seconds(op.elapsed_seconds);
+          row.append(elapsed);
+          return row;
+        }));
+        region.hidden = operations.length === 0;
+      };
+
+      const poll = async () => {
+        try {
+          const response = await fetch("/progress");
+          if (!response.ok) throw new Error(`statut ${response.status}`);
+          const body = await response.json();
+          interval = Math.max(1000, body.poll_interval_ms || 1000);
+          render(body.operations || []);
+          if (!(body.operations || []).some((op) => op.running)) stop();
+        } catch (err) {
+          render([{
+            label: "Suivi de progression indisponible",
+            step: "Rechargez la page pour reprendre le suivi. Le travail en cours continue.",
+            elapsed_seconds: 0,
+            running: false,
+            error: String(err.message || err),
+          }]);
+          stop();
+        }
+      };
+
+      const start = () => {
+        if (timer !== null || document.hidden) return;
+        poll();
+        timer = setInterval(poll, interval);
+      };
+      const stop = () => {
+        if (timer !== null) { clearInterval(timer); timer = null; }
+      };
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stop();
+      });
+
+      window.jobpilotProgress = { start, stop };
+      // Something may already be running when the page loads.
+      start();
     })();
 
     document.querySelectorAll("form[data-busy]").forEach((form) => {
@@ -1136,6 +1252,7 @@
         form.classList.add("busy");
         const button = form.querySelector("button");
         button.textContent = `${button.dataset.label}…`;
+        if (window.jobpilotProgress) window.jobpilotProgress.start();
       });
     });
   </script>
