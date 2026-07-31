@@ -163,24 +163,25 @@ def test_archive_directory_names_are_legal_on_windows(
     assert re.fullmatch(r"\d{8}T\d{6}Z(-\d+)?", archive.name)
 
 
-def test_archives_are_not_reachable_through_the_file_endpoint(
+def test_the_live_artifact_endpoint_still_refuses_to_walk_into_the_archive(
     dashboard_db: sqlite3.Connection,
     tmp_path: Path,
 ) -> None:
-    """Archives are for a human with a diff tool, never for the application."""
+    """The live endpoint takes single-component names and nothing else.
+
+    Task 34 wrote this as "archives are never served at all". Task 36 item 4
+    surfaces them deliberately, through a dedicated route with its own narrower
+    guard, so what has to stay true is the narrower claim: the *live* guard was
+    not widened to reach them.
+    """
 
     application_id = _ready(dashboard_db, tmp_path, "regen-noserve")
 
     with _client(dashboard_db, tmp_path) as client:
         client.post(f"/application/{application_id}/regenerate")
-        (archive,) = _archives(tmp_path, application_id)
-        response = client.get(f"/files/{application_id}/{ARCHIVE_DIR_NAME}")
-        nested = client.get(
-            f"/files/{application_id}/{ARCHIVE_DIR_NAME}/{archive.name}/cv.pdf"
-        )
+        directory = client.get(f"/files/{application_id}/{ARCHIVE_DIR_NAME}")
 
-    assert response.status_code == 404
-    assert nested.status_code == 404
+    assert directory.status_code == 404
 
 
 # ----- refusals -----

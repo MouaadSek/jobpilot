@@ -175,6 +175,14 @@
     .artifact-actions { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
     .artifact-actions strong { margin-right: auto; }
     .artifact-actions .btn { padding: 5px 11px; font-size: 13px; }
+    .library-entry { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 12px 0; }
+    .library-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: baseline; }
+    .library-meta { display: flex; gap: 12px; font-size: 13px; }
+    .generation { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 0; }
+    .generation .btn { padding: 4px 10px; font-size: 12px; }
+    .gen-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .archives { margin-top: 10px; }
+    .archives summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     @media (prefers-reduced-motion: reduce) {
       form[data-busy].busy button::before { animation: none; }
     }
@@ -277,6 +285,7 @@
       <nav class="top-nav" aria-label="Main navigation">
         <a href="/">Applications</a>
         <a href="/skim">À trier</a>
+        <a href="/library">Documents</a>
         <a href="/outreach">Outreach</a>
         <a href="/facts">Faits</a>
         <span class="advisor-mode" title="Mode de tailoring résolu depuis .env">
@@ -471,6 +480,84 @@
           <p class="muted">
             Rien à trier pour l'instant. Lancez « Actualiser les offres » depuis
             la file pour en récupérer de nouvelles.
+          </p>
+        {% endif %}
+      </section>
+
+    {% elif view == "library" %}
+      <section class="panel">
+        <h2>Bibliothèque de documents</h2>
+        <p class="muted">
+          Chaque CV et chaque lettre générés, y compris les versions remplacées
+          par une régénération. Consultation seule.
+        </p>
+
+        <form method="get" action="/library" class="skim-filters">
+          <label>
+            Entreprise
+            <input type="search" name="q" value="{{ search }}" placeholder="Advens…">
+          </label>
+          <button type="submit" data-label="Recherche">Rechercher</button>
+          {% if search %}<a class="btn secondary" href="/library">Effacer</a>{% endif %}
+          <span class="muted">{{ entries|length }} candidature(s)</span>
+        </form>
+
+        {% if entries %}
+          {% for entry in entries %}
+            <article class="library-entry">
+              <header class="library-head">
+                <div>
+                  <strong>{{ entry.company or "Entreprise inconnue" }}</strong>
+                  <span class="muted">— {{ entry.title or "Sans intitulé" }}</span>
+                </div>
+                <div class="library-meta muted">
+                  <span>{{ entry.status }}</span>
+                  {% if entry.variant %}<span>CV : {{ entry.variant }}</span>{% endif %}
+                  {% if entry.apply_route %}<span>Voie : {{ entry.apply_route }}</span>{% endif %}
+                  <a href="/application/{{ entry.application_id }}">Ouvrir</a>
+                </div>
+              </header>
+
+              {% if entry.current %}
+                <div class="generation">
+                  <span class="gen-label">Version actuelle</span>
+                  <span class="muted" {% if entry.current.generated_at %}title="{{ entry.current.generated_at }}"{% endif %}>
+                    {{ entry.current.generated_at|ymd or "date inconnue" }}
+                  </span>
+                  {% for name in entry.current.artifacts %}
+                    <a class="btn secondary" href="/files/{{ entry.application_id }}/{{ name }}" target="_blank" rel="noopener">Prévisualiser {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                    <a class="btn secondary" href="/files/{{ entry.application_id }}/{{ name }}?download=1">Télécharger {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              {% if entry.archives %}
+                <details class="archives">
+                  <summary>{{ entry.archives|length }} version(s) précédente(s)</summary>
+                  {% for archive in entry.archives %}
+                    <div class="generation">
+                      <span class="gen-label">Archivée</span>
+                      <span class="muted" {% if archive.generated_at %}title="{{ archive.generated_at }}"{% endif %}>
+                        {{ archive.generated_at|ymd or archive.stamp }}
+                      </span>
+                      {% for name in archive.artifacts %}
+                        <a class="btn secondary" href="/files/{{ entry.application_id }}/archive/{{ archive.stamp }}/{{ name }}" target="_blank" rel="noopener">Prévisualiser {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                        <a class="btn secondary" href="/files/{{ entry.application_id }}/archive/{{ archive.stamp }}/{{ name }}?download=1">Télécharger {{ "CV" if name == "cv.pdf" else "LM" }}</a>
+                      {% endfor %}
+                    </div>
+                  {% endfor %}
+                </details>
+              {% endif %}
+            </article>
+          {% endfor %}
+        {% else %}
+          <p class="muted">
+            {% if search %}
+              Aucune candidature ne correspond à « {{ search }} ».
+            {% else %}
+              Aucun document généré pour l'instant. Approuvez une candidature
+              depuis la file pour produire un CV et une lettre.
+            {% endif %}
           </p>
         {% endif %}
       </section>

@@ -30,6 +30,7 @@ from jobpilot.apply_assist import (
 )
 from jobpilot.apply_flow import (
     APPLICATION_LOCK,
+    ARCHIVE_DIR_NAME,
     ApplicationGenerationError,
     ApplicationNotFoundError,
     ApplicationNotQueuedError,
@@ -44,6 +45,7 @@ from jobpilot.config import get_settings
 from jobpilot.db import connect
 from jobpilot.downloads import download_filename
 from jobpilot.facts import FactBankError, load_fact_bank
+from jobpilot.library import is_archive_stamp, library_entries
 from jobpilot.mailer import (
     MailerError,
     SendBlocked,
@@ -196,6 +198,40 @@ def _safe_artifact_path(
     candidate = (application_dir / name).resolve()
     try:
         candidate.relative_to(application_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid artifact path") from exc
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return candidate
+
+
+def _safe_archive_path(
+    output_root: Path,
+    application_id: int,
+    stamp: str,
+    name: str,
+) -> Path:
+    """Resolve one archived artefact, with the same discipline as the live one.
+
+    Deliberately a second, narrower function rather than a relaxation of
+    ``_safe_artifact_path``: the live guard still accepts single-component names
+    only, and this one additionally requires the directory to be a stamp
+    ``archive_artifacts`` itself wrote. Widening the existing guard to admit a
+    subdirectory would have loosened the path Task 34 pinned.
+    """
+
+    if not is_archive_stamp(stamp) or name not in ALLOWED_ARTIFACTS:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    requested = Path(name)
+    if requested.is_absolute() or len(requested.parts) != 1 or ".." in requested.parts:
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+    archive_root = (
+        output_root / str(application_id) / ARCHIVE_DIR_NAME / stamp
+    ).resolve()
+    candidate = (archive_root / name).resolve()
+    try:
+        candidate.relative_to(archive_root)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid artifact path") from exc
     if not candidate.is_file():
@@ -1136,6 +1172,61 @@ def create_app(
             ),
             # Starlette sets attachment whenever `filename` is given, so inline
             # has to be stated explicitly or every preview would download.
+            content_disposition_type="attachment" if download else "inline",
+        )
+
+    @app.get("/library", response_class=HTMLResponse)
+    def library_page(
+        request: Request,
+        db: Database,
+        q: str | None = None,
+    ) -> HTMLResponse:
+        """Every generation of every application's documents, archives included."""
+
+        return templates.TemplateResponse(
+            request=request,
+            name="dashboard.html",
+            context={
+                "view": "library",
+                "entries": [
+                    entry.as_dict()
+                    for entry in library_entries(db, artifacts_root, search=q)
+                ],
+                "search": q or "",
+                "error": None,
+            },
+        )
+
+    @app.get(
+        "/files/{application_id}/archive/{stamp}/{name}",
+        response_class=FileResponse,
+    )
+    def archived_artifact(
+        application_id: int,
+        stamp: str,
+        name: str,
+        db: Database,
+        download: bool = False,
+    ) -> FileResponse:
+        """Serve one archived artefact. Read-only, and never a status change.
+
+        Unlike the live route this does not require the application to be
+        'ready': the whole point of an archive is that it survives the
+        application moving on, including to 'applied'.
+        """
+
+        detail = application_detail(db, application_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="artifact not found")
+        path = _safe_archive_path(artifacts_root, application_id, stamp, name)
+        return FileResponse(
+            path,
+            filename=download_filename(
+                name,
+                application_id=application_id,
+                company=detail["company"],
+                candidate=_candidate_name(db),
+            ),
             content_disposition_type="attachment" if download else "inline",
         )
 
