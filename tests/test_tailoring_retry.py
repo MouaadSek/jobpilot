@@ -147,8 +147,11 @@ def test_first_attempt_rejected_then_retry_accepted(
     assert advisor.call_count == 2
     assert advisor.corrections[0] is None
     assert "3 to 7 words" in (advisor.corrections[1] or "")
+    # The wording dropped "once" in Task 37: an unknown fact id now gets two
+    # retries, so the line reports the attempt against its actual budget.
     assert any(
-        "retrying once with validator feedback" in record.getMessage()
+        "retrying with validator feedback" in record.getMessage()
+        and "attempt 1/2" in record.getMessage()
         and record.levelno == logging.DEBUG
         for record in caplog.records
     )

@@ -3003,12 +3003,25 @@ def _valid_fact_ids_block(
     blocks = []
     for section in sections:
         ids = _offered_fact_ids(section, selection, template, bank)
-        if ids:
-            blocks.append(
-                f'<valid_fact_ids section="{section}">\n'
-                + "\n".join(ids)
-                + "\n</valid_fact_ids>"
-            )
+        if not ids:
+            continue
+        shown = ids[:MAX_SECTION_FACT_IDS]
+        hidden = len(ids) - len(shown)
+        # Say so rather than silently truncating: a model told "here are the
+        # valid ids" and then shown a partial list will treat absence as proof
+        # an id does not exist, which is the opposite of the lesson.
+        tail = (
+            f"\n... and {hidden} more not shown; ask for a different one if none"
+            " of the above fits"
+            if hidden > 0
+            else ""
+        )
+        blocks.append(
+            f'<valid_fact_ids section="{section}">\n'
+            + "\n".join(shown)
+            + tail
+            + "\n</valid_fact_ids>"
+        )
     if not blocks:
         return ""
     return (
@@ -4099,6 +4112,16 @@ def _check_orphans(
 #: be argued into compliance, and each attempt is a paid call.
 _MAX_ADVISOR_RETRIES = 1
 
+#: An unknown id is the cheapest failure to recover from and the most common, so
+#: it gets a larger budget than other validator rejections. Everything else keeps
+#: exactly the count it had; provider errors (401/429) are still never retried.
+_MAX_UNKNOWN_ID_RETRIES = 2
+
+#: How many ids one section may list back on a retry. Skills alone can run to
+#: hundreds of entries in the bank, and a rejection that buries the answer in a
+#: wall of ids is no more useful than one that omits it.
+MAX_SECTION_FACT_IDS = 40
+
 
 def _is_validator_rejection(exc: TailoringError) -> bool:
     """True for content rejections the model can actually fix.
@@ -4286,17 +4309,26 @@ def _advise_and_tailor(
     bank: FactBank,
     application_id: int,
 ) -> tuple[TailoringPlan, str]:
-    """Produce a validated plan and its tailored HTML, retrying once on rejection.
+    """Produce a validated plan and its tailored HTML, retrying on rejection.
 
-    A rejected plan is re-requested from the SAME advisor exactly once, with the
-    validator's error appended to the prompt. The retry only feeds the error text
-    back: every provenance, completeness, and locked-field rule still applies to
-    the second answer exactly as it did to the first.
+    A rejected plan is re-requested from the SAME advisor with the validator's
+    error appended to the prompt. The retry only feeds the error text back: every
+    provenance, completeness, and locked-field rule still applies to the second
+    answer exactly as it did to the first.
+
+    An unknown fact id gets two retries rather than one — it is the cheapest
+    failure to recover from and the most common. Every other validator rejection
+    keeps its single retry, and provider errors are still never retried.
     """
 
     errors: list[str] = []
     last_error: TailoringError | None = None
-    for attempt in range(1 + _MAX_ADVISOR_RETRIES):
+    # The budget starts at the ordinary one and only grows once we have seen
+    # what went wrong, so a non-citation rejection can never borrow the extra
+    # unknown-id attempt.
+    budget = _MAX_ADVISOR_RETRIES
+    attempt = 0
+    while True:
         correction: str | None = None
         if last_error is not None:
             # An unknown id is a citation-format slip: the retry only succeeds if
@@ -4328,8 +4360,10 @@ def _advise_and_tailor(
         except TailoringError as exc:
             errors.append(str(exc))
             last_error = exc
+            if isinstance(exc, UnknownFactIdError):
+                budget = max(budget, _MAX_UNKNOWN_ID_RETRIES)
             retryable = (
-                attempt < _MAX_ADVISOR_RETRIES
+                attempt < budget
                 and _is_validator_rejection(exc)
                 and getattr(advisor, "accepts_correction", False)
             )
@@ -4343,12 +4377,14 @@ def _advise_and_tailor(
                     raise TailoringRejectedError(errors) from exc
                 raise
             log.debug(
-                "application %d: advisor attempt %d rejected (%s); retrying once "
+                "application %d: advisor attempt %d/%d rejected (%s); retrying "
                 "with validator feedback",
                 application_id,
                 attempt + 1,
+                budget + 1,
                 errors[-1],
             )
+            attempt += 1
             continue
         if errors:
             log.info(
@@ -4357,7 +4393,6 @@ def _advise_and_tailor(
                 errors[-1],
             )
         return plan, tailored_html
-    raise AssertionError("unreachable: the retry loop always returns or raises")
 
 
 def generate_application(
