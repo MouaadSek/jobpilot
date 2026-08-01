@@ -4461,6 +4461,7 @@ def _salvage_by_dropping(
 def _advise_and_tailor(
     advisor: TailoringAdvisor,
     *,
+    db: sqlite3.Connection,
     offer: OfferContext,
     selection: VariantSelection,
     template_context: TemplateContext,
@@ -4488,6 +4489,7 @@ def _advise_and_tailor(
     budget = _MAX_ADVISOR_RETRIES
     attempt = 0
     last_plan: TailoringPlan | None = None
+    invented: list[str] = []
     while True:
         correction: str | None = None
         if last_error is not None:
@@ -4523,6 +4525,21 @@ def _advise_and_tailor(
             last_error = exc
             if isinstance(exc, UnknownFactIdError):
                 budget = max(budget, _MAX_UNKNOWN_ID_RETRIES)
+                # Recorded as it happens rather than summarised at the end, so a
+                # later crash cannot lose the evidence. Item 1 is only knowable
+                # to have worked if invention is counted before and after.
+                invented.append(exc.fact_id)
+                log_event(
+                    db,
+                    application_id,
+                    "fact_id_rejected",
+                    {
+                        "fact_id": exc.fact_id,
+                        "section": exc.section,
+                        "had_similar": exc.entry_id is not None,
+                        "attempt": attempt + 1,
+                    },
+                )
             retryable = (
                 attempt < budget
                 and _is_validator_rejection(exc)
@@ -4564,6 +4581,13 @@ def _advise_and_tailor(
                 "application %d: advisor retry accepted after: %s",
                 application_id,
                 errors[-1],
+            )
+        if invented:
+            log_event(
+                db,
+                application_id,
+                "fact_id_recovered",
+                {"fact_ids": sorted(set(invented)), "attempts": attempt + 1},
             )
         return plan, tailored_html, None
 
@@ -4625,6 +4649,7 @@ def generate_application(
         bank = load_fact_bank()
         plan, tailored_html, dropped_citation = _advise_and_tailor(
             chosen_advisor,
+            db=db,
             offer=offer,
             selection=selection,
             template_context=template_context,

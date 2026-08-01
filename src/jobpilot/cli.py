@@ -826,6 +826,55 @@ def vocab_misses_cmd(
     typer.echo(f"\nadd a category word to {DEFAULT_VOCABULARY_PATH}")
 
 
+@app.command("invention-report")
+def invention_report_cmd() -> None:
+    """Show how often the advisor cites a fact id that does not exist.
+
+    Task 37 added prevention (a closed valid_fact_ids list in the prompt) and
+    recovery (two retries carrying the section's real ids). Both are guesses
+    until this counts them. Run it after a batch of generations to see whether
+    invention is falling, and whether the retries are recovering it.
+    """
+
+    from jobpilot.review import invention_report
+
+    conn = connect()
+    try:
+        report = invention_report(conn)
+    finally:
+        conn.close()
+
+    if not report["rejections"]:
+        typer.echo(
+            f"no invented fact ids recorded over {report['generations']} generation(s)"
+        )
+        return
+
+    def _pct(value: float | None) -> str:
+        return "—" if value is None else f"{value * 100:.0f}%"
+
+    typer.echo(f"generations       {report['generations']}")
+    typer.echo(f"rejections        {report['rejections']}")
+    typer.echo(f"distinct ids      {report['distinct_ids']}")
+    typer.echo(f"  recovered       {report['recovered_ids']}")
+    typer.echo(f"  dropped         {report['dropped_ids']}")
+    typer.echo(f"  never resolved  {report['unrecovered_ids']}")
+    typer.echo(f"invention rate    {_pct(report['invention_rate'])} of generations")
+    typer.echo(f"recovery rate     {_pct(report['recovery_rate'])} of invented ids")
+    typer.echo()
+    typer.echo(f"{'section':16} {'rejections':>10} {'distinct':>8} {'similar':>8}  ids")
+    for bucket in report["by_section"]:
+        ids = ", ".join(f"{fact_id} x{count}" for fact_id, count in bucket["ids"][:4])
+        typer.echo(
+            f"{bucket['section'][:16]:16} {bucket['rejections']:>10} "
+            f"{bucket['distinct_ids']:>8} {bucket['had_similar']:>8}  {ids}"
+        )
+    typer.echo(
+        "\n'similar' counts rejections where a near entry existed; the rest are "
+        "ids built from nothing, which is what item 1 targets."
+    )
+
+
 # ----- helpers -----
 
 def _csv(value: str) -> list[str]:

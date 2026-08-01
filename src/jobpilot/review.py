@@ -251,3 +251,90 @@ def vocabulary_misses(
         key=lambda miss: (-miss["count"], miss["token"]),
     )
     return ordered[:limit]
+
+
+def invention_report(db: sqlite3.Connection) -> dict[str, Any]:
+    """How often the advisor cites an id that does not exist, and whether it recovers.
+
+    Task 37 exists because of two hard generation failures, the second caused by
+    `skill.rules.sigma` — an id the model built by analogy. Prevention (item 1)
+    and recovery (item 2) are both guesses until this counts them, so the events
+    are read back rather than the logs: "did item 1 work?" has to be answerable
+    after ten generations without anyone re-reading a log file by hand.
+
+    A rejection is one `fact_id_rejected` event. A recovery is a generation that
+    emitted `fact_id_recovered`, which only happens when a retry produced a
+    valid plan after an invented id. A citation that was dropped instead
+    (item 3) is counted separately: it is not a recovery.
+    """
+
+    rejections = [
+        json.loads(row["detail"] or "{}")
+        for row in db.execute(
+            "SELECT detail FROM events WHERE event = 'fact_id_rejected' ORDER BY id"
+        )
+    ]
+    recovered_events = [
+        json.loads(row["detail"] or "{}")
+        for row in db.execute(
+            "SELECT detail FROM events WHERE event = 'fact_id_recovered' ORDER BY id"
+        )
+    ]
+    dropped = [
+        json.loads(row["detail"] or "{}")
+        for row in db.execute(
+            "SELECT detail FROM events WHERE event = 'citation_dropped' ORDER BY id"
+        )
+    ]
+    generations = int(
+        db.execute(
+            "SELECT count(*) AS n FROM events WHERE event = 'status_change' "
+            "AND detail LIKE '%\"to\": \"generating\"%'"
+        ).fetchone()["n"]
+    )
+
+    recovered_ids: set[str] = set()
+    for event in recovered_events:
+        recovered_ids.update(event.get("fact_ids") or ())
+    dropped_ids = {event.get("fact_id") for event in dropped if event.get("fact_id")}
+
+    by_section: dict[str, dict[str, Any]] = {}
+    for rejection in rejections:
+        section = rejection.get("section") or "unknown"
+        bucket = by_section.setdefault(
+            section, {"section": section, "rejections": 0, "ids": {}, "had_similar": 0}
+        )
+        bucket["rejections"] += 1
+        bucket["had_similar"] += 1 if rejection.get("had_similar") else 0
+        fact_id = rejection.get("fact_id") or "?"
+        bucket["ids"][fact_id] = bucket["ids"].get(fact_id, 0) + 1
+
+    distinct = {rejection.get("fact_id") for rejection in rejections}
+    distinct.discard(None)
+    return {
+        "generations": generations,
+        "rejections": len(rejections),
+        "distinct_ids": len(distinct),
+        "recovered_ids": len(recovered_ids & distinct),
+        "dropped_ids": len(dropped_ids & distinct),
+        "unrecovered_ids": len(distinct - recovered_ids - dropped_ids),
+        "recovery_rate": (
+            len(recovered_ids & distinct) / len(distinct) if distinct else None
+        ),
+        "invention_rate": (len(distinct) / generations if generations else None),
+        "by_section": sorted(
+            (
+                {
+                    "section": bucket["section"],
+                    "rejections": bucket["rejections"],
+                    "distinct_ids": len(bucket["ids"]),
+                    "had_similar": bucket["had_similar"],
+                    "ids": sorted(
+                        bucket["ids"].items(), key=lambda item: (-item[1], item[0])
+                    ),
+                }
+                for bucket in by_section.values()
+            ),
+            key=lambda bucket: (-bucket["rejections"], bucket["section"]),
+        ),
+    }

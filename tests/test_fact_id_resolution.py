@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import copy
+import sqlite3
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from jobpilot.config import PROJECT_ROOT
+from jobpilot.db import apply_schema, run_migrations, seed_sources
 from jobpilot.facts import load_fact_bank
 from jobpilot.tailoring import (
     AmbiguousFactIdError,
@@ -274,19 +276,47 @@ class _RecordingAdvisor:
         return TailoringPlan.from_mapping(payload, offer=offer, selection=selection)
 
 
+def _throwaway_db() -> sqlite3.Connection:
+    """A real database with one application row.
+
+    Task 37 item 4 records every rejected id as an event, and events carry a
+    foreign key to applications — so this helper needs somewhere to write rather
+    than a stub. In-memory and per-call: these tests assert on the correction
+    text, not on what was recorded.
+    """
+
+    root = Path(__file__).resolve().parents[1]
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    apply_schema(connection, root / "schema.sql")
+    run_migrations(connection, root / "migrations")
+    seed_sources(connection)
+    connection.execute(
+        "INSERT INTO applications (id, kind, status) VALUES (1, 'offer', 'generating')"
+    )
+    connection.commit()
+    return connection
+
+
 def _advise(advisor: Any) -> None:
     offer = _offer()
     selection = pick_variant(offer.description, title=offer.title)
     original = TEMPLATE_PATH.read_text(encoding="utf-8")
-    _advise_and_tailor(
-        advisor,
-        offer=offer,
-        selection=selection,
-        template_context=extract_template_context(original),
-        original_html=original,
-        bank=load_fact_bank(),
-        application_id=1,
-    )
+    connection = _throwaway_db()
+    try:
+        _advise_and_tailor(
+            advisor,
+            db=connection,
+            offer=offer,
+            selection=selection,
+            template_context=extract_template_context(original),
+            original_html=original,
+            bank=load_fact_bank(),
+            application_id=1,
+        )
+    finally:
+        connection.close()
 
 
 def test_the_correction_block_lists_the_valid_ids_for_that_section() -> None:
