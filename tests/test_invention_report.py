@@ -220,7 +220,7 @@ def test_the_command_reports_an_empty_history_plainly(
     result = CliRunner().invoke(cli.app, ["invention-report"])
 
     assert result.exit_code == 0
-    assert "no invented fact ids recorded" in result.output
+    assert "no invented fact ids or figures recorded" in result.output
 
 
 def test_the_command_summarises_by_section_and_rate(

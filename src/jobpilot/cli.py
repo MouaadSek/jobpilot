@@ -844,9 +844,11 @@ def invention_report_cmd() -> None:
     finally:
         conn.close()
 
-    if not report["rejections"]:
+    numbers = report["numbers"]
+    if not report["rejections"] and not numbers["rejections"]:
         typer.echo(
-            f"no invented fact ids recorded over {report['generations']} generation(s)"
+            f"no invented fact ids or figures recorded over "
+            f"{report['generations']} generation(s)"
         )
         return
 
@@ -860,6 +862,13 @@ def invention_report_cmd() -> None:
     typer.echo(f"  dropped         {report['dropped_ids']}")
     typer.echo(f"  never resolved  {report['unrecovered_ids']}")
     typer.echo(f"invention rate    {_pct(report['invention_rate'])} of generations")
+    typer.echo(
+        f"unsupported figures {numbers['rejections']} rejection(s), "
+        f"{numbers['distinct']} distinct"
+    )
+    if numbers["ids"]:
+        listed = ", ".join(f"{value} x{count}" for value, count in numbers["ids"][:6])
+        typer.echo(f"  {listed}")
     typer.echo(f"recovery rate     {_pct(report['recovery_rate'])} of invented ids")
     typer.echo()
     typer.echo(f"{'section':16} {'rejections':>10} {'distinct':>8} {'similar':>8}  ids")

@@ -309,9 +309,30 @@ def invention_report(db: sqlite3.Connection) -> dict[str, Any]:
         fact_id = rejection.get("fact_id") or "?"
         bucket["ids"][fact_id] = bucket["ids"].get(fact_id, 0) + 1
 
+    # Numbers are the same failure shape in a different place: prose rather than
+    # a citation slot. Same report, separate category, so it is visible which
+    # kind dominates rather than the two averaging each other out.
+    number_events = [
+        json.loads(row["detail"] or "{}")
+        for row in db.execute(
+            "SELECT detail FROM events WHERE event = 'number_rejected' ORDER BY id"
+        )
+    ]
+    number_counts: dict[str, int] = {}
+    for event in number_events:
+        value = event.get("number") or "?"
+        number_counts[value] = number_counts.get(value, 0) + 1
+
     distinct = {rejection.get("fact_id") for rejection in rejections}
     distinct.discard(None)
     return {
+        "numbers": {
+            "rejections": len(number_events),
+            "distinct": len(number_counts),
+            "ids": sorted(
+                number_counts.items(), key=lambda item: (-item[1], item[0])
+            ),
+        },
         "generations": generations,
         "rejections": len(rejections),
         "distinct_ids": len(distinct),

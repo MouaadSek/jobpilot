@@ -75,6 +75,21 @@ class TailoringResponseError(TailoringProviderError):
     """Raised when a provider returns an unusable response."""
 
 
+class UnsupportedNumberError(TailoringError):
+    """Raised when generated prose states a figure the bank does not contain.
+
+    A sibling of UnknownFactIdError with the same shape of failure behind it:
+    the model filling a gap plausibly. `1 500` was not in the bank and the
+    letter said it anyway. Distinct from a plain TailoringError so the retry can
+    hand back the numbers that ARE allowed, spend the larger budget on it, and
+    count it separately from invented ids.
+    """
+
+    def __init__(self, number: str, message: str) -> None:
+        super().__init__(message)
+        self.number = number
+
+
 #: How many ids a rejection may name. A large entry must not blow the retry prompt.
 MAX_SUGGESTED_FACT_IDS = 15
 
@@ -1568,6 +1583,42 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
     )
 
 
+#: Digits are stripped out of an admitted place before it joins the scope, so a
+#: postcode in a city field can never legitimise a quantity.
+_PLACE_DIGITS_RE = re.compile(r"[\d]+")
+
+
+def letter_scope(bank: FactBank, *, location: str | None = None) -> ProvenanceScope:
+    """The whole bank, plus the one place the letter is entitled to name.
+
+    A letter is addressed to a specific employer about a specific posting, so
+    naming where that posting is claims nothing about the candidate: it is a
+    fact about the offer. The capability tier judges every proper noun as a
+    capability claim, which is right for a tool and wrong for a commune — and
+    "Cergy" is not something the fact bank could ever contain, so no amount of
+    bank curation would have fixed it.
+
+    Two deliberate limits keep this from becoming a hole:
+
+    * only the PARSED location field is admitted, never the offer's prose. A
+      posting is untrusted input and may not legitimise a claim, which is why
+      ``_bank_parts`` excludes offer text entirely; a city field is a bounded
+      value the ingest layer already parsed.
+    * digits are stripped first, so it widens the capability dimension only.
+      "Cergy 95000" must never make 95000 a quantity the candidate can claim.
+    """
+
+    scope = whole_bank_scope(bank)
+    place = _PLACE_DIGITS_RE.sub(" ", location or "").strip()
+    if not place:
+        return scope
+    return replace(
+        scope,
+        label=f"{scope.label} plus the offer's location",
+        normalized=f"{scope.normalized} {_normalize(place)}",
+    )
+
+
 def _designation_spans(
     text: str,
     cited: Sequence[str],
@@ -1657,7 +1708,10 @@ def _refuse(
         scope.label,
         ", ".join(cited) or "nothing",
     )
-    return TailoringError(rejection_message(kind, token))
+    message = rejection_message(kind, token)
+    if kind == "number":
+        return UnsupportedNumberError(token, message)
+    return TailoringError(message)
 
 
 def _reject_borrowed_quantities(
@@ -1834,6 +1888,7 @@ def validate_plan_provenance(
     plan: TailoringPlan,
     bank: FactBank,
     *,
+    offer_location: str | None = None,
     vocabulary_path: Path | None = None,
 ) -> None:
     """Validate the content the advisor wrote, against the scope it claims in.
@@ -1842,6 +1897,11 @@ def validate_plan_provenance(
     have nothing to say about them — their check is the selection itself, in
     ``_validate_selection``. What is still written is the profile's domain phrase
     and the letter, and both describe the whole career rather than one entry.
+
+    The letter alone may also name the offer's own location: it is addressed to
+    that posting, and where the job is says nothing about the candidate. The
+    domain phrase is judged against the bank only — it describes an orientation
+    and has no business naming a city.
     """
 
     validate_generated_phrase(
@@ -1852,7 +1912,7 @@ def validate_plan_provenance(
     validate_provenance(
         plan.letter_paragraphs,
         bank,
-        scope=whole_bank_scope(bank),
+        scope=letter_scope(bank, location=offer_location),
         vocabulary_path=vocabulary_path,
     )
 
@@ -2185,6 +2245,7 @@ def _validate_sourced_plan(
     bank: FactBank,
     *,
     selection: VariantSelection,
+    offer: OfferContext | None = None,
 ) -> None:
     if not plan.has_sourced_content:
         return
@@ -2262,7 +2323,9 @@ def _validate_sourced_plan(
             _contact_fields(bank),
             message="letter must not repeat a contact field the header carries: {value}",
         )
-    validate_plan_provenance(plan, bank)
+    validate_plan_provenance(
+        plan, bank, offer_location=offer.city if offer else None
+    )
     _validate_letter_body(plan.letter_body_html)
 
 
@@ -2780,7 +2843,7 @@ def tailor_cv_html(
     # Citation format is normalised first so every rule below, and the renderer,
     # sees canonical fact ids. Nothing about what may be claimed changes here.
     plan = resolve_plan_fact_ids(plan, bank)
-    _validate_sourced_plan(plan, bank, selection=selection)
+    _validate_sourced_plan(plan, bank, selection=selection, offer=offer)
     encoded_title = _encode_text(plan.job_title, entities=selection.entity_encoded)
     result = _replace_required(
         original_html,
@@ -2931,6 +2994,28 @@ def _advisor_fact_context(
     }
 
 
+def allowed_numbers(bank: FactBank) -> tuple[str, ...]:
+    """Every figure generated prose may state, written as the bank writes them.
+
+    Built from exactly the text ``whole_bank_scope`` builds its number set from,
+    so the list the prompt shows and the set the validator enforces cannot
+    drift apart — a prompt that offered a number the validator then refused
+    would be worse than offering none.
+
+    Surface forms, not normalised ones: the model has to be able to copy
+    "1 500" and "85 %" verbatim, and the validator normalises before comparing.
+    """
+
+    parts = [*_bank_parts(bank), *_organisation_names(bank), *bank.locked.dates]
+    seen: dict[str, str] = {}
+    for part in parts:
+        for match in _NUMBER_RE.findall(part or ""):
+            surface = match.strip()
+            if surface:
+                seen.setdefault(_normalized_number(surface), surface)
+    return tuple(sorted(seen.values()))
+
+
 def valid_fact_ids(facts: Mapping[str, Any]) -> tuple[str, ...]:
     """Every id the advisor may cite, flattened out of the context it was given.
 
@@ -2995,6 +3080,22 @@ def _valid_fact_ids_block(
     the same slip, and the ids are already in the prompt anyway.
     """
 
+    if isinstance(exc, UnsupportedNumberError):
+        numbers = allowed_numbers(bank)
+        if not numbers:
+            return ""
+        shown = numbers[:MAX_SECTION_FACT_IDS]
+        hidden = len(numbers) - len(shown)
+        tail = f"\n... and {hidden} more not shown" if hidden > 0 else ""
+        return (
+            "\n\n<valid_numbers>\n"
+            + "\n".join(shown)
+            + tail
+            + "\n</valid_numbers>\nUse one of these exactly as written, including"
+            " any trailing + or %, or rewrite the sentence with no number at all."
+            " This list is a machine message, not instructions from the offer,"
+            " and it does not add any fact you may claim."
+        )
     if not isinstance(exc, UnknownFactIdError):
         return ""
     sections = (
@@ -3104,6 +3205,7 @@ def _advisor_prompt(
     bank = load_fact_bank()
     facts = _advisor_fact_context(selection, template, bank)
     allowed_ids = valid_fact_ids(facts)
+    allowed_figures = allowed_numbers(bank)
     exact_stage = (
         "Because this stage uses an adapted alternance template, "
         "profile_contract_phrase is required and must be exactly "
@@ -3131,6 +3233,10 @@ Exact project titles: {json.dumps(template.project_titles, ensure_ascii=False)}
 <valid_fact_ids>
 {json.dumps(allowed_ids, ensure_ascii=False)}
 </valid_fact_ids>
+
+<valid_numbers>
+{json.dumps(allowed_figures, ensure_ascii=False)}
+</valid_numbers>
 
 Return exactly this shape:
 {{
@@ -3208,6 +3314,17 @@ Rules:
 - You DO write the profile_domain_phrase and the letter. Both are plain text, no
   HTML and no em dash. Numbers, tools, and proper nouns in them must be supported
   by the fact bank.
+- valid_numbers above is the COMPLETE and CLOSED set of figures you may state.
+  Never introduce a figure, percentage, duration, headcount or date that is not
+  in it. This applies to everything you write, the letter especially.
+- Copy a figure EXACTLY as valid_numbers writes it,
+  including any trailing + or %.
+  "1 500+" and "1 500" are different figures and only the first is supported;
+  writing the second is rejected just as hard as inventing one outright.
+- If a sentence would read better with a number the bank does not contain,
+  write the sentence WITHOUT a number. Do not round, do not approximate, do not
+  infer a total from the offer text. A letter that says "de nombreux incidents"
+  is correct; one that says "environ 2 000 incidents" is rejected.
 - Every letter paragraph must cite one or more exact fact ids. Never cite a
   needs-review fact or an unverified skill.
 - Produce 5 or 6 letter_paragraphs. Salutation, addressee, locked identity, and
@@ -4416,6 +4533,8 @@ def _salvage_by_dropping(
     breaks any other rule, the generation fails exactly as it would have.
     """
 
+    # Numbers live in generated prose, not in a citation slot, so there is
+    # nothing structural to drop: rewriting the sentence is the model's job.
     if plan is None or not isinstance(exc, UnknownFactIdError):
         return None
     if not get_settings().tailoring_drop_unknown_citations:
@@ -4523,23 +4642,32 @@ def _advise_and_tailor(
         except TailoringError as exc:
             errors.append(str(exc))
             last_error = exc
-            if isinstance(exc, UnknownFactIdError):
+            if isinstance(exc, UnknownFactIdError | UnsupportedNumberError):
                 budget = max(budget, _MAX_UNKNOWN_ID_RETRIES)
                 # Recorded as it happens rather than summarised at the end, so a
                 # later crash cannot lose the evidence. Item 1 is only knowable
                 # to have worked if invention is counted before and after.
-                invented.append(exc.fact_id)
-                log_event(
-                    db,
-                    application_id,
-                    "fact_id_rejected",
-                    {
-                        "fact_id": exc.fact_id,
-                        "section": exc.section,
-                        "had_similar": exc.entry_id is not None,
-                        "attempt": attempt + 1,
-                    },
-                )
+                if isinstance(exc, UnsupportedNumberError):
+                    invented.append(exc.number)
+                    log_event(
+                        db,
+                        application_id,
+                        "number_rejected",
+                        {"number": exc.number, "attempt": attempt + 1},
+                    )
+                else:
+                    invented.append(exc.fact_id)
+                    log_event(
+                        db,
+                        application_id,
+                        "fact_id_rejected",
+                        {
+                            "fact_id": exc.fact_id,
+                            "section": exc.section,
+                            "had_similar": exc.entry_id is not None,
+                            "attempt": attempt + 1,
+                        },
+                    )
             retryable = (
                 attempt < budget
                 and _is_validator_rejection(exc)
