@@ -4,6 +4,7 @@
 
     {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
     {% if wttj_alert and not error %}<div class="error" role="alert">{{ wttj_alert }}</div>{% endif %}
+    {% if citation_warning %}<div class="error" role="alert">{{ citation_warning }}</div>{% endif %}
 
     <dl class="meta">
       <div><dt>Statut</dt><dd>{{ application.status }}</dd></div>

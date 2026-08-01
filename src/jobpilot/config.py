@@ -114,6 +114,12 @@ class Settings:
     lba_max_pages: int = 5
     # WTTJ inline apply remains a fill/upload-only dry run unless explicitly enabled.
     wttj_auto_submit_enabled: bool = False
+    # Last-resort degradation for a citation the advisor could not get right
+    # after every retry. OFF by design: a silently weaker CV is worse than a
+    # failed generation, because nobody reviews what they were not told about.
+    # Task 37 item 4 measures whether this is ever needed; turning it on is a
+    # separate decision that should have that evidence behind it.
+    tailoring_drop_unknown_citations: bool = False
 
     def require_smtp_credentials(self) -> tuple[str, int, str, str, str]:
         if not self.smtp_username or not self.smtp_password:
@@ -222,4 +228,7 @@ def get_settings() -> Settings:
         wttj_max_pages=int(os.getenv("WTTJ_MAX_PAGES", "5")),
         lba_max_pages=int(os.getenv("LBA_MAX_PAGES", "5")),
         wttj_auto_submit_enabled=_env_bool("WTTJ_AUTO_SUBMIT_ENABLED"),
+        tailoring_drop_unknown_citations=_env_bool(
+            "TAILORING_DROP_UNKNOWN_CITATIONS"
+        ),
     )

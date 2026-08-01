@@ -4299,6 +4299,165 @@ def resolve_variant(
     return decision
 
 
+@dataclass(frozen=True, slots=True)
+class DroppedCitation:
+    """One citation removed as a last resort, and where it was removed from."""
+
+    fact_id: str
+    position: str
+    entry_id: str | None = None
+
+    @property
+    def warning(self) -> str:
+        """What the human is told. It must be impossible to miss."""
+
+        where = (
+            "la liste des compétences"
+            if self.position == "skill_order"
+            else f"les points de l'expérience {self.entry_id}"
+        )
+        return (
+            f"Le CV a été généré SANS la citation « {self.fact_id} » : "
+            f"l'assistant l'a inventée et n'a pas réussi à la corriger. "
+            f"Elle a été retirée de {where}. Relisez le CV avant de l'envoyer."
+        )
+
+
+def _employer_bullet_floor(bank: FactBank, entry_id: str) -> int:
+    """How many bullets the completeness floor guarantees this employer.
+
+    Read from the same constants ``_validate_experience_completeness`` uses, so
+    a drop can never produce a plan that the floor then rejects — and can never
+    quietly diverge from it either.
+    """
+
+    order = [entry.id for entry in _reverse_chronological_experiences(bank)]
+    try:
+        position = order.index(entry_id)
+    except ValueError:
+        return _RECENT_EMPLOYER_MIN_BULLETS
+    return (
+        _RECENT_EMPLOYER_MIN_BULLETS
+        if position < _RECENT_EMPLOYER_COUNT
+        else _OLDER_EMPLOYER_MIN_BULLETS
+    )
+
+
+def drop_unknown_citation(
+    plan: TailoringPlan,
+    bank: FactBank,
+    fact_id: str,
+) -> tuple[TailoringPlan, DroppedCitation] | None:
+    """Remove one unusable citation, or refuse when removing it would weaken the CV.
+
+    Narrow by construction. Exactly two positions can lose a citation:
+
+    * ``skill_order``, which has no minimum at all;
+    * one bullet of an experience entry, and only while that entry stays at or
+      above the number of bullets the completeness floor guarantees it.
+
+    Everything else returns None and stays a hard failure: an employer, a
+    project (exactly three are required, each with its single fact), the last
+    bullet the floor demands, and any citation this function does not recognise.
+    A CV that silently loses Mouaad's current internship is the exact failure
+    that started this whole line of work.
+
+    NOTE ON THE SPEC. Task 37 item 3 says a bullet may be dropped when the entry
+    "still has at least one remaining bullet". That contradicts its own
+    instruction to preserve the Task 22 completeness floor, which requires TWO
+    bullets for each of the two most recent employers. Taking the weaker rule
+    would produce plans the floor then rejects, so the floor is what is enforced
+    here and "at least one" is not.
+    """
+
+    if fact_id in plan.skill_order:
+        remaining = tuple(item for item in plan.skill_order if item != fact_id)
+        return (
+            replace(plan, skill_order=remaining),
+            DroppedCitation(fact_id=fact_id, position="skill_order"),
+        )
+
+    for index, chosen in enumerate(plan.experience_content):
+        if fact_id not in chosen.fact_ids:
+            continue
+        remaining = tuple(item for item in chosen.fact_ids if item != fact_id)
+        if len(remaining) < _employer_bullet_floor(bank, chosen.experience_id):
+            return None
+        content = list(plan.experience_content)
+        content[index] = replace(chosen, fact_ids=remaining)
+        return (
+            replace(plan, experience_content=tuple(content)),
+            DroppedCitation(
+                fact_id=fact_id,
+                position="experience",
+                entry_id=chosen.experience_id,
+            ),
+        )
+
+    return None
+
+
+def _salvage_by_dropping(
+    exc: TailoringError,
+    plan: TailoringPlan | None,
+    *,
+    offer: OfferContext,
+    selection: VariantSelection,
+    template_context: TemplateContext,
+    original_html: str,
+    bank: FactBank,
+    application_id: int,
+) -> tuple[TailoringPlan, str, DroppedCitation] | None:
+    """Last resort: generate without one unusable citation, or give up.
+
+    Disabled unless TAILORING_DROP_UNKNOWN_CITATIONS is on, and even then it
+    only ever removes what ``drop_unknown_citation`` considers safe. The reduced
+    plan is re-validated in full by ``tailor_cv_html``: if dropping the citation
+    breaks any other rule, the generation fails exactly as it would have.
+    """
+
+    if plan is None or not isinstance(exc, UnknownFactIdError):
+        return None
+    if not get_settings().tailoring_drop_unknown_citations:
+        return None
+
+    reduced = drop_unknown_citation(plan, bank, exc.fact_id)
+    if reduced is None:
+        log.info(
+            "application %d: cannot drop %s without weakening the CV; failing",
+            application_id,
+            exc.fact_id,
+        )
+        return None
+
+    candidate, dropped = reduced
+    try:
+        tailored_html = tailor_cv_html(
+            original_html,
+            candidate,
+            selection,
+            offer_description=offer.description,
+            fact_bank=bank,
+            offer=offer,
+        )
+    except TailoringError as second:
+        log.info(
+            "application %d: dropping %s did not produce a valid CV either: %s",
+            application_id,
+            exc.fact_id,
+            second,
+        )
+        return None
+
+    log.warning(
+        "application %d: generated WITHOUT invented citation %s (dropped from %s)",
+        application_id,
+        dropped.fact_id,
+        dropped.position,
+    )
+    return candidate, tailored_html, dropped
+
+
 def _advise_and_tailor(
     advisor: TailoringAdvisor,
     *,
@@ -4308,7 +4467,7 @@ def _advise_and_tailor(
     original_html: str,
     bank: FactBank,
     application_id: int,
-) -> tuple[TailoringPlan, str]:
+) -> tuple[TailoringPlan, str, DroppedCitation | None]:
     """Produce a validated plan and its tailored HTML, retrying on rejection.
 
     A rejected plan is re-requested from the SAME advisor with the validator's
@@ -4328,6 +4487,7 @@ def _advise_and_tailor(
     # unknown-id attempt.
     budget = _MAX_ADVISOR_RETRIES
     attempt = 0
+    last_plan: TailoringPlan | None = None
     while True:
         correction: str | None = None
         if last_error is not None:
@@ -4349,6 +4509,7 @@ def _advise_and_tailor(
                 ),
                 location_region=resolve_header_location(offer.city),
             )
+            last_plan = plan
             tailored_html = tailor_cv_html(
                 original_html,
                 plan,
@@ -4368,6 +4529,18 @@ def _advise_and_tailor(
                 and getattr(advisor, "accepts_correction", False)
             )
             if not retryable:
+                salvaged = _salvage_by_dropping(
+                    exc,
+                    last_plan,
+                    offer=offer,
+                    selection=selection,
+                    template_context=template_context,
+                    original_html=original_html,
+                    bank=bank,
+                    application_id=application_id,
+                )
+                if salvaged is not None:
+                    return salvaged
                 if len(errors) > 1:
                     log.warning(
                         "application %d: advisor retry rejected too: %s",
@@ -4392,7 +4565,7 @@ def _advise_and_tailor(
                 application_id,
                 errors[-1],
             )
-        return plan, tailored_html
+        return plan, tailored_html, None
 
 
 def generate_application(
@@ -4450,7 +4623,7 @@ def generate_application(
         original_html = original_path.read_text(encoding="utf-8")
         template_context = extract_template_context(original_html)
         bank = load_fact_bank()
-        plan, tailored_html = _advise_and_tailor(
+        plan, tailored_html, dropped_citation = _advise_and_tailor(
             chosen_advisor,
             offer=offer,
             selection=selection,
@@ -4546,6 +4719,24 @@ def generate_application(
             ready_detail["selection_justifications"] = selection_notes
         if orphan_warning:
             ready_detail["orphan_warning"] = orphan_warning
+        if dropped_citation is not None:
+            # Recorded on the application, not only in the log: a silently
+            # weaker CV is worse than a failed generation, because nobody
+            # reviews what they were not told about.
+            ready_detail["dropped_citation"] = dropped_citation.fact_id
+            ready_detail["dropped_from"] = dropped_citation.position
+            ready_detail["citation_warning"] = dropped_citation.warning
+            log_event(
+                db,
+                application_id,
+                "citation_dropped",
+                {
+                    "fact_id": dropped_citation.fact_id,
+                    "position": dropped_citation.position,
+                    "entry_id": dropped_citation.entry_id,
+                    "warning": dropped_citation.warning,
+                },
+            )
         if decision.justification:
             ready_detail["routing_justification"] = decision.justification
         if decision.runner_up:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import sqlite3
 import sys
@@ -263,6 +264,25 @@ def _safe_archive_path(
     return candidate
 
 
+def _citation_warning(events: list[dict[str, Any]]) -> str | None:
+    """The warning for a CV generated without a citation the advisor invented.
+
+    Read back from the events table rather than recomputed, and shown for as
+    long as the application exists: a silently weaker CV is worse than a failed
+    generation, so this must not scroll away with the rest of the history.
+    """
+
+    for event in reversed(events):
+        if event["event"] != "citation_dropped":
+            continue
+        try:
+            detail = json.loads(event["detail"] or "{}")
+        except (TypeError, ValueError):
+            return None
+        return detail.get("warning") or None
+    return None
+
+
 def create_app(
     *,
     advisor: Any | None = None,
@@ -356,6 +376,7 @@ def create_app(
                     and latest_event_name != "submit_unconfirmed"
                 ),
                 "wttj_alert": wttj_alert,
+                "citation_warning": _citation_warning(events),
                 "error": error,
             },
             status_code=status_code,
