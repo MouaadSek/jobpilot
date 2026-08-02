@@ -190,13 +190,21 @@ All three advisor modes use the same sourced-content JSON contract. Identity,
 contact details, employers, dates, diplomas, and certification names remain
 renderer-owned and cannot be supplied by the model.
 
-**In the CV.** Generated CV text — the profile domain phrase — may not contain any
-of them. Each has a slot the renderer fills, so writing one there duplicates or
-contradicts that slot.
+**In the CV.** The model proposes the profile domain phrase. A valid, grounded
+phrase is preserved exactly. An automatic advisor gets its normal validator
+correction attempt; if the second phrase is still invalid, the renderer uses the
+validated phrase for the already-selected CV variant. This recovery covers word
+count, provenance, and the ±15-character layout budget without adding
+offer-specific terms to the generic vocabulary. Interactive input still fails
+validation so a human typo is never silently replaced.
 
-**In the letter.** Prose about a career has to be able to name it, so a letter
-paragraph may say « Mon stage actuel chez Baïfall Dream… », name Supinfo, or cite
-the AZ-900. Two limits still hold and they come from different rules:
+**In the letter.** The renderer safely injects the parsed company and job title
+into the first paragraph. They are offer identity, not claims about the candidate,
+and therefore never widen what model prose may claim. The model's five or six
+fact-backed paragraphs are kept intact and must not repeat company, title, or
+location. Prose about the career may still say « Mon stage actuel chez Baïfall
+Dream… », name Supinfo, or cite the AZ-900. Two limits still hold and they come
+from different rules:
 
 - **contact details** — name, email, phone, LinkedIn — are refused in the letter
   body, because the renderer injects the address block and a body that repeats it
@@ -230,11 +238,17 @@ the CV.
 
 What the advisor still **writes**:
 
-- the **profile domain phrase** — 3 to 7 words after « Profil orienté », with the
-  rendered profile held within ±15 characters of the template's;
-- the **job title** — the offer's terminology plus contract and start date;
-- the **motivation letter** — free generation. The letter has room and no line-fit
-  constraint, so its rules are unchanged.
+- the proposed **profile domain phrase** — 3 to 7 words after « Profil orienté »,
+  with the rendered profile held within ±15 characters of the template's;
+- the **motivation evidence paragraphs** — free generation backed by cited facts.
+  The renderer-owned introduction carries the offer identity, so company names
+  such as Thales and role labels such as Analyst or N2 do not need to become
+  candidate vocabulary.
+
+The job title, contract/start date, location, letter salutation, offer
+introduction, and signature are renderer-owned. Model-authored en/em dashes are
+canonicalized to ordinary hyphens before validation; words, citations, and
+evidence ordering are unchanged.
 
 Tech rows are **reordered** by `skill_order`, which ranks the values already in
 the template and never drops one. `tech_additions` may insert **at most 2**
@@ -250,12 +264,15 @@ Région comes from the offer's region, else the profile.
 
 ### Scope: what a claim is judged against
 
-Generated text is judged against a **scope**. The letter and the domain phrase
-describe a whole career, so their scope is the whole verified bank. A selected
-bullet has no scope question left — its text is the bank's own — so its whole check
-is the selection: the id must resolve (below) and must belong to *that* entry.
-Borrowing another employer's achievement is no longer something the validator has
-to catch in prose; it is unrepresentable.
+Generated model text is judged against a **scope**. The letter evidence and the
+domain phrase describe a whole career, so their scope is the whole verified bank.
+The renderer-owned company/title introduction is checked as escaped offer identity
+instead; it is never added to the bank scope and cannot license a sentence such as
+« j'ai utilisé [unsupported tool] ». A selected bullet has no scope question left
+— its text is the bank's own — so its whole check is the selection: the id must
+resolve (below) and must belong to *that* entry. Borrowing another employer's
+achievement is no longer something the validator has to catch in prose; it is
+unrepresentable.
 
 Entry scope was introduced when bullets were still written, because judging one
 against the facts it happened to cite made the same true sentence pass or fail on
@@ -395,11 +412,15 @@ conteneur mal mesurée ») and that the reliable control is the rendered PDF:
 - an orphan reported against `li` or `.project-desc` — **verbatim** bank text,
   whose line fit was tuned by hand — logs a warning and is recorded as
   `orphan_warning` on the `ready` event. It does not fail the generation.
-- an orphan reported against `.profile` — the **generated** domain phrase — still
-  fails the generation, with the usual rollback to `queued`.
+- an orphan reported against `.profile` — the **generated** domain phrase —
+  triggers one deterministic re-render with the selected template's original,
+  hand-tuned phrase. Success is recorded as `profile_layout_fallback`; if the
+  second orphan check still fails, generation remains a hard failure with the
+  usual rollback to `queued`.
 
 The split is by the selector the script blames, so it follows the text's origin
-rather than a guess.
+rather than a guess. The PDF page-count gate runs after any profile recovery and
+remains hard.
 
 ## Sources
 

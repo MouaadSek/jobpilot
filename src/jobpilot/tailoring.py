@@ -255,6 +255,22 @@ class OfferContext:
     company_known: bool = True
 
 
+_MODEL_DASH_RE = re.compile(r"\s*[\u2013\u2014]\s*")
+
+
+def _canonicalize_prose(value: str) -> str:
+    """Normalize model punctuation that the document contract forbids.
+
+    This is a lossless typography repair, not a content repair: ordinary hyphens,
+    words, citations, and sentence order are unchanged. Keeping it at the provider
+    boundary prevents a harmless dash choice from spending a retry or failing an
+    otherwise grounded plan.
+    """
+
+    normalized = _MODEL_DASH_RE.sub(" - ", value)
+    return re.sub(r"[ \t]+", " ", normalized).strip()
+
+
 @dataclass(frozen=True, slots=True)
 class SourcedBullet:
     """Plain generated text plus the stable fact ids that support it."""
@@ -279,7 +295,10 @@ class SourcedBullet:
             raise TailoringError(f"{label}.sources must be a non-empty fact-id list")
         if not all(isinstance(source, str) and source.strip() for source in sources):
             raise TailoringError(f"{label}.sources must contain non-empty fact ids")
-        return cls(text=text.strip(), sources=tuple(source.strip() for source in sources))
+        return cls(
+            text=_canonicalize_prose(text),
+            sources=tuple(source.strip() for source in sources),
+        )
 
 
 def _fact_id_list(value: object, *, label: str) -> tuple[str, ...]:
@@ -299,7 +318,7 @@ def _justification(data: Mapping[str, Any], *, label: str) -> str:
         return ""
     if not isinstance(value, str):
         raise TailoringError(f"{label}.justification must be text")
-    return value.strip()
+    return _canonicalize_prose(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,11 +383,31 @@ class TailoredProject:
         )
 
 
-def _render_sourced_letter(paragraphs: Sequence[SourcedBullet]) -> str:
+def _render_sourced_letter(
+    paragraphs: Sequence[SourcedBullet],
+    *,
+    offer: OfferContext | None = None,
+) -> str:
     if not 5 <= len(paragraphs) <= 6:
         raise TailoringError("letter_paragraphs must contain 5 or 6 sourced paragraphs")
     body = ["<p>Madame, Monsieur,</p>"]
-    body.extend(f"<p>{html.escape(paragraph.text, quote=False)}</p>" for paragraph in paragraphs)
+    rendered = [html.escape(paragraph.text, quote=False) for paragraph in paragraphs]
+    if offer is not None:
+        company = (
+            offer.company
+            if offer.company_known and offer.company.strip()
+            else "votre entreprise"
+        )
+        recipient = html.escape(_canonicalize_prose(company), quote=False)
+        title = _canonicalize_prose(offer.title)
+        role = html.escape(f"le poste {french_de_elision(title)}", quote=False)
+        # Offer identity is not a candidate claim and therefore does not belong
+        # in provenance-checked model prose. It shares the first paragraph so all
+        # five or six tailored evidence paragraphs remain intact.
+        rendered[0] = (
+            f"Je souhaite rejoindre {recipient} pour {role}. {rendered[0]}"
+        )
+    body.extend(f"<p>{paragraph}</p>" for paragraph in rendered)
     body.append("<p>Cordialement,<br/>Mouaad Sekkouri</p>")
     return "".join(body)
 
@@ -443,7 +482,7 @@ class TailoringPlan:
             value = data.get(key)
             if not isinstance(value, str) or not value.strip():
                 raise TailoringError(f"tailoring plan field '{key}' must be non-empty text")
-            return value.strip()
+            return _canonicalize_prose(value)
 
         def text_tuple(key: str, *, required: bool = True) -> tuple[str, ...]:
             value = data.get(key)
@@ -477,7 +516,7 @@ class TailoringPlan:
                 return None
             if not isinstance(value, str):
                 raise TailoringError(f"tailoring plan field '{key}' must be text or null")
-            return value.strip() or None
+            return _canonicalize_prose(value) or None
 
         raw_experiences = data.get("experience_content", [])
         raw_projects = data.get("project_content", [])
@@ -532,13 +571,15 @@ class TailoringPlan:
 
         raw_title = data.get("job_title")
         if isinstance(raw_title, str) and raw_title.strip():
-            job_title = raw_title.strip()
+            job_title = _canonicalize_prose(raw_title)
         elif offer is not None and selection is not None:
-            job_title = build_cv_title(
-                offer.title,
-                contract_type=selection.contract_type,
-                duration_months=offer.duration_months,
-                start_date=_offer_start(offer.description),
+            job_title = _canonicalize_prose(
+                build_cv_title(
+                    offer.title,
+                    contract_type=selection.contract_type,
+                    duration_months=offer.duration_months,
+                    start_date=_offer_start(offer.description),
+                )
             )
         else:
             raise TailoringError("tailoring plan field 'job_title' must be non-empty text")
@@ -557,7 +598,7 @@ class TailoringPlan:
 
         if structured:
             # Renderer-owned: anything the model supplied here was dropped above.
-            letter_body_html = _render_sourced_letter(letter_paragraphs)
+            letter_body_html = _render_sourced_letter(letter_paragraphs, offer=offer)
         else:
             letter_body_html = required_text("letter_body_html")
 
@@ -1882,6 +1923,73 @@ def validate_generated_phrase(
         generic={_normalize(term) for term in load_generic_vocabulary(vocabulary_path)},
         organisations=_organisation_names(bank),
     )
+
+
+_PROFILE_WORD_RE = re.compile(r"[^\W_]+(?:[-/][^\W_]+)*", re.UNICODE)
+
+
+def _validate_profile_candidate(
+    phrase: str,
+    *,
+    selection: VariantSelection,
+    template: TemplateContext,
+    bank: FactBank,
+) -> None:
+    """Validate only the generated profile field, including its layout budget."""
+
+    words = _PROFILE_WORD_RE.findall(phrase)
+    if not 3 <= len(words) <= 7:
+        raise TailoringError("profile domain phrase must contain 3 to 7 words")
+    if "<" in phrase or ">" in phrase:
+        raise TailoringError("profile domain phrase must be plain text")
+    if "\u2014" in phrase:
+        raise TailoringError("em dashes are forbidden in tailored output")
+    validate_generated_phrase(phrase, bank)
+    if (
+        not selection.adapted_for_stage
+        and abs(len(phrase) - len(template.profile_domain_phrase)) > 15
+    ):
+        raise TailoringError(
+            "tailored profile must stay within 15 characters of the base profile "
+            f"(base={len(template.profile_domain_phrase)}, tailored={len(phrase)})"
+        )
+
+
+def _resolve_profile_phrase(
+    candidate: str,
+    *,
+    selection: VariantSelection,
+    template: TemplateContext,
+    bank: FactBank,
+) -> tuple[str, str | None]:
+    """Preserve valid tailoring; replace only a rejected profile phrase.
+
+    The fallback is tied to the already selected CV variant, so it retains the
+    offer's domain while avoiding one-off vocabulary exceptions. Both candidate
+    and fallback pass the same provenance, word-count, and layout checks.
+    """
+
+    normalized = _canonicalize_prose(candidate)
+    try:
+        _validate_profile_candidate(
+            normalized,
+            selection=selection,
+            template=template,
+            bank=bank,
+        )
+    except TailoringError as exc:
+        fallback = _PROFILE_DEFAULTS.get(
+            selection.slug.removesuffix("-stage"),
+            "sécurité des systèmes numériques",
+        )
+        _validate_profile_candidate(
+            fallback,
+            selection=selection,
+            template=template,
+            bank=bank,
+        )
+        return fallback, str(exc)
+    return normalized, None
 
 
 def validate_plan_provenance(
@@ -3314,6 +3422,10 @@ Rules:
 - You DO write the profile_domain_phrase and the letter. Both are plain text, no
   HTML and no em dash. Numbers, tools, and proper nouns in them must be supported
   by the fact bank.
+- Do not repeat the company name, job title, or location in letter_paragraphs.
+  The renderer injects the offer identity into the first paragraph from parsed
+  offer fields. Your paragraphs provide tailored, fact-backed motivation and
+  evidence only.
 - valid_numbers above is the COMPLETE and CLOSED set of figures you may state.
   Never introduce a figure, percentage, duration, headcount or date that is not
   in it. This applies to everything you write, the letter especially.
@@ -3328,7 +3440,8 @@ Rules:
 - Every letter paragraph must cite one or more exact fact ids. Never cite a
   needs-review fact or an unverified skill.
 - Produce 5 or 6 letter_paragraphs. Salutation, addressee, locked identity, and
-  signature are renderer-injected. Write naturally and specifically for the offer.
+  signature are renderer-injected. The renderer injects the offer identity before
+  your first paragraph; write naturally and specifically without repeating it.
 - {exact_stage}
 - rhythm_phrase must always be null; the profile rhythm is immutable.
 - Never name Baifall Dream's end client and never write a certification as "en cours".
@@ -4185,6 +4298,39 @@ def _selection_notes(plan: TailoringPlan, bank: FactBank) -> dict[str, str]:
 _GENERATED_ORPHAN_SELECTORS: tuple[str, ...] = (".profile",)
 
 
+def _contains_generated_orphan(report: str) -> bool:
+    return any(
+        f"[{selector}#" in report for selector in _GENERATED_ORPHAN_SELECTORS
+    )
+
+
+def _restore_template_profile_domain(
+    source: str,
+    phrase: str,
+    *,
+    selection: VariantSelection,
+) -> str:
+    """Restore the hand-reviewed template phrase without treating it as AI prose."""
+
+    match = _PROFILE_RE.search(source)
+    if not match:
+        raise TailoringError("tailored profile section not found")
+    profile = match.group(2)
+    encoded = _encode_text(phrase, entities=selection.entity_encoded)
+    restored, count = _PROFILE_DOMAIN_RE.subn(
+        rf"\g<1><strong>{encoded}</strong>",
+        profile,
+        count=1,
+    )
+    if count != 1:
+        raise TailoringError("could not restore template profile domain phrase")
+    return (
+        source[: match.start(2)]
+        + restored
+        + source[match.end(2) :]
+    )
+
+
 def _check_orphans(
     toolchain: DocumentToolchain,
     tailored_path: Path,
@@ -4209,12 +4355,7 @@ def _check_orphans(
         toolchain.check_orphan_lines(tailored_path, original_path)
     except TailoringError as exc:
         report = str(exc)
-        generated = [
-            selector
-            for selector in _GENERATED_ORPHAN_SELECTORS
-            if f"[{selector}#" in report
-        ]
-        if generated:
+        if _contains_generated_orphan(report):
             raise
         log.warning(
             "application %d: orphan warning on verbatim content, not blocking: %s",
@@ -4622,14 +4763,47 @@ def _advise_and_tailor(
             plan = advisor.advise(offer, selection, template_context, **options)
             plan = replace(
                 plan,
-                job_title=build_cv_title(
-                    offer.title,
-                    contract_type=selection.contract_type,
-                    duration_months=offer.duration_months,
-                    start_date=_offer_start(offer.description),
+                job_title=_canonicalize_prose(
+                    build_cv_title(
+                        offer.title,
+                        contract_type=selection.contract_type,
+                        duration_months=offer.duration_months,
+                        start_date=_offer_start(offer.description),
+                    )
                 ),
                 location_region=resolve_header_location(offer.city),
             )
+            profile_phrase, profile_fallback_reason = _resolve_profile_phrase(
+                plan.profile_domain_phrase,
+                selection=selection,
+                template=template_context,
+                bank=bank,
+            )
+            can_use_profile_fallback = (
+                profile_fallback_reason is not None
+                and getattr(advisor, "accepts_correction", False)
+                and attempt >= budget
+            )
+            if can_use_profile_fallback:
+                original_phrase = plan.profile_domain_phrase
+                plan = replace(plan, profile_domain_phrase=profile_phrase)
+                log.warning(
+                    "application %d: rejected profile phrase %r; using variant "
+                    "fallback %r: %s",
+                    application_id,
+                    original_phrase,
+                    profile_phrase,
+                    profile_fallback_reason,
+                )
+                log_event(
+                    db,
+                    application_id,
+                    "profile_phrase_fallback",
+                    {
+                        "reason": profile_fallback_reason,
+                        "replacement": profile_phrase,
+                    },
+                )
             last_plan = plan
             tailored_html = tailor_cv_html(
                 original_html,
@@ -4795,12 +4969,59 @@ def generate_application(
             original_path,
             compare_original=not selection.adapted_for_stage,
         )
-        orphan_warning = _check_orphans(
-            chosen_toolchain,
-            cv_html_path,
-            original_path,
-            application_id=application_id,
-        )
+        profile_layout_fallback = False
+        try:
+            orphan_warning = _check_orphans(
+                chosen_toolchain,
+                cv_html_path,
+                original_path,
+                application_id=application_id,
+            )
+        except TailoringError as exc:
+            report = str(exc)
+            fallback_phrase = template_context.profile_domain_phrase
+            if (
+                not _contains_generated_orphan(report)
+                or plan.profile_domain_phrase == fallback_phrase
+            ):
+                raise
+            fallback_plan = replace(
+                plan,
+                profile_domain_phrase=fallback_phrase,
+            )
+            fallback_html = _restore_template_profile_domain(
+                tailored_html,
+                fallback_phrase,
+                selection=selection,
+            )
+            cv_html_path.write_text(fallback_html, encoding="utf-8")
+            chosen_toolchain.validate_cv(
+                cv_html_path,
+                original_path,
+                compare_original=not selection.adapted_for_stage,
+            )
+            orphan_warning = _check_orphans(
+                chosen_toolchain,
+                cv_html_path,
+                original_path,
+                application_id=application_id,
+            )
+            log.warning(
+                "application %d: profile orphan recovered with template wording",
+                application_id,
+            )
+            log_event(
+                db,
+                application_id,
+                "profile_layout_fallback",
+                {
+                    "reason": report,
+                    "replacement": fallback_phrase,
+                },
+            )
+            plan = fallback_plan
+            tailored_html = fallback_html
+            profile_layout_fallback = True
         chosen_toolchain.generate_cv_pdf(cv_html_path, cv_pdf_path)
         chosen_toolchain.verify_page_count(cv_pdf_path)
         chosen_toolchain.generate_letter_pdf(
@@ -4865,6 +5086,8 @@ def generate_application(
             "letter_pdf_path": str(letter_pdf_path),
             "tracker_path": str(tracker_path),
         }
+        if profile_layout_fallback:
+            ready_detail["profile_layout_fallback"] = True
         # Why these facts were selected, for the detail page's event history. The
         # CV itself never shows a justification.
         selection_notes = _selection_notes(plan, bank)

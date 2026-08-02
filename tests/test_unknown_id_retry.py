@@ -159,17 +159,36 @@ def test_an_invented_id_recovers_on_the_second_retry(
         assert 'section="skills"' in correction
 
 
+class _RepeatsUnsupportedClaim:
+    """Keeps making a provenance error that has no deterministic repair."""
+
+    accepts_correction = True
+
+    def __init__(self) -> None:
+        self.corrections: list[str | None] = []
+
+    @property
+    def call_count(self) -> int:
+        return len(self.corrections)
+
+    def advise(self, offer, selection, template, *, correction: str | None = None):
+        self.corrections.append(correction)
+        payload = _payload()
+        payload["letter_paragraphs"][0]["text"] = (
+            "J'ai utilisé CrowdStrike pour superviser les alertes."
+        )
+        return TailoringPlan.from_mapping(payload, offer=offer, selection=selection)
+
+
 def test_the_extra_attempt_is_not_lent_to_other_rejections(
     db: sqlite3.Connection, tmp_path: Path
 ) -> None:
     """A non-citation rejection keeps exactly the count it had."""
 
-    from tests.test_tailoring_retry import _RecordingAdvisor
-
     application_id = _queued_application(db, suffix="other-rejection")
-    advisor = _RecordingAdvisor(failures=2)
+    advisor = _RepeatsUnsupportedClaim()
 
-    with pytest.raises(ApplicationGenerationError):
+    with pytest.raises(ApplicationGenerationError, match="CrowdStrike"):
         approve_application(
             db, application_id, via="test",
             advisor=advisor, toolchain=_Toolchain(), output_root=tmp_path,
