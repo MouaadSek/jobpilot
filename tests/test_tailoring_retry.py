@@ -163,37 +163,41 @@ def test_first_attempt_rejected_then_retry_accepted(
     ).fetchone()["n"] == 0
 
 
-def test_retry_that_fails_again_records_both_attempts_and_requeues(
+def test_retry_that_fails_again_uses_the_validated_variant_fallback(
     db: sqlite3.Connection,
     tmp_path: Path,
 ) -> None:
     application_id = _queued_application(db, suffix="retry-ko")
     advisor = _RecordingAdvisor(failures=2)
 
-    with pytest.raises(ApplicationGenerationError, match="3 to 7 words") as exc_info:
-        approve_application(
-            db,
-            application_id,
-            via="test retry exhausted",
-            advisor=advisor,
-            toolchain=_Toolchain(),
-            output_root=tmp_path,
-        )
+    outcome = approve_application(
+        db,
+        application_id,
+        via="test retry exhausted",
+        advisor=advisor,
+        toolchain=_Toolchain(),
+        output_root=tmp_path,
+    )
 
     assert advisor.call_count == 2
-    assert current_status(db, application_id) == "queued"
-    detail = _generation_failed_detail(db, application_id)
-    # The surfaced error is the second attempt's; the event keeps both.
-    assert detail["error"] == str(exc_info.value)
-    assert len(detail["attempts"]) == 2
-    assert all("3 to 7 words" in attempt for attempt in detail["attempts"])
-    stored = db.execute(
-        "SELECT cv_pdf_path, letter_pdf_path FROM applications WHERE id = ?",
+    assert current_status(db, application_id) == "ready"
+    assert outcome.generation is not None
+    final_context = extract_template_context(
+        outcome.generation.cv_html_path.read_text(encoding="utf-8")
+    )
+    assert final_context.profile_domain_phrase == "détection proactive des menaces"
+    fallback = db.execute(
+        "SELECT detail FROM events WHERE application_id = ? "
+        "AND event = 'profile_phrase_fallback'",
         (application_id,),
     ).fetchone()
-    assert stored["cv_pdf_path"] is None
-    assert stored["letter_pdf_path"] is None
-    assert list((tmp_path / str(application_id)).iterdir()) == []
+    assert fallback is not None
+    assert "3 to 7 words" in json.loads(fallback["detail"])["reason"]
+    assert db.execute(
+        "SELECT COUNT(*) AS n FROM events WHERE application_id = ? "
+        "AND event = 'generation_failed'",
+        (application_id,),
+    ).fetchone()["n"] == 0
 
 
 def test_a_valid_first_attempt_never_calls_the_advisor_twice(
