@@ -1336,8 +1336,8 @@ def _replace_required(
 
 
 def _validate_letter_body(body: str) -> None:
-    if "—" in body:
-        raise TailoringError("motivation letter must not contain em dashes")
+    # No em-dash check: every path that builds letter_body_html runs
+    # _canonicalize_prose first, so the character cannot reach here.
     if re.search(r"\bEntreprise\b", body):
         raise TailoringError(
             "letter body must not contain the placeholder 'Entreprise'; "
@@ -1378,62 +1378,22 @@ def _validate_plan(plan: TailoringPlan, selection: VariantSelection) -> None:
     # guard in _tailor_profile still protects the one-page profile layout.
     if not 3 <= len(words) <= 7:
         raise TailoringError("profile domain phrase must contain 3 to 7 words")
-    expected_contract = "stage" if selection.contract_type == "stage" else "alternance"
-    if expected_contract not in _normalize(plan.job_title):
-        raise TailoringError(f"job title must include contract type '{expected_contract}'")
-    normalized_title = _normalize(plan.job_title)
-    start_signals = (
-        "janvier",
-        "fevrier",
-        "mars",
-        "avril",
-        "mai",
-        "juin",
-        "juillet",
-        "aout",
-        "septembre",
-        "octobre",
-        "novembre",
-        "decembre",
-        "immediat",
-        "asap",
-        "des que possible",
-    )
-    if not _contains_any(normalized_title, start_signals):
-        raise TailoringError("job title must include the offer start date")
-    allowed_regions = {
-        _normalize(region)
-        for region in (
-            "Auvergne-Rhône-Alpes",
-            "Bourgogne-Franche-Comté",
-            "Bretagne",
-            "Centre-Val de Loire",
-            "Corse",
-            "Grand Est",
-            "Hauts-de-France",
-            "Île-de-France",
-            "Normandie",
-            "Nouvelle-Aquitaine",
-            "Occitanie",
-            "Pays de la Loire",
-            "Provence-Alpes-Côte d'Azur",
-            "Guadeloupe",
-            "Martinique",
-            "Guyane",
-            "La Réunion",
-            "Mayotte",
-            "Nord",
-        )
-    }
-    # A bare country is not a location: the renderer injects the profile's own
-    # region whenever the offer's city does not resolve to one.
+    # No job-title checks here. job_title is renderer-owned: build_cv_title
+    # always appends "Stage… dès <mois>" or "Alternance M2 dès <mois>" from the
+    # same selection.contract_type this function would compare against, so the
+    # contract-type and start-date branches could only ever fail on our own
+    # output. The guarantee is pinned at the source instead, in
+    # tests/test_renderer_owned_fields.py.
+    #
+    # Same for the region membership: resolve_header_location returns
+    # Île-de-France, Hauts-de-France, or the profile's own header location, and
+    # nothing else. Only the bare-country floor stays, because that one reads as
+    # a claim about where he is rather than a layout detail.
     if _normalize(plan.location_region) in _BARE_COUNTRIES:
         raise TailoringError(
             "location must be a region or city, never a bare country: "
             f"{plan.location_region}"
         )
-    if _normalize(plan.location_region) not in allowed_regions:
-        raise TailoringError("location must be one region only")
     if selection.adapted_for_stage and not plan.profile_contract_phrase:
         raise TailoringError(
             "stage adaptation requires an exact profile_contract_phrase from the offer"
