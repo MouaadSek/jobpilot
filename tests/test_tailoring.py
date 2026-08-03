@@ -358,6 +358,7 @@ class _Toolchain:
         fail_validate: bool = False,
     ) -> None:
         self.calls: list[str] = []
+        self.compare_original_calls: list[bool] = []
         self.fail_orphans = fail_orphans
         # Task 39 made the orphan gate advisory, so it is no longer a way to
         # force a generation failure. validate_cv is still fatal: it is the
@@ -379,7 +380,11 @@ class _Toolchain:
         self.calls.append("validate")
         assert tailored_path.exists()
         assert original_path.exists()
-        assert compare_original is True
+        # Recorded, not asserted: a stage-adapted CV is deliberately compared
+        # against nothing, because it is not meant to match the alternance
+        # template it was built from.
+        assert isinstance(compare_original, bool)
+        self.compare_original_calls.append(compare_original)
         if self.fail_validate:
             raise TailoringError("validate_cv.py failed: PROFIL: 3 checks failed")
 

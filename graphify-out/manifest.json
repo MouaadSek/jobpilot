@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/config.py": {
-    "mtime": 1785689559.474447,
-    "ast_hash": "c594002be6ab621c25e5ac2b8a9812c5",
+    "mtime": 1785797021.6067517,
+    "ast_hash": "c4e5770b37813b8dbc75a9150ae7ee89",
     "semantic_hash": ""
   },
   "src/jobpilot/contacts.py": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/tailoring.py": {
-    "mtime": 1785795401.6412003,
-    "ast_hash": "5302190e886ee15238cfca1a92be0e07",
+    "mtime": 1785801210.1585495,
+    "ast_hash": "a715f217a1dca984052d8e2cb9e4fbeb",
     "semantic_hash": ""
   },
   "src/jobpilot/variant_catalogue.py": {
@@ -370,13 +370,13 @@
     "semantic_hash": ""
   },
   "tests/test_cv_completeness.py": {
-    "mtime": 1785464105.3455534,
-    "ast_hash": "e96d6fa680e38cc56d3f20225a287b8c",
+    "mtime": 1785796642.5702238,
+    "ast_hash": "7fcfdc557c92dbf16bd9502d74997db8",
     "semantic_hash": ""
   },
   "tests/test_dashboard.py": {
-    "mtime": 1785535980.197078,
-    "ast_hash": "99adc22c05672d141071b17c46347617",
+    "mtime": 1785796914.798381,
+    "ast_hash": "25a94be9bc5d941b1ff37812afd046aa",
     "semantic_hash": ""
   },
   "tests/test_dashboard_facts_scheduler.py": {
@@ -495,8 +495,8 @@
     "semantic_hash": ""
   },
   "tests/test_regenerate.py": {
-    "mtime": 1785535980.2008338,
-    "ast_hash": "2ee0b1cc915845f63a86c554b28f34e1",
+    "mtime": 1785796914.798895,
+    "ast_hash": "cfdb24042e930c4defbbaaff7b8e34bb",
     "semantic_hash": ""
   },
   "tests/test_registry.py": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "tests/test_selection_tailoring.py": {
-    "mtime": 1785440200.3312924,
-    "ast_hash": "9e530f8a4bfa71877d8d91dd2edba45a",
+    "mtime": 1785796924.0276408,
+    "ast_hash": "b2dda70e528a65ede0e1b012b4aeab0f",
     "semantic_hash": ""
   },
   "tests/test_skim.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "tests/test_tailoring.py": {
-    "mtime": 1785375089.9131777,
-    "ast_hash": "fb394ac176efdb17146afc2179f3c374",
+    "mtime": 1785800585.9894114,
+    "ast_hash": "bd888c5a623c829a6ea282b070c6b32c",
     "semantic_hash": ""
   },
   "tests/test_tailoring_advisors.py": {
@@ -700,108 +700,108 @@
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-CloudSec__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "67727aaa9db90f1dc01b6ce8e10564bd",
+    "mtime": 1785798885.8975616,
+    "ast_hash": "9bbaaeeb9335632824c57e0b1e59332a",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_AppSec__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "b5eb115c5c2a16ebe991acab5a9f58ed",
+    "mtime": 1785798885.8983688,
+    "ast_hash": "df49d85b0240127546e007a55de47bde",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Backend_Dev__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "878f79f11d92c8234d8869f64e2cdc4c",
+    "mtime": 1785798885.8987925,
+    "ast_hash": "805503f43d4879eee4bad6def073ea57",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Chef_de_Projet_IT__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "3ae0107365284e0c9c0b695e8c3ff56f",
+    "mtime": 1785798885.8991232,
+    "ast_hash": "92f8c7a474e82277adc455b4566838a9",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Consultant_IT__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "1dd0a7a2302e52930450379274125610",
+    "mtime": 1785798885.899738,
+    "ast_hash": "fb73031d9210036eb25784610be2e435",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Consultant_IT__Stage.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "5d95fd800f3788116ffaaf173b445db6",
+    "mtime": 1785798885.900345,
+    "ast_hash": "d2d8d4398f6398db1de0c047565bec6b",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Cybersecurite__Alternance.html": {
-    "mtime": 1785099133.0723078,
-    "ast_hash": "779f40253fa501cd403295c845c2aae0",
+    "mtime": 1785798885.9022405,
+    "ast_hash": "19c6fdcf5c8dca905e9d18afde3350e0",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Cybersecurite__Stage.html": {
-    "mtime": 1785099133.072714,
-    "ast_hash": "195535056f086cfdcbb8c28b9449eaf0",
+    "mtime": 1785798885.9026906,
+    "ast_hash": "3144acf573a55ff23edb4bbfbe66b5e4",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Data_Engineering_BI__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "a5493f55edebb866f504a90d1c403f6d",
+    "mtime": 1785798885.9036953,
+    "ast_hash": "33b3ae218b794979d9f2c37da2babbe4",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_DevOps_SRE__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "ea61495bdfe75292f7d8762b410a8dfd",
+    "mtime": 1785798885.904046,
+    "ast_hash": "5658ec56d7cef5e411a322b70b33c8c7",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_DevSecOps__Alternance.html": {
-    "mtime": 1785099133.0731068,
-    "ast_hash": "0ff5b4d2fb32a66142c49956224774cc",
+    "mtime": 1785798885.904725,
+    "ast_hash": "351086a0a48ff90cc5fb778f91ebf1bc",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Fullstack_Dev__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "282533983b1dd43afc2daf720a742b72",
+    "mtime": 1785798885.9055207,
+    "ast_hash": "0a1ce2b7bfe5cae69c25f44df004e7ba",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_GRC__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "37262cb288da215d8069e97a720bdaba",
+    "mtime": 1785798885.9062834,
+    "ast_hash": "66d07d611025770f2791a37b3e7ca76f",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_IAM__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "70def645bb3b64ac0475cd3921bce16e",
+    "mtime": 1785798885.9070745,
+    "ast_hash": "f58d9369b816c7e0406657e00c8e34fa",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_IA_Machine_Learning__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "9a6e92b4ff482cac0d3ea21738b482c8",
+    "mtime": 1785798885.9080951,
+    "ast_hash": "e4fc27a14ad523acc9501e4a778d3b0a",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Infrastructure_Cloud__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "3a57716a1466d73c505f550b46475885",
+    "mtime": 1785798885.9088871,
+    "ast_hash": "f6cad3fa92c15869016ddf3b44a21a7a",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Pentest__Alternance.html": {
-    "mtime": 1785099133.0735705,
-    "ast_hash": "9fdf7f9d58be7c4ee7003cc3b367b3f7",
+    "mtime": 1785798885.9100194,
+    "ast_hash": "9c4ae52a59f8f0520f528a20f350a303",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_QA_Testing__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "0da67b5f1f3badf08dceb58881508a98",
+    "mtime": 1785798885.910463,
+    "ast_hash": "a00bec7e999ac2f348f58dffbc811ba1",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Reseaux_Telecoms__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "92aa3827a286f6fcc8c969bc2a86153f",
+    "mtime": 1785798885.9108193,
+    "ast_hash": "172378838bd6399c9d84a1763253e027",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_SOC__Alternance.html": {
-    "mtime": 1784894162.0,
-    "ast_hash": "2bc6821198ae4343b88b663e3ebbde98",
+    "mtime": 1785798885.9122565,
+    "ast_hash": "ebed950247638061cd968742de57b0f7",
     "semantic_hash": ""
   },
   "skill/assets/cv-templates/Mouaad_Sekkouri_-_Support_IT_Sysadmin__Alternance.html": {
-    "mtime": 1785099133.0739799,
-    "ast_hash": "da9b44936dee77ab9ad71677dbc92092",
+    "mtime": 1785798885.9126537,
+    "ast_hash": "7278d0820ddcac47566b0799a228a0c2",
     "semantic_hash": ""
   },
   "skill/assets/stage-baifall-dream.md": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "tests/test_progress.py": {
-    "mtime": 1785535980.199598,
-    "ast_hash": "33445eed06a3f2073019b4a1c00a1fef",
+    "mtime": 1785796914.7974997,
+    "ast_hash": "8ed60e0f4da31ea78d1d023728b0fbef",
     "semantic_hash": ""
   },
   "src/jobpilot/templates/base.html": {
@@ -965,18 +965,18 @@
     "semantic_hash": ""
   },
   "tests/test_unknown_id_retry.py": {
-    "mtime": 1785712022.3200371,
-    "ast_hash": "08ed9cc90a5afa2b33b7e0afb94cdf3f",
+    "mtime": 1785797265.1065419,
+    "ast_hash": "cd0bde55f3162be3b2cf64400278d994",
     "semantic_hash": ""
   },
   "tests/test_drop_unknown_citation.py": {
-    "mtime": 1785795627.4466002,
-    "ast_hash": "536d370de60cfb3dcb7ba67b33be0c6a",
+    "mtime": 1785797051.9079764,
+    "ast_hash": "bbf005759e2706a89bd77710edad20f7",
     "semantic_hash": ""
   },
   "tests/test_invention_report.py": {
-    "mtime": 1785689559.4876199,
-    "ast_hash": "38ac130ac4a1f1cfaf7824304afbdc46",
+    "mtime": 1785797277.289806,
+    "ast_hash": "2e0aeba937447a9625d5f8d3e19b6c67",
     "semantic_hash": ""
   },
   "tests/test_generated_prose_scope.py": {
@@ -990,8 +990,8 @@
     "semantic_hash": ""
   },
   "tests/test_experience_line_budget.py": {
-    "mtime": 1785779255.551204,
-    "ast_hash": "d6c858f98587c1ce1f7403d74644cba4",
+    "mtime": 1785801117.1215675,
+    "ast_hash": "c07ae40f0fa430b9bbcfdf4e663fdd9c",
     "semantic_hash": ""
   },
   "tests/test_renderer_owned_fields.py": {
@@ -1012,6 +1012,26 @@
   "tests/test_generation_warnings.py": {
     "mtime": 1785795984.1062806,
     "ast_hash": "df25effa5db4969c67689f1ce155b7a9",
+    "semantic_hash": ""
+  },
+  "tests/test_gate_tiers.py": {
+    "mtime": 1785797237.182213,
+    "ast_hash": "7780c3c018f95112d04f09de7f286aca",
+    "semantic_hash": ""
+  },
+  "tests/test_profile_domain_anchor.py": {
+    "mtime": 1785800707.1777391,
+    "ast_hash": "c3638d8edb8aa5eede48f606d81ef555",
+    "semantic_hash": ""
+  },
+  "tests/test_stage_contract_fallback.py": {
+    "mtime": 1785800707.1778612,
+    "ast_hash": "9683b4dc52329db3987b1d1cd58a54d3",
+    "semantic_hash": ""
+  },
+  "tests/test_bullet_ceiling.py": {
+    "mtime": 1785801041.449967,
+    "ast_hash": "dda424104f3365d41c3f30d5916966cf",
     "semantic_hash": ""
   }
 }

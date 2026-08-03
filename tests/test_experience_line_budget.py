@@ -103,3 +103,85 @@ def test_no_experience_claim_exceeds_the_one_line_budget() -> None:
         f"experience claims over the {budget}-character one-line budget: "
         + ", ".join(f"{fact_id} ({length})" for length, fact_id in reversed(overlong))
     )
+
+
+# ----- projects: the same question, a different answer -----
+#
+# Task 40 amendment 2 asked for a project-desc budget derived the same way, on
+# the premise that the templates' project-desc rows are 29-66 characters while
+# every bank claim is 130-134, so all 63 overflow. Measured, that premise does
+# not hold: the 63 project-desc rows across the 21 templates are themselves
+# 130-134, distributed exactly as the claims are, and the 55 distinct row
+# strings ARE the 55 distinct claims. Nothing overflows.
+#
+# Which also means the requested derivation cannot work here. For experience
+# there was a fitted subset to derive from once the imported Baifall rows were
+# excluded; for projects there is no such subset, because every row in every
+# template is a bank claim. A "widest project-desc row" ceiling is the worst
+# claim measuring itself.
+#
+# So the ceiling below is kept, but the load-bearing guard is the one under it:
+# the templates and the bank must not drift apart. That is what would actually
+# break if a claim were lengthened without the layout following it.
+
+_PROJECT_DESC_RE = re.compile(r'<div class="project-desc">(.*?)</div>', re.DOTALL)
+
+
+def _project_desc_rows(source: str) -> list[str]:
+    return [_plain(row) for row in _PROJECT_DESC_RE.findall(source)]
+
+
+def _all_template_paths():
+    return sorted(TEMPLATE_PATH.parent.glob("*.html"))
+
+
+def _project_desc_budget() -> int:
+    """The widest project description any template already renders."""
+
+    return max(
+        len(row)
+        for path in _all_template_paths()
+        for row in _project_desc_rows(path.read_text(encoding="utf-8"))
+    )
+
+
+def test_no_project_claim_exceeds_the_widest_shipped_project_row() -> None:
+    budget = _project_desc_budget()
+    bank = load_fact_bank()
+
+    overlong = sorted(
+        (_claim_length(fact.text), fact.id)
+        for project in bank.projects
+        for fact in project.facts
+        if _claim_length(fact.text) > budget
+    )
+
+    assert not overlong, (
+        f"project claims over the {budget}-character row: "
+        + ", ".join(f"{fact_id} ({length})" for length, fact_id in reversed(overlong))
+    )
+
+
+def test_the_templates_and_the_bank_do_not_drift_apart() -> None:
+    """The guard that has teeth.
+
+    Every project description a template ships must be a claim the bank holds,
+    and every claim must be one a template ships. Lengthening a claim without
+    updating the layout — the failure amendment 2 was aimed at — breaks this,
+    where a self-referential budget would not notice.
+    """
+
+    bank = load_fact_bank()
+    claims = {_normalized(fact.text) for project in bank.projects for fact in project.facts}
+    rows = {
+        _normalized(row)
+        for path in _all_template_paths()
+        for row in _project_desc_rows(path.read_text(encoding="utf-8"))
+    }
+
+    assert rows - claims == set(), "template rows that no bank claim provides"
+    assert claims - rows == set(), "bank claims no template renders"
+
+
+def _normalized(value: str) -> str:
+    return " ".join(value.split())

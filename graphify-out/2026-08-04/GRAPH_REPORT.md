@@ -1,16 +1,16 @@
 # Graph Report - jobpilot  (2026-08-04)
 
 ## Corpus Check
-- 150 files · ~182,778 words
+- 156 files · ~188,993 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3251 nodes · 8625 edges · 120 communities (107 shown, 13 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 517 edges (avg confidence: 0.52)
+- 3385 nodes · 8724 edges · 143 communities (122 shown, 21 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 353 edges (avg confidence: 0.54)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4cfeff59`
+- Built from commit: `780480d3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -81,6 +81,7 @@
 - reparse_alerts
 - test_designation_numbers.py
 - test_fact_id_consistency.py
+- review.py
 - ingest_source
 - _AnchorParser
 - test_preview.py
@@ -101,13 +102,13 @@
 - generate_cv_pdf.py
 - test_validate_cv_ai.py
 - Phase 06: Review interface (Telegram bot)
-- test_retry_feedback.py
-- record_form_fields
+- CompanyRecord
+- profile.py
 - Phase 02: Scraper sources (run after phase 01 is green)
 - Phase 03: Apply integration (CV/letter generation bridge)
 - Phase 04: Cold mail module
 - Phase 05: Reply detection + tracker automation
-- _TextParser
+- skim.py
 - 002_contacts_suppression.sql
 - 007_form_mappings.sql
 - Phase 07: Hardening and operations
@@ -125,142 +126,164 @@
 - _AnchorParser
 - test_ingest_idempotent.py
 - apply_matching_profile_cmd
-- mappings_for
-- parse_rejections
+- test_variant_selection.py
+- reparse_alerts
+- test_profile_domain_anchor.py
+- tracker.py
+- _TextParser
+- refresh_operation
+- test_ingest_idempotent.py
 - run_menubar
+- _FakeLocator
+- test_renderer_owned_fields.py
 - ApplicationNotQueuedError
-- test_sourcing_targets_changes_no_sending_gate
-- apply_matching_profile_cmd
+- parse_indeed
+- build_advisor
+- 008_applications_generation_warnings.sql
+- _client
+- ApplicantProfile
+- test_progress.py
+- .finish
 - observable_controls
+- test_registry.py
+- Request
+- _Advisor
+- SendBlocked
+- InteractiveTailoringAdvisor
+- Client
+- Any
+- Protocol
+- RuntimeError
+- StrEnum
 
 ## God Nodes (most connected - your core abstractions)
 1. `Settings` - 117 edges
-2. `current_status()` - 95 edges
-3. `_payload()` - 88 edges
+2. `current_status()` - 94 edges
+3. `_payload()` - 89 edges
 4. `TailoringError` - 83 edges
-5. `load_fact_bank()` - 73 edges
-6. `FactBank` - 71 edges
+5. `load_fact_bank()` - 70 edges
+6. `_Toolchain` - 69 edges
 7. `OfferRecord` - 68 edges
-8. `get_settings()` - 63 edges
-9. `create_app()` - 61 edges
-10. `OfferContext` - 60 edges
+8. `create_app()` - 62 edges
+9. `OfferContext` - 59 edges
+10. `get_settings()` - 59 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `_FakeLauncher` --uses--> `WTTJApplyError`  [INFERRED]
-  tests/test_wttj_apply.py → src/jobpilot/apply_assist.py
-- `_FakeLocator` --uses--> `WTTJApplyError`  [INFERRED]
-  tests/test_wttj_apply.py → src/jobpilot/apply_assist.py
-- `_FakePage` --uses--> `WTTJApplyError`  [INFERRED]
-  tests/test_wttj_apply.py → src/jobpilot/apply_assist.py
-- `_FakeLauncher` --uses--> `ApplicantProfile`  [INFERRED]
-  tests/test_apply_assist.py → src/jobpilot/apply_assist.py
-- `_FakeLocator` --uses--> `ApplicantProfile`  [INFERRED]
-  tests/test_apply_assist.py → src/jobpilot/apply_assist.py
+- `_CompleteAdvisor` --uses--> `TailoringError`  [INFERRED]
+  tests/test_cv_completeness.py → src/jobpilot/tailoring.py
+- `_RecordingToolchain` --uses--> `TailoringError`  [INFERRED]
+  tests/test_cv_completeness.py → src/jobpilot/tailoring.py
+- `_BadSourceAdvisor` --uses--> `TailoringError`  [INFERRED]
+  tests/test_fact_id_resolution.py → src/jobpilot/tailoring.py
+- `_RecordingAdvisor` --uses--> `TailoringError`  [INFERRED]
+  tests/test_fact_id_resolution.py → src/jobpilot/tailoring.py
+- `_OneShotProfileOrphan` --uses--> `TailoringError`  [INFERRED]
+  tests/test_generation_resilience.py → src/jobpilot/tailoring.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (120 total, 13 thin omitted)
+## Communities (143 total, 21 thin omitted)
 
 ### Community 0 - "test_downloads.py"
-Cohesion: 0.05
-Nodes (41): BaseException, Operation, ProgressRegistry, Any, datetime, Update a running operation. A key that is not running is ignored., Close an operation. The first outcome recorded wins.          A handled failure, Everything running, plus anything that finished very recently. (+33 more)
+Cohesion: 0.14
+Nodes (14): ProgressRegistry, Report one operation for as long as it runs, however it ends.      ``with track(, Every operation currently worth reporting, keyed by a stable string., track, _utc_now(), It stays briefly so a poll landing just after completion sees the     outcome, t, A failure that never cleared its progress would leave the page claiming     work, test_a_failure_closes_the_operation_and_keeps_its_message() (+6 more)
 
 ### Community 1 - "Request"
 Cohesion: 0.08
 Nodes (55): Resolve one archived artefact, with the same discipline as the live one.      De, _safe_archive_path(), _archives_for(), Generation, is_archive_stamp(), library_entries(), LibraryEntry, _mtime_iso() (+47 more)
 
 ### Community 2 - "_candidate_name"
-Cohesion: 0.08
-Nodes (80): current_status(), _client(), _events(), _no_advisor_client(), _offer_application(), Connection, MonkeyPatch, Path (+72 more)
+Cohesion: 0.09
+Nodes (75): current_status(), _client(), _events(), _no_advisor_client(), _offer_application(), Connection, MonkeyPatch, Path (+67 more)
 
 ### Community 3 - "_client"
-Cohesion: 0.11
-Nodes (23): _application_for_assist(), _application_for_wttj(), ApplyAssistError, AssistResult, _fallback(), launch_application_assist(), launch_wttj_application(), _open_for_human() (+15 more)
+Cohesion: 0.13
+Nodes (17): adapter_for_url(), _application_for_assist(), _application_for_wttj(), ApplyAssistError, AssistResult, _fallback(), launch_application_assist(), Connection (+9 more)
 
 ### Community 4 - "create_app"
 Cohesion: 0.07
-Nodes (40): apply_cmd(), backfill_descriptions_cmd(), Synthesise descriptions for stored offers whose text is too thin to score., Re-derive company / city / workplace / easy-apply for stored alert offers., Clear stored match_scores so the next `score` run re-evaluates those offers., Approve an application and generate its tailored application documents., Pass on an application: move queued -> skipped., Show the email that would be sent for a ready application, then confirm (y/N). (+32 more)
+Nodes (41): apply_cmd(), invention_report_cmd(), queue_cmd(), List queued applications, highest final_score first., Approve an application and generate its tailored application documents., Show how often the advisor cites a fact id that does not exist.      Task 37 add, apply_schema(), connect() (+33 more)
 
 ### Community 5 - "dashboard.py"
-Cohesion: 0.07
-Nodes (82): Match, Pattern, FactBank, _add_tech_additions(), _add_tech_keywords(), _contact_fields(), _contains(), _contains_any() (+74 more)
+Cohesion: 0.06
+Nodes (81): CvProfile, ExperienceFact, FactBank, Match, Pattern, _add_tech_additions(), _add_tech_keywords(), _bank_parts() (+73 more)
 
 ### Community 6 - "run_dashboard"
-Cohesion: 0.14
-Nodes (20): bank(), _dropping_enabled(), _InventsForever, Connection, MonkeyPatch, Path, Task 37 item 3: degradation, shipped OFF.  If the advisor still cites an id that, Exactly three projects are required, each with its single fact. (+12 more)
+Cohesion: 0.11
+Nodes (29): bank(), _dropping_enabled(), _InventsForever, _plan(), Connection, MonkeyPatch, Path, Task 37 item 3: degradation. Shipped off, turned ON by Task 39.  If the advisor (+21 more)
 
 ### Community 7 - "Path"
-Cohesion: 0.18
-Nodes (14): derive_fields(), _Derived, Re-derive alert card fields (company / city / workplace / easy-apply) in place., Re-derive one offer's card fields from the text that was stored for it.      Pur, is_title_echo(), True when `chunk` restates `title` rather than naming a company or place., Split a trailing "(Sur site)" / "(Hybride)" / "(À distance)" off a location., split_workplace() (+6 more)
+Cohesion: 0.09
+Nodes (34): derive_fields(), _Derived, Re-derive alert card fields (company / city / workplace / easy-apply) in place., Re-derive one offer's card fields from the text that was stored for it.      Pur, _AlertAnchor, _AnchorParser, _anchors(), _Card (+26 more)
 
 ### Community 8 - "test_routing.py"
-Cohesion: 0.06
-Nodes (81): Cursor, Decision, RouteId, _applicant_reason(), _artifacts(), _ats_prefill(), _email(), _learned_form() (+73 more)
+Cohesion: 0.10
+Nodes (58): Cursor, _artifacts(), Path, Resolve the one route this application would go out by. Writes nothing., The resolved plan for one application. Carries no state and stores none., Fingerprint of exactly the inputs that decided this route.          Stateless by, resolve_route(), Route (+50 more)
 
 ### Community 9 - "mailer.py"
-Cohesion: 0.09
-Nodes (42): is_professional_address(), True only for well-formed addresses NOT on a personal free-provider domain., Whether a named mailbox on a professional domain needs extra approval., requires_personal_confirmation(), _as_utc(), _build_message(), build_sender(), ColdEmailPreparation (+34 more)
+Cohesion: 0.11
+Nodes (41): _as_utc(), _build_message(), build_sender(), ColdEmailPreparation, daily_cap_reached(), _default_body(), EmailPreparation, EmailSender (+33 more)
 
 ### Community 10 - "validate_cv.py"
 Cohesion: 0.06
 Nodes (53): check_orphans(), find_regressions(), Path, Return orphan metrics that are new or materially worse than the template., format_date(), main(), build_letter_html(), detect_github() (+45 more)
 
 ### Community 11 - "get_settings"
-Cohesion: 0.14
-Nodes (18): LookupError, ApplicationNotFoundError, ApplicationNotQueuedError, ApplyOutcome, approve_application(), archive_artifacts(), InteractiveAdvisorRequired, Any (+10 more)
+Cohesion: 0.07
+Nodes (42): Any, RuntimeError, _advise_and_tailor(), _advisor_fact_context(), _canonicalize_prose(), _fact_id_list(), _interactive_structured_payload(), _is_validator_rejection() (+34 more)
 
 ### Community 12 - "connect"
-Cohesion: 0.13
-Nodes (21): _offer(), _OneShotProfileOrphan, Connection, Path, _Toolchain, Systemic recovery at the generated-prose and document-layout boundaries., Naming the employer is what a motivation letter does.      The rule was never lo, A profile-only layout regression that disappears with template wording. (+13 more)
+Cohesion: 0.05
+Nodes (51): add_contact_cmd(), apply_matching_profile_cmd(), backfill_descriptions_cmd(), contacts_cmd(), _csv(), draft_cold_cmd(), init_db_cmd(), init_profile_cmd() (+43 more)
 
 ### Community 13 - "test_descriptions.py"
-Cohesion: 0.08
-Nodes (59): backfill_descriptions(), BackfillResult, clear_match_scores(), enrich_offer(), is_synthesized(), is_thin(), Connection, Synthesise matchable text for offers that arrive with no description.  Job-alert (+51 more)
+Cohesion: 0.10
+Nodes (50): backfill_descriptions(), BackfillResult, clear_match_scores(), is_synthesized(), Connection, Synthesise matchable text for offers that arrive with no description.  Job-alert, Return an SQL fragment + params restricting a query to one source., Regenerate synthesised descriptions for stored offers whose text is thin.      I (+42 more)
 
 ### Community 14 - "test_generic_vocabulary.py"
-Cohesion: 0.07
-Nodes (40): _csv(), dashboard_cmd(), init_db_cmd(), init_profile_cmd(), invention_report_cmd(), _langs(), mark_sent_cmd(), queue_cmd() (+32 more)
+Cohesion: 0.18
+Nodes (11): ApplyOutcome, approve_application(), Any, Connection, Record human approval, transition, and generate through one shared path.      ``, The result shared by the CLI and dashboard approval surfaces., Connection, Path (+3 more)
 
 ### Community 15 - "apply_assist.py"
-Cohesion: 0.24
-Nodes (20): mark_application_sent(), Send the application by email, then transition ready -> applied.      Returns th, Manual fallback: record an externally-submitted application as sent., send_application_email(), _utc_now(), _events(), Connection, EmailMessage (+12 more)
+Cohesion: 0.28
+Nodes (17): Combined application + cold-mail sends recorded for today (UTC)., sends_today(), _events(), Connection, EmailMessage, Exception, Path, Application email sending: rails, transitions, and events (mocked SMTP). (+9 more)
 
 ### Community 16 - "test_skim.py"
-Cohesion: 0.10
-Nodes (52): available_sources(), _create_application(), ignore_offer(), promote_offer(), Connection, Row, ValueError, The skim list: offers that passed the hard filter but scored below threshold.  T (+44 more)
+Cohesion: 0.17
+Nodes (34): promote_offer(), Offers that passed the hard filter and scored below the queue threshold.      An, Put a below-threshold offer into the normal review flow. Returns its id., skim_offers(), _client(), _events(), _offer(), Connection (+26 more)
 
 ### Community 17 - "contacts.py"
-Cohesion: 0.11
-Nodes (34): _candidate_name(), ContactCandidate, discover_and_store(), DiscoverySource, draft_cold_email(), draft_linkedin_note(), _get_or_create_cold_application(), is_suppressed() (+26 more)
+Cohesion: 0.09
+Nodes (40): _candidate_name(), ContactCandidate, discover_and_store(), DiscoverySource, draft_cold_email(), draft_linkedin_note(), _get_or_create_cold_application(), is_professional_address() (+32 more)
 
 ### Community 18 - "JobPilot — Codex Handoff (complete A-to-Z)"
 Cohesion: 0.04
 Nodes (45): 10. HARD REJECTIONS (offers the pipeline should auto-skip), 11. API REFERENCES, 12. DESIGN PRINCIPLES (non-negotiable), 13. ENV VARS (.env), 14. GITHUB PUSH (do this FIRST, before any Codex work), 15. CODEX TASK BREAKDOWN (suggested order), 16. BAIFALL DREAM STAGE REFERENCE, 17. SCRIPTS REFERENCE (+37 more)
 
 ### Community 19 - "RefreshRunner"
-Cohesion: 0.17
-Nodes (24): SimpleNamespace, Resolve TAILORING_PROVIDER to a concrete mode, without building anything.      C, resolve_provider(), _offer(), _openai_response(), _plan_payload(), Any, Connection (+16 more)
+Cohesion: 0.28
+Nodes (17): OpenAITailoringAdvisor, OpenAI-compatible Chat Completions adviser., _offer(), _openai_response(), _plan_payload(), Any, Connection, Path (+9 more)
 
 ### Community 20 - "_payload"
-Cohesion: 0.09
-Nodes (50): _plan(), The completeness floor is a hard failure, not a preference., The spec said "at least one remaining bullet" is enough. It is not: the     Task, skill_order has no minimum, so losing one weakens nothing structural., test_a_bullet_can_be_dropped_while_the_entry_stays_above_its_floor(), test_a_recent_employer_may_not_fall_to_one_bullet(), test_a_skill_can_be_dropped(), test_an_unrecognised_citation_is_never_dropped() (+42 more)
+Cohesion: 0.10
+Nodes (45): _bullets(), _project(), The advisor selects; the renderer inserts the bank's wording unchanged., The pre-written variants from the skill asset, used as the asset intends., The contract has no field for prose, so a writing advisor fails loudly., Only the entry's own facts, so a skill id cannot become a bullet., Task 25's tolerance survives: ids are normalised before they are judged., The phrase is short, but it is still generated, so the tiers still read it. (+37 more)
 
 ### Community 21 - "wttj.py"
 Cohesion: 0.10
 Nodes (41): _city(), _contact_email(), _contract(), _first(), map_hit(), _org(), _prose(), Any (+33 more)
 
 ### Community 22 - "SourcedBullet"
-Cohesion: 0.09
-Nodes (21): Event, _default_model_loader(), _default_score_pass(), _production_connection(), Any, Connection, RuntimeError, Load the embedding model. Lazy exactly as the CLI's `score` path is. (+13 more)
+Cohesion: 0.11
+Nodes (20): ConnectionFactory, Event, IngestResult, Any, RuntimeError, Single-flight ingest + score pass driven from the dashboard., Block until the running refresh finishes. Tests use this, not sleeps., Claim the single flight and hand the work to a background thread. (+12 more)
 
 ### Community 23 - "france_travail.py"
 Cohesion: 0.09
-Nodes (28): _delay(), Call fn(); retry on transient HTTP errors with full-jitter exponential backoff., with_backoff(), _first_nonempty(), FranceTravailSource, _map_contact_email(), _map_contract(), _map_duration_months() (+20 more)
+Nodes (30): _delay(), Rate limiting + exponential backoff for every external call (constitution rule)., Call fn(); retry on transient HTTP errors with full-jitter exponential backoff., with_backoff(), _first_nonempty(), FranceTravailSource, _map_contact_email(), _map_contract() (+22 more)
 
 ### Community 24 - "test_provenance_tiers.py"
 Cohesion: 0.08
-Nodes (37): bank(), _in_bank(), _offer(), Three kinds of token, three different burdens of proof., Not even the widest scope can support it., The reader has to be able to search for it, or add it to the config., Task 26's handling survives as the digit-shaped corner of tier 2., Presence in the bank is necessary for tier 2, never sufficient. (+29 more)
+Nodes (33): bank(), _in_bank(), Three kinds of token, three different burdens of proof., Not even the widest scope can support it., The reader has to be able to search for it, or add it to the config., Task 26's handling survives as the digit-shaped corner of tier 2., Presence in the bank is necessary for tier 2, never sufficient., No fact anywhere carries these figures, so no scope can accept them. (+25 more)
 
 ### Community 25 - "launch_wttj_application"
 Cohesion: 0.22
@@ -271,20 +294,20 @@ Cohesion: 0.05
 Nodes (36): Actualiser les offres (refresh from the page), Always up, without a terminal, Architecture (summary), ATS application assist (prefill only), Background scheduling, CI, Cold outreach sending (disabled by default), Commands (+28 more)
 
 ### Community 27 - "_FakePage"
-Cohesion: 0.12
-Nodes (18): adapter_for_url(), ApplyAdapter, Common adapter interface for a best-effort ATS prefill., Return the owning ATS adapter, if the saved offer URL is recognized., _FakeLauncher, _FakeLocator, _FakePage, Connection (+10 more)
+Cohesion: 0.10
+Nodes (21): ApplyAdapter, _BaseAdapter, GreenhouseAdapter, LeverAdapter, Common adapter interface for a best-effort ATS prefill., Shared plan building and non-submitting form interaction., SmartRecruitersAdapter, _FakeLauncher (+13 more)
 
 ### Community 28 - "cli.py"
-Cohesion: 0.12
-Nodes (42): counts(), Any, Connection, datetime, The tracker: every application, one table, read-only.  Deliberately not a Google, Every offer application, optionally narrowed to one status., Statuses that actually occur, so the filter offers no dead options., Export exactly the visible rows, in the visible column order. (+34 more)
+Cohesion: 0.19
+Nodes (29): Every offer application, optionally narrowed to one status., tracker_rows(), _application(), _client(), Connection, Path, TestClient, Task 36 item 5: the tracker page.  Read-only in the strict sense: nothing here w (+21 more)
 
 ### Community 29 - "test_desktop_shell.py"
-Cohesion: 0.08
-Nodes (32): CaptureFixture, dashboard_already_running(), Whether something is already listening on the dashboard's port.      A connect p, The menu bar text. Short: it competes with every other item up there., title(), _bound_port(), _fake_macos(), _module_level_imports() (+24 more)
+Cohesion: 0.07
+Nodes (36): CaptureFixture, dashboard_cmd(), Launch the local review dashboard on 127.0.0.1., dashboard_already_running(), Whether something is already listening on the dashboard's port.      A connect p, Run the dashboard on an intentionally fixed loopback interface.      Returns a p, run_dashboard(), The menu bar text. Short: it competes with every other item up there. (+28 more)
 
 ### Community 30 - "generate_application"
-Cohesion: 0.09
-Nodes (24): CompletedProcess, date, _check_orphans(), _contains_generated_orphan(), DocumentToolchain, _french_date(), generate_application(), _load_offer() (+16 more)
+Cohesion: 0.08
+Nodes (29): date, GenerationWarning, Protocol, _check_orphans(), _contains_generated_orphan(), DocumentToolchain, _french_date(), generate_application() (+21 more)
 
 ### Community 31 - "test_contacts.py"
 Cohesion: 0.10
@@ -292,27 +315,27 @@ Nodes (27): ModuleType, JobPilot: personal job application pipeline for the Fren
 
 ### Community 32 - "test_email_alerts.py"
 Cohesion: 0.09
-Nodes (44): Message, GmailIMAP, html_of(), LinkedInAlertSource, Minimal read-only Gmail IMAP client., Fetch recent mail sent from `domains` (or any of their subdomains).          The, Return the best HTML (or plain-text) body of an email message., Return the lowercased domain of the address in a `From` header.      Parses the (+36 more)
+Nodes (43): Message, GmailIMAP, html_of(), LinkedInAlertSource, Minimal read-only Gmail IMAP client., Fetch recent mail sent from `domains` (or any of their subdomains).          The, Return the best HTML (or plain-text) body of an email message., Return the lowercased domain of the address in a `From` header.      Parses the (+35 more)
 
 ### Community 33 - "test_labonnealternance.py"
 Cohesion: 0.10
-Nodes (39): _fixture(), _no_real_sleeping(), _NoWait, LogCaptureFixture, MonkeyPatch, La Bonne Alternance through the API Apprentissage: mapping, rails, ingestion.  E, The endpoint only publishes work-study, so nothing here is 'unknown'., The endpoint has no pagination, so this is the volume knob that exists. (+31 more)
+Nodes (38): _fixture(), _NoWait, LogCaptureFixture, La Bonne Alternance through the API Apprentissage: mapping, rails, ingestion.  E, The endpoint has no pagination, so this is the volume knob that exists., A full ingest reads both lists; it must not pay for the search twice., The live API really does repeat an offer inside one response., A company that has posted nothing must not appear in the review queue. (+30 more)
 
 ### Community 34 - "_Toolchain"
-Cohesion: 0.05
-Nodes (72): ApplicationGenerationError, A redacted generation failure suitable for CLI and dashboard display., ExperienceFact, FactClaim, One atomic statement that generated content may cite., CvProfile, Renderer-owned candidate facts injected into every generated CV., The location printed in the CV header when the offer yields none. (+64 more)
+Cohesion: 0.09
+Nodes (25): _correction_block(), _json_object(), Raised when an external tailoring provider request fails., Raised when a tailoring provider rejects its API credentials., Raised when a tailoring provider rate-limits a request., Raised when a provider returns an unusable response., The advisor's reasoned CV pick, before any mechanical contract rule., Validate a selection answer. The model may not invent a variant. (+17 more)
 
 ### Community 35 - "email_alerts.py"
-Cohesion: 0.08
-Nodes (33): _advisor_prompt(), Every id the advisor may cite, flattened out of the context it was given.      D, valid_fact_ids(), Listing the numbers is not enough on its own: the failure was a dropped +., test_the_prompt_forbids_introducing_a_figure(), test_the_prompt_says_to_copy_the_figure_exactly(), test_the_prompt_says_to_write_the_sentence_without_a_number(), facts() (+25 more)
+Cohesion: 0.07
+Nodes (44): _advisor_prompt(), extract_template_context(), Read all editable choices without altering the template., Every id the advisor may cite, flattened out of the context it was given.      D, valid_fact_ids(), The unwrapped second call that killed the Capgemini generation.      A degradati, test_the_profile_fallback_survives_its_own_fallback_failing(), Listing the numbers is not enough on its own: the failure was a dropped +. (+36 more)
 
 ### Community 36 - "test_alert_card_fields.py"
-Cohesion: 0.22
-Nodes (16): _alert_source_clause(), Connection, Restrict to one alert source, or to all of them when none is named., Re-derive company / city / workplace / easy-apply for stored alert offers., reparse_alerts(), ReparseResult, Connection, The card line survived in companies.name; the city held only chrome. (+8 more)
+Cohesion: 0.11
+Nodes (31): as_dicts(), clear_warnings(), _decode(), GenerationWarning, Any, Connection, What a generation had to degrade, recorded where the reviewer will see it.  Task, Gate names per application, for the library and tracker markers.      One query (+23 more)
 
 ### Community 37 - "Settings"
-Cohesion: 0.08
-Nodes (36): HTTPStatusError, MissingCredentialError, RuntimeError, Raised when a required secret is absent. We ask; we never silently mock., RateLimiter, Minimum-delay-per-domain limiter. Blocks until the next call is allowed., _city(), _company_name() (+28 more)
+Cohesion: 0.11
+Nodes (16): HTTPStatusError, MissingCredentialError, RuntimeError, Raised when a required secret is absent. We ask; we never silently mock., RateLimiter, Minimum-delay-per-domain limiter. Blocks until the next call is allowed., LaBonneAlternanceAuthError, LaBonneAlternanceError (+8 more)
 
 ### Community 38 - "Job Application Pipeline"
 Cohesion: 0.06
@@ -323,140 +346,144 @@ Cohesion: 0.15
 Nodes (28): bonus_score(), cosine(), hard_filter(), keyword_score(), norm(), pick_variant(), Profile, Connection (+20 more)
 
 ### Community 40 - "test_cv_completeness.py"
-Cohesion: 0.12
-Nodes (25): _category_skills(), _CompleteAdvisor, Any, Connection, Path, _Toolchain, _queued_application(), Structural completeness floor for AI-generated CVs (Task 22).  Selection freedom (+17 more)
+Cohesion: 0.13
+Nodes (23): _category_skills(), _CompleteAdvisor, Any, Connection, Path, _Toolchain, _queued_application(), Structural completeness floor for AI-generated CVs (Task 22).  Selection freedom (+15 more)
 
 ### Community 41 - "OfferRecord"
-Cohesion: 0.10
-Nodes (25): _advise(), bank(), _offer(), Any, LogCaptureFixture, Citation ids are matched tolerantly; what may be claimed is unchanged., The reported failure: 'unknown skill fact id: azure.sentinel'., skill_order can only mean a skill, so its own prefix settles the match. (+17 more)
+Cohesion: 0.08
+Nodes (28): _advise(), ambiguous_bank(), _BadSourceAdvisor, bank(), _offer(), Any, LogCaptureFixture, Path (+20 more)
 
 ### Community 42 - "test_dashboard_facts_scheduler.py"
 Cohesion: 0.29
 Nodes (16): _client(), fixture_bank(), Connection, MonkeyPatch, Path, TestClient, Read-only fact bank page and honest scheduler reporting on the queue page., test_daemon_state_follows_the_recorded_heartbeat_age() (+8 more)
 
 ### Community 43 - ".from_mapping"
-Cohesion: 0.13
-Nodes (17): is_noise(), True when `text` is card chrome that must never be stored as a field., Strip UI markers from one card chunk.      Returns ``(usable_text_or_None, easy_, scrub_chunk(), No literal list can enumerate these; N varies freely., test_connection_counts_are_matched_by_pattern_not_literal(), test_known_noise_is_recognised(), test_plausible_place_names_are_not_treated_as_noise() (+9 more)
+Cohesion: 0.11
+Nodes (18): enrich_offer(), is_thin(), Replace a thin description in place; richer descriptions are left alone.      Ca, True when a description is too short to be worth embedding on its own., OfferRecord, One normalized offer, ready to insert into the offers table., Coerce enum-constrained fields to legal values (schema CHECK safety)., Yield normalized offers. Must apply rate limiting + backoff internally. (+10 more)
 
 ### Community 44 - "test_cold_outreach.py"
-Cohesion: 0.09
-Nodes (30): OfferRecord, One normalized offer, ready to insert into the offers table., Coerce enum-constrained fields to legal values (schema CHECK safety)., ATSSource, infer_contract(), load_targets(), map_greenhouse(), map_lever() (+22 more)
+Cohesion: 0.11
+Nodes (28): daemon_cmd(), ingest_cmd(), Run ingest + score on a loop (Ctrl-C to stop)., Fetch offers from a source (or all sources) into the database., daemon_status(), DaemonStatus, heartbeat_path(), Any (+20 more)
 
 ### Community 45 - "_FakePage"
-Cohesion: 0.15
-Nodes (22): _events(), _FakeLauncher, _FakeLocator, _FakePage, Connection, _FakePage, Path, Row (+14 more)
+Cohesion: 0.23
+Nodes (22): launch_wttj_application(), Fill a WTTJ inline form and submit only behind the explicit live gate., _events(), _FakeLauncher, _FakePage, Connection, Path, Row (+14 more)
 
 ### Community 46 - "MissingCredentialError"
-Cohesion: 0.17
-Nodes (17): _Client, _offer(), _plan_payload(), Any, Exception, MonkeyPatch, Path, Focused contracts for tailoring advisers and the script toolchain. (+9 more)
+Cohesion: 0.10
+Nodes (24): _F, FactClaim, gate(), Label what this function refuses, and what refusing costs.      Attached to the, The tier this failure carries HERE.      An unclassified error is fatal. That de, A selected fact must be a real, reviewed fact OF THAT ENTRY.      This is the wh, What a gate firing is allowed to cost.      Task 39. Seven consecutive generatio, Tier (+16 more)
 
 ### Community 47 - "ats.py"
 Cohesion: 0.15
 Nodes (23): download_filename(), Download names an employer folder can still be read a week later.  ``output/appl, Reduce free text to ``[A-Za-z0-9-_]``, or to "" if nothing survives.      Accent, Build ``<Company>_<Type>_<Nom>.<ext>`` for one artefact.      Falls back to the, slugify(), _client(), Connection, Path (+15 more)
 
 ### Community 48 - "AnthropicTailoringAdvisor"
-Cohesion: 0.07
-Nodes (52): extract_template_context(), pick_variant(), Pick the best of 21 variants from missions, then apply contract rules.      Sinc, Read all editable choices without altering the template., Validate the one JSON contract shared by every advisor provider., unsupported number 27001' was rejecting real, bank-backed vocabulary., test_the_observed_failure_no_longer_fails_a_generation(), rendered() (+44 more)
+Cohesion: 0.06
+Nodes (61): OfferContext, _omit_offending_paragraph(), _paragraph_offends(), pick_variant(), Pick the best of 21 variants from missions, then apply contract rules.      Sinc, Offer data exposed to an automatic or interactive tailoring adviser., Whether this one paragraph is what _validate_letter_body refused.      Only the, Drop the one paragraph the letter gate refused, keeping the rest.      The retry (+53 more)
 
 ### Community 49 - "OpenAITailoringAdvisor"
-Cohesion: 0.36
-Nodes (10): apply_matching_profile(), MatchingProfile, Write the vocabulary onto the profile singleton. Returns {field: (before, after), The scoring vocabulary, committed to git rather than typed once.      These thre, Connection, _seed_profile(), test_applying_is_idempotent(), test_applying_reports_what_changed() (+2 more)
+Cohesion: 0.15
+Nodes (25): Decision, RouteId, Remove configured secrets from exception text before display/logging., Settings, _applicant_reason(), _ats_prefill(), _email(), _learned_form() (+17 more)
 
 ### Community 50 - "resolve_fact_id"
 Cohesion: 0.25
-Nodes (8): add_contact_cmd(), contacts_cmd(), draft_cold_cmd(), Resolve a company by numeric id or name; create by name if absent., Manually add a hiring contact for a company (default discovery path)., List stored contacts for a company, or the sourced outreach targets.      A targ, Draft a LinkedIn note + cold email and queue them for review (no send)., _resolve_company()
+Nodes (17): _city(), _company_name(), _contract_type(), _domain(), _first(), map_company(), map_offer(), Any (+9 more)
 
 ### Community 51 - "test_tech_additions.py"
-Cohesion: 0.16
-Nodes (25): _offer(), LogCaptureFixture, Zone 3 may add a keyword, but only one he has and the offer asked for., Reorder-only remains the default and the common case., Genuinely his, but padding: the offer did not ask for it., Presence in the bank is necessary, never sufficient., Derived from the file, not a magic number., One page matters more than one keyword; the CV is still true without it. (+17 more)
+Cohesion: 0.15
+Nodes (26): bank(), _offer(), LogCaptureFixture, Zone 3 may add a keyword, but only one he has and the offer asked for., Reorder-only remains the default and the common case., Genuinely his, but padding: the offer did not ask for it., Presence in the bank is necessary, never sufficient., Derived from the file, not a magic number. (+18 more)
 
 ### Community 52 - "load_fact_bank"
-Cohesion: 0.10
-Nodes (38): _boolean(), build_cv_title(), CertificationFact, _claim_list(), EducationFact, _entry_claim(), FactBankError, LanguageFact (+30 more)
+Cohesion: 0.09
+Nodes (40): facts_cmd(), Print the provenance fact bank grouped for human review., _boolean(), CertificationFact, _claim_list(), EducationFact, _entry_claim(), ExperienceFact (+32 more)
 
 ### Community 53 - "CompanyRecord"
-Cohesion: 0.08
-Nodes (37): _advise_and_tailor(), _advisor_fact_context(), _canonicalize_prose(), _infer_region(), _interactive_structured_payload(), _is_validator_rejection(), _justification(), _offer_start() (+29 more)
+Cohesion: 0.17
+Nodes (19): AnthropicTailoringAdvisor, Claude Messages API adviser used when ``ANTHROPIC_API_KEY`` is set., _Client, _offer(), _plan_payload(), Any, Exception, MonkeyPatch (+11 more)
 
 ### Community 54 - "labonnealternance.py"
 Cohesion: 0.11
 Nodes (17): _InteractiveShapedAdvisor, Human loop: always rejected, and never re-prompted automatically., _InventsThenRecovers, Connection, LogCaptureFixture, Path, Task 37 item 2: give the unknown-id retry something to work with.  An unknown fa, Cites an id that exists nowhere, for a chosen number of attempts. (+9 more)
 
 ### Community 55 - "ingest_source"
-Cohesion: 0.17
-Nodes (9): ApplicantProfile, The non-secret contact values entered into an ATS form., FormLearningError, PrefillOutcome, ValueError, Raised when a mapping would break one of this module's hard rules., What one learning pass did, including everything it refused., What a learned prefill produced, and what it threw away doing so. (+1 more)
+Cohesion: 0.16
+Nodes (11): Connection, Path, Nothing is weakened: a fabrication ends the run exactly as before., An invented figure is recoverable — the retry is handed the real ones —     but, test_a_fatal_gate_still_aborts(), test_a_recoverable_gate_with_no_degradation_escalates_to_fatal(), test_an_advisory_gate_never_blocks(), End to end, on the failure that killed applications 25 and 28.      The live re- (+3 more)
 
 ### Community 56 - "pick_variant"
-Cohesion: 0.14
-Nodes (14): BrowserLauncher, _ConfirmationBaseline, _css_attribute_value(), _Locator, _Page, PrefillPlan, Protocol, The actions selected from a page's current HTML fixture/markup. (+6 more)
+Cohesion: 0.16
+Nodes (11): BrowserLauncher, _ConfirmationBaseline, _Locator, _Page, PrefillPlan, Protocol, The actions selected from a page's current HTML fixture/markup., A launch seam: production opens Playwright, tests supply a stub page. (+3 more)
 
 ### Community 57 - "test_fact_id_resolution.py"
-Cohesion: 0.20
-Nodes (20): invention_report(), How often the advisor cites an id that does not exist, and whether it recovers., _Invents, Connection, MonkeyPatch, Path, Task 37 item 4: count invention, so the other three items are not guesswork.  Pr, Item 3 degrades the CV; that is a different outcome from getting it right. (+12 more)
+Cohesion: 0.21
+Nodes (21): invention_report(), How often the advisor cites an id that does not exist, and whether it recovers., _Invents, Connection, MonkeyPatch, Path, Task 37 item 4: count invention, so the other three items are not guesswork.  Pr, Counting is about what the model invented, not about what was salvaged.      Dro (+13 more)
 
 ### Community 58 - "test_letter_locked_fields.py"
 Cohesion: 0.18
 Nodes (19): bank(), _letter(), _offer(), A letter is prose about a career; a CV is slots the renderer fills., Naming a real-sounding employer he never had is a fabrication, not prose., The renderer injects the address block; the body repeating it is a bug., Otherwise the test above would prove nothing about scope., The bank's own text names nothing it should not; selection is the check. (+11 more)
 
 ### Community 59 - "launch_application_assist"
-Cohesion: 0.29
-Nodes (7): parse_card_line(), Parse LinkedIn's "Company · City (Workplace)" card line.      Returns None when, The same four values models.REMOTE_POLICIES defines for every source., Hyphens are common inside real place names; only split when unambiguous., test_card_line_splits_into_company_city_and_workplace(), test_hyphen_fallback_refuses_ambiguous_lines(), test_workplace_maps_onto_the_existing_remote_policy_vocabulary()
+Cohesion: 0.15
+Nodes (21): ATSSource, infer_contract(), load_targets(), map_greenhouse(), map_lever(), map_smartrecruiters(), _ms_to_iso(), Any (+13 more)
 
 ### Community 60 - "test_letter_quality.py"
-Cohesion: 0.22
-Nodes (17): _default_letter(), french_de_elision(), Return « de <noun> » or « d'<noun> », applying French elision.      Elides befor, _render_sourced_letter(), _validate_letter_body(), _letter(), _offer(), Letter quality: French elision and the 'Entreprise' placeholder rejection. (+9 more)
+Cohesion: 0.24
+Nodes (16): _default_letter(), french_de_elision(), Return « de <noun> » or « d'<noun> », applying French elision.      Elides befor, _validate_letter_body(), _letter(), _offer(), Letter quality: French elision and the 'Entreprise' placeholder rejection., test_default_letter_elides_poste_before_vowel() (+8 more)
 
 ### Community 61 - "test_mailer.py"
-Cohesion: 0.40
-Nodes (5): daemon_cmd(), Run ingest + score on a loop (Ctrl-C to stop)., One ingest-all + score pass. Sources with missing creds are skipped., run_cycle(), run_daemon()
+Cohesion: 0.23
+Nodes (14): It did not block, so the only thing standing between it and invisibility     is, test_an_advisory_orphan_is_recorded_on_the_application(), test_the_library_and_tracker_mark_a_degraded_application(), _approve(), Connection, LogCaptureFixture, Path, The asset file calls these false positives outside a full render. (+6 more)
 
 ### Community 62 - "models.py"
-Cohesion: 0.50
-Nodes (4): ColdSendDisabled, A rail (suppression list or daily cap) refuses the send. Not a failure., Live cold sending is disabled by configuration., SendBlocked
+Cohesion: 0.13
+Nodes (18): _OneShotProfileOrphan, Connection, Path, _Toolchain, Systemic recovery at the generated-prose and document-layout boundaries., A profile-only layout regression that disappears with template wording., _selection_and_template(), test_a_valid_custom_profile_phrase_is_preserved_exactly() (+10 more)
 
 ### Community 63 - "reparse_alerts"
 Cohesion: 0.22
 Nodes (15): _generation_failed_detail(), Any, Connection, LogCaptureFixture, Path, _queued_application(), One automatic advisor retry, fed only the validator's own error text., Re-calling on a 429 or a bad key is not feedback, it is a retry storm. (+7 more)
 
 ### Community 64 - "test_designation_numbers.py"
-Cohesion: 0.67
-Nodes (3): counts(), Connection, Ready and queued offer applications, the two numbers worth a glance.
+Cohesion: 0.20
+Nodes (15): Container, _designation_spans(), ProvenanceScope, Everything true of the career the generated text is describing.      Generated t, Check every designation against the scope; return what it covers.      Designati, Blank out validated designations, keeping every other offset intact., Build the rejection and record it, so the misses can be counted later.      This, Tier 1. A measurement belongs to the entry it was measured in. (+7 more)
 
 ### Community 65 - "test_fact_id_consistency.py"
-Cohesion: 0.20
-Nodes (15): bank(), _bank_payload(), Path, Task 35 item 2: a fact bank whose claim ids do not extend their entry is invalid, The real bank must satisfy the rule the loader now enforces., This is the exact shape the Baïfall entry had., Projects have the same shape as experience, so they get the same rule., `experience.baifallX` starts with the entry id as a STRING but is a     differen (+7 more)
+Cohesion: 0.10
+Nodes (27): _bullet_budget(), _claim_length(), An experience claim has to fit the CV's one line.  The renderer inserts a select, Every experience bullet the template ships, as (employer, plain text).      Enti, The longest experience bullet the template itself already renders on one line., Derived from the file, not a magic number., Without this the constant could go stale and quietly widen the budget., The renderer inserts these verbatim, so a long one wraps in silence. (+19 more)
+
+### Community 66 - "review.py"
+Cohesion: 0.06
+Nodes (35): CompletedProcess, AmbiguousFactIdError, _fact_id_key(), _guessed_section(), nearest_entry_claim_ids(), Raised when generated prose states a figure the bank does not contain.      A si, Raised when a citation matches no fact id, even after normalisation.      ``sect, Fold separator and case differences, and nothing else, for comparison. (+27 more)
 
 ### Community 67 - "ingest_source"
 Cohesion: 0.16
-Nodes (21): Score all unscored offers and queue those above threshold., score_cmd(), _as_list(), build_profile_text(), _col(), Row, Build a natural-language candidate summary for embedding.      Phrased like the, Connection (+13 more)
+Nodes (15): Connection, Exception, LogCaptureFixture, Path, _queued_application(), Records the gates without pinning them to one offer or one variant., API-shaped advisor: answers selection, then tailors whatever was chosen.      Se, _ready_detail() (+7 more)
 
 ### Community 68 - "_AnchorParser"
-Cohesion: 0.06
-Nodes (58): InteractiveTailoringAdvisor, Terminal prompts used when interactive tailoring is selected., CatalogueEntry, default_catalogue(), load_variant_catalogue(), _parse_criteria(), _parse_shortcuts(), Path (+50 more)
+Cohesion: 0.10
+Nodes (28): CatalogueEntry, default_catalogue(), load_variant_catalogue(), _parse_criteria(), _parse_shortcuts(), Path, RuntimeError, The CV catalogue offered to the advisor when it selects a variant.  The selectio (+20 more)
 
 ### Community 69 - "test_preview.py"
-Cohesion: 0.23
-Nodes (12): _bullet_budget(), _claim_length(), An experience claim has to fit the CV's one line.  The renderer inserts a select, Every experience bullet the template ships, as (employer, plain text).      Enti, The longest experience bullet the template itself already renders on one line., Derived from the file, not a magic number., Without this the constant could go stale and quietly widen the budget., The renderer inserts these verbatim, so a long one wraps in silence. (+4 more)
+Cohesion: 0.15
+Nodes (22): Apply the mechanical contract and encoding rules to a chosen slug.      These ar, The contract line an adapted alternance CV must carry., The stage contract line to fall back to, built from what is known.      Determin, Preserve a valid contract phrase; replace only a rejected one.      Same shape a, _resolve_stage_contract_phrase(), _stage_contract_fallback(), _validate_stage_contract_phrase(), variant_for_slug() (+14 more)
 
 ### Community 70 - "vocabulary.py"
-Cohesion: 0.06
-Nodes (54): FastAPI, Request, open_manually(), The manual_open route: open the offer, copy the letter, submit nothing.      A l, generation_single_flight(), GenerationInFlight, Raised when a generation is already running for this application., Claim the one generation slot for ``application_id``, or refuse.      Taken *bef (+46 more)
+Cohesion: 0.08
+Nodes (46): FastAPI, archive_artifacts(), Path, Move an application's current artefacts aside; return where they went.      Diff, copy_text(), Copy ``text``; return whether it actually landed on the clipboard., _candidate_name(), _citation_warning() (+38 more)
 
 ### Community 71 - "UnknownFactIdError"
-Cohesion: 0.15
-Nodes (24): parse_linkedin(), Extract jobs from a LinkedIn job-alert email., _card_html(), LogCaptureFixture, Structural parsing of job-alert cards (Task 20).  Every fixture here is shaped a, Whatever position the chrome occupies, it must not be stored., None is strictly better: the hard filter reads it as "do not reject"., Observed verbatim: "Levallois-Perret (Sur site) Candidature simplifiée". (+16 more)
+Cohesion: 0.10
+Nodes (33): parse_linkedin(), Extract jobs from a LinkedIn job-alert email., _card_html(), LogCaptureFixture, Structural parsing of job-alert cards (Task 20).  Every fixture here is shaped a, The same four values models.REMOTE_POLICIES defines for every source., Indeed writes "Villeneuve-d'Ascq (59)" — the postcode is not a workplace., Whatever position the chrome occupies, it must not be stored. (+25 more)
 
 ### Community 72 - "Baifall Dream Stage - Reference Document (v3)"
 Cohesion: 0.17
 Nodes (11): Baifall Dream Stage - Reference Document (v3), Bloc HTML de reference (3 bullets), Bullet 1 (commun, accompli) - 167 car., rendu sur 2 lignes, Bullet 2 (commun, nominal, perimetre complet) - 127 car., 1 ligne, Bullet 3 : declinaisons par variante, Context, Principe v3 : perimetre nominal complet, Regle pour la date (+3 more)
 
 ### Community 73 - "test_facts.py"
-Cohesion: 0.06
-Nodes (72): Whether a stored selector still finds a control on the current page., selector_matches_html(), build_prefill(), discard_mapping(), fields_from_html(), FormField, FormMapping, infer_profile_field() (+64 more)
+Cohesion: 0.05
+Nodes (81): Whether a stored selector still finds a control on the current page., selector_matches_html(), build_prefill(), discard_mapping(), fields_from_html(), FormField, FormLearningError, FormMapping (+73 more)
 
 ### Community 74 - "test_progress.py"
-Cohesion: 0.18
-Nodes (20): load_matching_profile(), Load the committed matching vocabulary, failing loudly rather than defaulting., Path, Task 35 item 1: the city parse fix (1a) and the committed matching profile (1b)., role_hit is an unanchored substring test worth a flat +0.15. As bare     tokens, Item 1c withdrawn. These are load-bearing: France Travail writes     'Courbevoie, The old list was already French but multi-word, and substring matching     needs, len(hard_skills) is keyword_score's denominator, so a duplicate silently     low (+12 more)
+Cohesion: 0.09
+Nodes (39): apply_matching_profile(), load_matching_profile(), MatchingProfile, Write the vocabulary onto the profile singleton. Returns {field: (before, after), The scoring vocabulary, committed to git rather than typed once.      These thre, Load the committed matching vocabulary, failing loudly rather than defaulting., Connection, Path (+31 more)
 
 ### Community 75 - "scheduler_status"
 Cohesion: 0.27
@@ -479,8 +506,8 @@ Cohesion: 0.29
 Nodes (6): AGENTS.md - JobPilot project constitution, Engineering standards, Interaction rules for Codex, Legal and safety rails (do not remove or weaken), Non-negotiable architecture, What this project is
 
 ### Community 80 - "test_valid_sourced_advice_completes_the_shared_generation_path"
-Cohesion: 0.38
-Nodes (10): _approve(), Connection, LogCaptureFixture, Path, The asset file calls these false positives outside a full render., The reliable control, per the asset file, so it never becomes advisory., test_a_clean_generation_records_no_orphan_warning(), test_an_orphan_in_the_generated_profile_still_fails() (+2 more)
+Cohesion: 0.15
+Nodes (21): Score all unscored offers and queue those above threshold., score_cmd(), _default_score_pass(), _production_connection(), Connection, Score exactly as ``jobpilot score`` does, with the model already loaded., One dedicated connection per refresh; the request's own is long gone., Connection (+13 more)
 
 ### Community 81 - "JobPilot prompt pack"
 Cohesion: 0.33
@@ -506,13 +533,13 @@ Nodes (5): The post-tailoring script accepts sourced structural edits, not empty
 Cohesion: 0.40
 Nodes (4): Build, Engineering, Out of scope, Phase 06: Review interface (Telegram bot)
 
-### Community 87 - "test_retry_feedback.py"
-Cohesion: 0.07
-Nodes (33): _fact_id_key(), _guessed_section(), nearest_entry_claim_ids(), Raised when a citation matches no fact id, even after normalisation.      ``sect, Fold separator and case differences, and nothing else, for comparison., Map a cited id onto a real fact id, accepting only unambiguous matches.      Mat, The entry a bad citation came closest to naming, and its real claim ids.      Ne, The section the citation was aiming at, read from its own prefix. (+25 more)
+### Community 87 - "CompanyRecord"
+Cohesion: 0.16
+Nodes (21): get_or_create_company(), CompanyRecord, Yield companies likely to hire (optional; default: none)., _no_real_sleeping(), Connection, MonkeyPatch, Backoff between retries is real seconds; the test suite must not spend them., Only fetch_companies() produces outreach targets, not offer side effects. (+13 more)
 
-### Community 88 - "record_form_fields"
-Cohesion: 0.10
-Nodes (20): _AlertAnchor, _AnchorParser, _anchors(), _Card, _card_fields(), CardFields, clean_job_url(), parse_indeed() (+12 more)
+### Community 88 - "profile.py"
+Cohesion: 0.13
+Nodes (18): CvProfile, CvProfileError, load_cv_profile(), load_variants(), MatchingProfileError, Path, ValueError, Profile singleton + cv_variants seeding.  Persistence logic only (no prompting/p (+10 more)
 
 ### Community 89 - "Phase 02: Scraper sources (run after phase 01 is green)"
 Cohesion: 0.50
@@ -530,73 +557,129 @@ Nodes (3): Build, Out of scope, Phase 04: Cold mail module
 Cohesion: 0.50
 Nodes (3): Build, Out of scope, Phase 05: Reply detection + tracker automation
 
-### Community 93 - "_TextParser"
-Cohesion: 0.38
-Nodes (13): _client(), Connection, Path, TestClient, Task 36 item 3: read the CV before downloading it.  Reading is the step that dec, Task 34 pinned this. Naming the download must not have widened it., Separate actions, same bytes, same guarded path., _ready_with_artifacts() (+5 more)
+### Community 93 - "skim.py"
+Cohesion: 0.14
+Nodes (18): available_sources(), _create_application(), ignore_offer(), Connection, Row, ValueError, The skim list: offers that passed the hard filter but scored below threshold.  T, The offer row, if it is genuinely one this page may act on. (+10 more)
 
 ### Community 110 - "test_designation_numbers.py"
 Cohesion: 0.17
 Nodes (16): bank(), _in_bank(), LogCaptureFixture, A standard's digits name a thing; a metric's digits measure one., The anti-fabrication guarantee is not weakened by designation handling., Only the designation's own span is exempt from the number rule., Judge as the letter is judged: no entry, so the whole bank answers., Looking like a standard is not evidence of holding one. (+8 more)
 
 ### Community 111 - "_AnchorParser"
-Cohesion: 0.05
-Nodes (68): Container, allowed_numbers(), _bank_parts(), _designation_spans(), letter_scope(), _normalized_number(), _offer_identity(), _organisation_names() (+60 more)
+Cohesion: 0.07
+Nodes (55): allowed_numbers(), letter_scope(), _normalized_number(), _offer_identity(), _organisation_names(), The names the bank knows structurally: employers, schools, diplomas.      Naming, The scope for the letter and the profile's domain phrase.      Attribution still, The parsed fields a letter is entitled to say back to its reader.      An unname (+47 more)
 
 ### Community 112 - "test_ingest_idempotent.py"
-Cohesion: 0.07
-Nodes (59): Return capability-tier tokens that have tripped generations, by frequency., vocabulary_misses(), GenericVocabularyError, load_generic_vocabulary(), parse_rejections(), Path, ValueError, Three tiers of token, so a category word is not judged like a claim.  A sourced (+51 more)
+Cohesion: 0.06
+Nodes (61): Return capability-tier tokens that have tripped generations, by frequency., vocabulary_misses(), GenericVocabularyError, load_generic_vocabulary(), parse_rejections(), Path, StrEnum, ValueError (+53 more)
 
 ### Community 113 - "apply_matching_profile_cmd"
-Cohesion: 0.20
-Nodes (10): menubar_cmd(), Show ready/queued counts in the macOS menu bar (optional extra)., MenubarUnavailable, Any, RuntimeError, Raised when the menu bar item cannot run on this machine., Import rumps or explain, in French, exactly how to get it., Run the menu bar item until quit. Blocks; opens the dashboard on click. (+2 more)
+Cohesion: 0.09
+Nodes (34): Logger, SentenceTransformer, Put text on the system clipboard, or say plainly that it could not.  The manual_, _env_bool(), get_settings(), _path(), Configuration and path resolution. Secrets come from .env only (never mocked)., _as_list() (+26 more)
 
-### Community 116 - "mappings_for"
-Cohesion: 0.07
-Nodes (52): ConnectionFactory, list_outreach_targets(), Companies an ingestion source flagged as likely to hire an alternant.      These, source_id(), _backfill_company_source(), get_or_create_company(), ingest_source(), IngestResult (+44 more)
+### Community 114 - "test_variant_selection.py"
+Cohesion: 0.24
+Nodes (19): _answer(), _decision(), _offer(), Any, The advisor chooses the CV; the keyword router is only a sanity check., The bug, pinned: one « pilotage » outweighs twenty technical signals., Template existence is mechanical: never let it break a generation., test_a_slug_with_no_template_file_falls_back_instead_of_failing() (+11 more)
 
-### Community 118 - "parse_rejections"
+### Community 115 - "reparse_alerts"
+Cohesion: 0.22
+Nodes (16): _alert_source_clause(), Connection, Restrict to one alert source, or to all of them when none is named., Re-derive company / city / workplace / easy-apply for stored alert offers., reparse_alerts(), ReparseResult, Connection, The card line survived in companies.name; the city held only chrome. (+8 more)
+
+### Community 116 - "test_profile_domain_anchor.py"
+Cohesion: 0.19
+Nodes (14): _extract_profile_domain(), _profile_of(), Path, Task 40: the domain phrase is found by its own marker, not by its neighbours.  _, Not just the wordings we ship: any of them, including ones nobody wrote yet., A rewrite that dropped it would break the next read instead of this one., The ±15-character layout budget must not shift under it., The bug. This raised "template profile domain phrase not found". (+6 more)
+
+### Community 117 - "tracker.py"
+Cohesion: 0.18
+Nodes (13): counts(), Any, Connection, datetime, The tracker: every application, one table, read-only.  Deliberately not a Google, Statuses that actually occur, so the filter offers no dead options., Export exactly the visible rows, in the visible column order., The four numbers worth seeing before the table itself. (+5 more)
+
+### Community 118 - "_TextParser"
+Cohesion: 0.15
+Nodes (5): _ControlParser, HTMLParser, Strip a generated letter's markup down to what a human would paste., Tiny standard-library parser sufficient to test our simple CSS selectors., _TextParser
+
+### Community 119 - "refresh_operation"
 Cohesion: 0.23
-Nodes (5): Connection, Path, test_a_rejected_number_is_counted_separately_from_an_invented_id(), Path, _Toolchain
+Nodes (9): Operation, Any, datetime, Everything running, plus anything that finished very recently., Present a RefreshRunner snapshot in the same shape as everything else.      Refr, One slow thing, and how far along it is., refresh_operation(), test_a_refresh_snapshot_becomes_a_per_source_operation() (+1 more)
+
+### Community 120 - "test_ingest_idempotent.py"
+Cohesion: 0.11
+Nodes (27): source_id(), _backfill_company_source(), ingest_source(), _insert_offer(), Connection, Ingestion orchestrator: pull normalized records from a Source into the DB.  Idem, INSERT OR IGNORE one offer. Returns True if a new row was created., Run one source end to end. Commits once at the end for atomicity. (+19 more)
 
 ### Community 121 - "run_menubar"
-Cohesion: 0.06
-Nodes (58): Logger, SentenceTransformer, ingest_cmd(), Fetch offers from a source (or all sources) into the database., Put text on the system clipboard, or say plainly that it could not.  The manual_, _env_bool(), get_settings(), _path() (+50 more)
+Cohesion: 0.38
+Nodes (13): _client(), Connection, Path, TestClient, Task 36 item 3: read the CV before downloading it.  Reading is the step that dec, Task 34 pinned this. Naming the download must not have widened it., Separate actions, same bytes, same guarded path., _ready_with_artifacts() (+5 more)
+
+### Community 123 - "test_renderer_owned_fields.py"
+Cohesion: 0.22
+Nodes (9): build_cv_title(), Build the deterministic CV title used after all advisor providers., test_build_cv_title_uses_clean_role_and_contract_specific_suffix(), The guarantees that made four _validate_plan branches unreachable.  Task 39 item, The one input to resolve_header_location that comes from config., _offer_start falls back to « septembre 2026 », so there is always one., test_the_built_title_always_carries_a_start_date(), test_the_built_title_always_carries_its_contract_type() (+1 more)
 
 ### Community 124 - "ApplicationNotQueuedError"
-Cohesion: 0.19
-Nodes (19): IllegalTransition, log_event(), Connection, ValueError, The single authorized writer of applications.status.  Every status transition MU, Raised when a status change is not permitted by the state machine., Append an audit event. Used for status_change, human_approved, email_sent, etc., Move an application to to_status if legal; log a status_change event.      Retur (+11 more)
+Cohesion: 0.09
+Nodes (34): LookupError, ApplicationGenerationError, ApplicationNotFoundError, ApplicationNotQueuedError, generation_single_flight(), GenerationInFlight, InteractiveAdvisorRequired, RuntimeError (+26 more)
 
-### Community 126 - "test_sourcing_targets_changes_no_sending_gate"
-Cohesion: 0.50
-Nodes (4): facts_cmd(), Print the provenance fact bank grouped for human review., format_fact_bank(), Render the bank as plain UTF-8 text for human review in the CLI.
+### Community 125 - "parse_indeed"
+Cohesion: 0.29
+Nodes (7): clean_job_url(), parse_indeed(), Return a stable detail URL with email/tracking parameters removed., Extract jobs from an Indeed job-alert email., test_clean_job_url_removes_tracking_parameters(), test_parse_ignores_non_job_links(), test_parse_indeed_extracts_jk_ids()
 
-### Community 129 - "apply_matching_profile_cmd"
-Cohesion: 0.23
-Nodes (12): apply_matching_profile_cmd(), Connection, _queue_snapshot(), Apply config/matching_profile.yaml and report what it changed.      Re-scoring i, Count what currently clears the bar, for an honest before/after., Re-evaluate every offer against the new vocabulary.      ``jobpilot score`` only, _rescore_all(), ensure_profile_embedding() (+4 more)
+### Community 126 - "build_advisor"
+Cohesion: 0.22
+Nodes (13): SimpleNamespace, build_advisor(), Raised when the selected tailoring provider is not configured., Resolve TAILORING_PROVIDER to a concrete mode, without building anything.      C, Select the configured provider without silently bypassing missing keys., resolve_provider(), TailoringConfigurationError, MonkeyPatch (+5 more)
+
+### Community 128 - "_client"
+Cohesion: 0.33
+Nodes (11): _client(), Connection, Path, TestClient, The point of the whole item: the writer lock is held, and /progress still     an, Task 34's rule: the validator's own message, verbatim, not 'Error: 500'., It must answer while a generation holds the writer lock., test_a_generation_failure_is_reported_in_the_interface_voice() (+3 more)
+
+### Community 129 - "ApplicantProfile"
+Cohesion: 0.22
+Nodes (7): ApplicantProfile, letter_plain_text(), open_manually(), Path, The generated letter as plain text, or '' when it was never generated., The manual_open route: open the offer, copy the letter, submit nothing.      A l, The non-secret contact values entered into an ATS form.
+
+### Community 130 - "test_progress.py"
+Cohesion: 0.20
+Nodes (3): Task 36 item 6: live progress for the slow operations.  Generation, regeneration, The token system disables motion wholesale rather than per-animation., test_the_spinner_respects_reduced_motion()
+
+### Community 131 - ".finish"
+Cohesion: 0.22
+Nodes (4): BaseException, Update a running operation. A key that is not running is ignored., Close an operation. The first outcome recorded wins.          A handled failure, Record a failure the caller handled rather than raised.          The dashboard c
 
 ### Community 132 - "observable_controls"
-Cohesion: 0.06
-Nodes (37): _BaseAdapter, _Control, _ControlParser, _controls_from_html(), FillAction, _first_matching_selector(), _Form, _FormParser (+29 more)
+Cohesion: 0.10
+Nodes (29): _Control, _controls_from_html(), _css_attribute_value(), FillAction, _first_matching_selector(), _Form, _FormParser, _forms_from_html() (+21 more)
+
+### Community 133 - "test_registry.py"
+Cohesion: 0.46
+Nodes (7): available_sources(), Path, Source enablement via config/sources.yaml., _settings(), test_disabled_source_excluded(), test_no_config_all_enabled(), test_replace_keeps_dataclass_shape()
+
+### Community 134 - "Request"
+Cohesion: 0.29
+Nodes (7): Request, _posted_body(), _posted_cold_send(), _posted_plan_hash(), Read the ``body`` field from a urlencoded POST without python-multipart.      Ru, Read the plan_hash the confirmation page put in the form., Read editable body and the named-mailbox confirmation checkbox.
+
+### Community 135 - "_Advisor"
+Cohesion: 0.53
+Nodes (5): _Advisor, _application(), Connection, test_generation_failure_returns_application_to_queue(), test_generation_runs_quality_gates_before_pdfs_and_moves_to_ready()
+
+### Community 136 - "SendBlocked"
+Cohesion: 0.50
+Nodes (4): ColdSendDisabled, A rail (suppression list or daily cap) refuses the send. Not a failure., Live cold sending is disabled by configuration., SendBlocked
 
 ## Knowledge Gaps
-- **154 isolated node(s):** `profile`, `contacts`, `suppression_list`, `offers`, `offers` (+149 more)
+- **155 isolated node(s):** `profile`, `contacts`, `suppression_list`, `offers`, `offers` (+150 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Settings` connect `run_menubar` to `test_email_alerts.py`, `test_labonnealternance.py`, `_client`, `observable_controls`, `Settings`, `vocabulary.py`, `test_routing.py`, `mailer.py`, `record_form_fields`, `test_cold_outreach.py`, `_FakePage`, `apply_assist.py`, `france_travail.py`, `wttj.py`, `ingest_source`, `pick_variant`, `_FakePage`, `models.py`?**
-  _High betweenness centrality (0.079) - this node is a cross-community bridge._
-- **Why does `current_status()` connect `_candidate_name` to `create_app`, `dashboard.py`, `run_dashboard`, `test_routing.py`, `mailer.py`, `get_settings`, `connect`, `test_generic_vocabulary.py`, `apply_assist.py`, `test_skim.py`, `RefreshRunner`, `launch_wttj_application`, `_FakePage`, `generate_application`, `test_contacts.py`, `test_cv_completeness.py`, `_FakePage`, `labonnealternance.py`, `reparse_alerts`, `_AnchorParser`, `vocabulary.py`, `test_valid_sourced_advice_completes_the_shared_generation_path`, `ApplicationNotQueuedError`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
-- **Why does `get_settings()` connect `run_menubar` to `apply_matching_profile_cmd`, `_client`, `observable_controls`, `create_app`, `dashboard.py`, `run_dashboard`, `test_routing.py`, `mailer.py`, `test_generic_vocabulary.py`, `apply_assist.py`, `test_skim.py`, `RefreshRunner`, `wttj.py`, `SourcedBullet`, `launch_wttj_application`, `generate_application`, `test_email_alerts.py`, `test_labonnealternance.py`, `_Toolchain`, `test_fact_id_resolution.py`, `test_mailer.py`, `ingest_source`, `vocabulary.py`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
+- **Why does `Settings` connect `OpenAITailoringAdvisor` to `ApplicantProfile`, `_client`, `observable_controls`, `test_registry.py`, `Path`, `SendBlocked`, `mailer.py`, `test_routing.py`, `wttj.py`, `france_travail.py`, `_FakePage`, `test_email_alerts.py`, `test_labonnealternance.py`, `Settings`, `.from_mapping`, `test_cold_outreach.py`, `_FakePage`, `resolve_fact_id`, `pick_variant`, `launch_application_assist`, `apply_matching_profile_cmd`, `_TextParser`, `_FakeLocator`?**
+  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+- **Why does `load_fact_bank()` connect `load_fact_bank` to `test_fact_id_consistency.py`, `review.py`, `email_alerts.py`, `vocabulary.py`, `run_dashboard`, `test_cv_completeness.py`, `OfferRecord`, `connect`, `test_designation_numbers.py`, `MissingCredentialError`, `AnthropicTailoringAdvisor`, `_AnchorParser`, `test_ingest_idempotent.py`, `test_tech_additions.py`, `test_provenance_tiers.py`, `test_letter_locked_fields.py`, `models.py`?**
+  _High betweenness centrality (0.038) - this node is a cross-community bridge._
+- **Why does `TailoringError` connect `get_settings` to `dashboard.py`, `_Advisor`, `RefreshRunner`, `generate_application`, `_Toolchain`, `email_alerts.py`, `test_cv_completeness.py`, `OfferRecord`, `MissingCredentialError`, `AnthropicTailoringAdvisor`, `load_fact_bank`, `CompanyRecord`, `labonnealternance.py`, `ingest_source`, `test_letter_quality.py`, `models.py`, `test_designation_numbers.py`, `review.py`, `ingest_source`, `test_preview.py`, `vocabulary.py`, `_AnchorParser`, `test_profile_domain_anchor.py`, `build_advisor`?**
+  _High betweenness centrality (0.038) - this node is a cross-community bridge._
 - **Are the 62 inferred relationships involving `Settings` (e.g. with `ApplicantProfile` and `ApplyAdapter`) actually correct?**
   _`Settings` has 62 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 9 inferred relationships involving `_payload()` (e.g. with `.advise()` and `_plan()`) actually correct?**
-  _`_payload()` has 9 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 23 inferred relationships involving `TailoringError` (e.g. with `ExperienceFact` and `FactBank`) actually correct?**
-  _`TailoringError` has 23 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `profile`, `contacts`, `suppression_list` to the rest of the system?**
-  _154 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Are the 2 inferred relationships involving `current_status()` (e.g. with `test_a_fatal_gate_still_aborts()` and `test_a_recoverable_gate_with_no_degradation_escalates_to_fatal()`) actually correct?**
+  _`current_status()` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 10 inferred relationships involving `_payload()` (e.g. with `.advise()` and `_plan()`) actually correct?**
+  _`_payload()` has 10 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 17 inferred relationships involving `TailoringError` (e.g. with `_CompleteAdvisor` and `_IncompleteAdvisor`) actually correct?**
+  _`TailoringError` has 17 INFERRED edges - model-reasoned connections that need verification._
