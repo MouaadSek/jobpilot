@@ -1186,9 +1186,20 @@ _PROFILE_RE = re.compile(
     r'(<section class="profile">\s*)(.*?)(\s*</section>)',
     re.DOTALL,
 )
+#: The domain phrase carries its own marker, so finding it never depends on the
+#: prose next to it.
+#:
+#: It used to anchor on what FOLLOWED the phrase — "<strong>Alternance" or
+#: "Recherche un <strong>stage" — which coupled extraction to a sentence that a
+#: tailoring step rewrites. The stage adaptation replaces exactly that region
+#: with the offer's own contract phrase, so on a stage-adapted CV the anchor
+#: stopped existing and every later read raised "template profile domain phrase
+#: not found". Widening the anchor would have kept the coupling and only moved
+#: the next break: the dedicated stage templates say "Recherche un", the adapted
+#: ones say nothing at all, and each new contract wording is another alternative
+#: to enumerate. A marker we emit ourselves has no such list.
 _PROFILE_DOMAIN_RE = re.compile(
-    r"(Profil orient(?:é|&eacute;)\s+)(.*?)"
-    r"(?=\.\s*(?:<strong>Alternance|Recherche un <strong>stage))",
+    r'(<span class="profile-domain">)(.*?)(</span>)',
     re.DOTALL,
 )
 _TECH_ROW_RE = re.compile(r'^[ \t]*<div class="tech-row">.*?</div>\s*$', re.MULTILINE)
@@ -1474,6 +1485,25 @@ def _validate_letter_body(body: str) -> None:
         raise TailoringError("letter body contains a forbidden claim")
 
 
+#: "Stage de [durée] mois dès [date]". The rule the adapted profile line must
+#: follow, in one place so the gate and its degradation cannot disagree.
+_STAGE_CONTRACT_RE = re.compile(r"^stage de .+ mois des? .+$")
+
+
+@gate("_validate_stage_contract_phrase", Tier.RECOVERABLE)
+def _validate_stage_contract_phrase(phrase: str | None) -> None:
+    """The contract line an adapted alternance CV must carry."""
+
+    if not phrase:
+        raise TailoringError(
+            "stage adaptation requires an exact profile_contract_phrase from the offer"
+        )
+    if not _STAGE_CONTRACT_RE.fullmatch(_normalize(phrase)):
+        raise TailoringError(
+            "stage profile contract must use 'Stage de [duration] mois dès [date]'"
+        )
+
+
 @gate("_validate_plan", Tier.RECOVERABLE)
 def _validate_plan(plan: TailoringPlan, selection: VariantSelection) -> None:
     word_pattern = (
@@ -1502,16 +1532,8 @@ def _validate_plan(plan: TailoringPlan, selection: VariantSelection) -> None:
             "location must be a region or city, never a bare country: "
             f"{plan.location_region}"
         )
-    if selection.adapted_for_stage and not plan.profile_contract_phrase:
-        raise TailoringError(
-            "stage adaptation requires an exact profile_contract_phrase from the offer"
-        )
     if selection.adapted_for_stage:
-        contract_pattern = r"^stage de .+ mois des? .+$"
-        if not re.fullmatch(contract_pattern, _normalize(plan.profile_contract_phrase or "")):
-            raise TailoringError(
-                "stage profile contract must use 'Stage de [duration] mois dès [date]'"
-            )
+        _validate_stage_contract_phrase(plan.profile_contract_phrase)
     elif plan.profile_contract_phrase:
         raise TailoringError("profile contract text is immutable outside stage adaptation")
     if plan.rhythm_phrase:
@@ -2061,6 +2083,56 @@ def _validate_profile_candidate(
             "tailored profile must stay within 15 characters of the base profile "
             f"(base={len(template.profile_domain_phrase)}, tailored={len(phrase)})"
         )
+
+
+#: What the hand-written stage templates say he is looking for. The profile's
+#: contract line describes the candidate's availability, not the posting, so
+#: this is true of an offer that never states a duration — which is all three of
+#: the stage offers in the queue. Pinned against those templates by
+#: tests/test_stage_contract_fallback.py so it cannot drift silently.
+_STAGE_DEFAULT_DURATION = "3 à 6 mois"
+
+
+def _stage_contract_fallback(offer: OfferContext) -> str:
+    """The stage contract line to fall back to, built from what is known.
+
+    Deterministic, and the same two inputs build_cv_title already uses for the
+    title of the same document: the offer's duration when it states one, and the
+    start date parsed from its text. When the offer states no duration the
+    templates' own wording stands in, because the sentence is about what he
+    seeks rather than about what the posting offers.
+    """
+
+    duration = f"{offer.duration_months} mois" if offer.duration_months else (
+        _STAGE_DEFAULT_DURATION
+    )
+    return f"Stage de {duration} dès {_offer_start(offer.description)}"
+
+
+def _resolve_stage_contract_phrase(
+    candidate: str | None,
+    *,
+    selection: VariantSelection,
+    offer: OfferContext,
+) -> tuple[str | None, str | None]:
+    """Preserve a valid contract phrase; replace only a rejected one.
+
+    Same shape as ``_resolve_profile_phrase``: this gate was recoverable with no
+    degradation, so it escalated to fatal and killed applications 25 and 28
+    outright. It has one now, and the replacement is validated by the same rule
+    the candidate failed — with the difference that this fallback is built, not
+    guessed, so it cannot fail that rule in turn.
+    """
+
+    if not selection.adapted_for_stage:
+        return candidate, None
+    try:
+        _validate_stage_contract_phrase(candidate)
+    except TailoringError as exc:
+        fallback = _stage_contract_fallback(offer)
+        _validate_stage_contract_phrase(fallback)
+        return fallback, str(exc)
+    return candidate, None
 
 
 def _resolve_profile_phrase(
@@ -2751,7 +2823,7 @@ def _tailor_profile(
     before = match.group(2)
     encoded_domain = _encode_text(plan.profile_domain_phrase, entities=selection.entity_encoded)
     after, count = _PROFILE_DOMAIN_RE.subn(
-        rf"\g<1><strong>{encoded_domain}</strong>",
+        rf"\g<1><strong>{encoded_domain}</strong>\g<3>",
         before,
         count=1,
     )
@@ -4468,7 +4540,7 @@ def _restore_template_profile_domain(
     profile = match.group(2)
     encoded = _encode_text(phrase, entities=selection.entity_encoded)
     restored, count = _PROFILE_DOMAIN_RE.subn(
-        rf"\g<1><strong>{encoded}</strong>",
+        rf"\g<1><strong>{encoded}</strong>\g<3>",
         profile,
         count=1,
     )
@@ -5004,6 +5076,40 @@ def _advise_and_tailor(
                 ),
                 location_region=resolve_header_location(offer.city),
             )
+            contract_phrase, contract_fallback_reason = _resolve_stage_contract_phrase(
+                plan.profile_contract_phrase,
+                selection=selection,
+                offer=offer,
+            )
+            if contract_fallback_reason is not None and attempt >= budget:
+                plan = replace(plan, profile_contract_phrase=contract_phrase)
+                log.warning(
+                    "application %d: rejected stage contract phrase %r; using "
+                    "%r: %s",
+                    application_id,
+                    plan.profile_contract_phrase,
+                    contract_phrase,
+                    contract_fallback_reason,
+                )
+                log_event(
+                    db,
+                    application_id,
+                    "stage_contract_fallback",
+                    {
+                        "reason": contract_fallback_reason,
+                        "replacement": contract_phrase,
+                    },
+                )
+                warnings.append(
+                    GenerationWarning(
+                        gate="_validate_stage_contract_phrase",
+                        message=contract_fallback_reason,
+                        degraded=(
+                            "profil : la ligne de contrat a été construite à partir "
+                            f"de l'offre, « {contract_phrase} »"
+                        ),
+                    )
+                )
             profile_phrase, profile_fallback_reason = _resolve_profile_phrase(
                 plan.profile_domain_phrase,
                 selection=selection,
