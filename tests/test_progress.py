@@ -252,17 +252,17 @@ def test_a_generation_failure_is_reported_in_the_interface_voice(
         )
 
     with _client(
-        dashboard_db, tmp_path, toolchain=_Toolchain(fail_orphans=True)
+        dashboard_db, tmp_path, toolchain=_Toolchain(fail_validate=True)
     ) as client:
         response = client.post(f"/application/{application_id}/approve")
         body = client.get("/progress").json()
 
     assert response.status_code == 422
-    assert "orphan quality gate failed" in response.text
+    assert "validate_cv.py failed" in response.text
     (operation,) = body["operations"]
     assert operation["running"] is False
     assert operation["step"] == "Échec"
-    assert "orphan quality gate failed" in operation["error"]
+    assert "validate_cv.py failed" in operation["error"]
 
 
 def test_the_progress_endpoint_touches_no_database(

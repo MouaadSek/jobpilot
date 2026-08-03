@@ -199,12 +199,12 @@ def test_approve_failure_returns_to_queue_and_clears_partial_artifacts(
     with _client(
         dashboard_db,
         tmp_path,
-        toolchain=_Toolchain(fail_orphans=True),
+        toolchain=_Toolchain(fail_validate=True),
     ) as client:
         response = client.post(f"/application/{application_id}/approve")
 
     assert response.status_code == 422
-    assert "orphan quality gate failed" in response.text
+    assert "validate_cv.py failed" in response.text
     assert current_status(dashboard_db, application_id) == "queued"
     stored = dashboard_db.execute(
         "SELECT cv_pdf_path, letter_pdf_path FROM applications WHERE id = ?",

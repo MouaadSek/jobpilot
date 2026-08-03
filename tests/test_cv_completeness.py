@@ -148,7 +148,13 @@ def test_no_shipped_template_repeats_a_tool_across_skill_categories() -> None:
                 seen[key] = category
 
 
-def test_duplicate_tool_across_categories_is_rejected() -> None:
+def test_duplicate_tool_across_categories_warns_without_blocking() -> None:
+    """Task 39 demoted this to advisory.
+
+    A tool listed under two categories is cosmetic and the reader sees it at a
+    glance, which is the test for advisory: it never justified losing an
+    otherwise valid document. The finding still has to be recorded.
+    """
     source = TEMPLATE_PATH.read_text(encoding="utf-8")
     borrowed = _category_skills(source)[0][1][0]
     # Re-list the first category's tool under the second one.
@@ -170,15 +176,20 @@ def test_duplicate_tool_across_categories_is_rejected() -> None:
         selection=selection,
     )
 
-    with pytest.raises(TailoringError, match="duplicate tool across skill categories"):
-        tailor_cv_html(
-            duplicated,
-            plan,
-            selection,
-            offer_description=offer.description,
-            fact_bank=load_fact_bank(),
-            offer=offer,
-        )
+    recorded: list = []
+    tailored = tailor_cv_html(
+        duplicated,
+        plan,
+        selection,
+        offer_description=offer.description,
+        fact_bank=load_fact_bank(),
+        offer=offer,
+        warnings=recorded,
+    )
+
+    assert tailored
+    assert [w.gate for w in recorded] == ["_validate_skill_categories"]
+    assert "duplicate tool across skill categories" in recorded[0].message
 
 
 def test_header_location_prefers_the_offer_region_then_the_profile() -> None:

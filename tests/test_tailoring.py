@@ -355,9 +355,15 @@ class _Toolchain:
         *,
         fail_orphans: bool = False,
         orphan_selector: str = ".profile",
+        fail_validate: bool = False,
     ) -> None:
         self.calls: list[str] = []
         self.fail_orphans = fail_orphans
+        # Task 39 made the orphan gate advisory, so it is no longer a way to
+        # force a generation failure. validate_cv is still fatal: it is the
+        # renderer contract, and a CV that fails it is unusable rather than
+        # merely ugly. Tests about failure HANDLING use this.
+        self.fail_validate = fail_validate
         # Which element the orphan report blames. Since Task 30 that decides
         # whether the gate is hard: ".profile" holds the generated domain phrase,
         # "li" and ".project-desc" hold verbatim fact text.
@@ -374,6 +380,8 @@ class _Toolchain:
         assert tailored_path.exists()
         assert original_path.exists()
         assert compare_original is True
+        if self.fail_validate:
+            raise TailoringError("validate_cv.py failed: PROFIL: 3 checks failed")
 
     def check_orphan_lines(self, tailored_path: Path, original_path: Path) -> None:
         self.calls.append("orphans")
@@ -479,12 +487,12 @@ def test_generation_failure_returns_application_to_queue(
 ) -> None:
     application_id = _application(db)
 
-    with pytest.raises(TailoringError, match="orphan quality gate failed"):
+    with pytest.raises(TailoringError, match="validate_cv.py failed"):
         generate_application(
             db,
             application_id,
             advisor=_Advisor(),
-            toolchain=_Toolchain(fail_orphans=True),
+            toolchain=_Toolchain(fail_validate=True),
             output_root=tmp_path,
         )
 
@@ -503,4 +511,4 @@ def test_generation_failure_returns_application_to_queue(
         (application_id,),
     ).fetchone()
     assert event["event"] == "generation_failed"
-    assert "orphan quality gate failed" in event["detail"]
+    assert "validate_cv.py failed" in event["detail"]

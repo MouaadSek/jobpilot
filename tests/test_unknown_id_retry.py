@@ -198,30 +198,43 @@ def test_the_extra_attempt_is_not_lent_to_other_rejections(
     assert current_status(db, application_id) == "queued"
 
 
-def test_an_invented_id_that_never_recovers_still_fails(
+def test_an_invented_id_that_never_recovers_is_dropped_not_accepted(
     db: sqlite3.Connection, tmp_path: Path
 ) -> None:
-    """The extra attempt buys another chance at a real id, not acceptance of a
-    fabricated one. The guard is unchanged."""
+    """The extra attempt buys another chance at a real id, never acceptance of a
+    fabricated one.
+
+    Task 39 turned TAILORING_DROP_UNKNOWN_CITATIONS on, so the outcome after the
+    retries changed: the citation is removed and the CV is generated without it,
+    rather than the whole document being lost. What has not changed is the only
+    thing that matters — the invented id never reaches the document.
+    """
+
+    from jobpilot.generation_warnings import warnings_for
 
     application_id = _queued_application(db, suffix="invent-forever")
     advisor = _InventsThenRecovers(failures=99)
 
-    with pytest.raises(ApplicationGenerationError) as excinfo:
-        approve_application(
-            db, application_id, via="test",
-            advisor=advisor, toolchain=_Toolchain(), output_root=tmp_path,
-        )
+    approve_application(
+        db, application_id, via="test",
+        advisor=advisor, toolchain=_Toolchain(), output_root=tmp_path,
+    )
 
     assert advisor.call_count == 3
-    assert "skill.rules.sigma" in str(excinfo.value)
-    assert current_status(db, application_id) == "queued"
-    # And it is still recorded as a failure, not quietly downgraded.
+    assert current_status(db, application_id) == "ready"
+    cv = (tmp_path / str(application_id) / "tailored_cv.html").read_text(
+        encoding="utf-8"
+    )
+    assert "skill.rules.sigma" not in cv
+    # Degraded, so it is on the application in amber, naming what it lost.
+    warned = warnings_for(db, application_id)
+    assert [w.gate for w in warned] == ["resolve_fact_id"]
+    assert "skill.rules.sigma" in warned[0].degraded
     assert db.execute(
         "SELECT count(*) AS n FROM events WHERE application_id = ? "
         "AND event = 'generation_failed'",
         (application_id,),
-    ).fetchone()["n"] == 1
+    ).fetchone()["n"] == 0
 
 
 def test_an_interactive_advisor_is_still_never_retried(

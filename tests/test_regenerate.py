@@ -233,12 +233,12 @@ def test_generation_failure_leaves_queued_and_surfaces_the_validator_message(
     first_generation = _artifact_names(application_dir)
 
     with _client(
-        dashboard_db, tmp_path, toolchain=_Toolchain(fail_orphans=True)
+        dashboard_db, tmp_path, toolchain=_Toolchain(fail_validate=True)
     ) as client:
         response = client.post(f"/application/{application_id}/regenerate")
 
     assert response.status_code == 422
-    assert "orphan quality gate failed" in response.text
+    assert "validate_cv.py failed" in response.text
     assert current_status(dashboard_db, application_id) == "queued"
     assert "queued" in response.text
 

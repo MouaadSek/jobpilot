@@ -416,18 +416,31 @@ def test_an_orphan_in_verbatim_content_warns_and_is_recorded(
     assert "orphan_warning" in json.loads(detail)
 
 
-def test_an_orphan_in_the_generated_profile_still_fails(
+def test_an_orphan_in_the_generated_profile_no_longer_fails(
     db: sqlite3.Connection,
     tmp_path: Path,
 ) -> None:
+    """Task 39: the last hard position of the orphan gate went advisory.
+
+    It cost three of the seven consecutive failures and never caught a
+    fabrication. An orphan is the most reader-visible defect there is — Mouaad
+    sees a short last line in two seconds — so it warns, and the better-document
+    behaviour is kept: the template's own wording is still tried first.
+    """
+
+    from jobpilot.generation_warnings import warnings_for
     from tests.test_tailoring import _Toolchain
 
-    with pytest.raises(ApplicationGenerationError, match="orphan"):
-        _approve(
-            db,
-            tmp_path,
-            _Toolchain(fail_orphans=True, orphan_selector=".profile"),
-        )
+    outcome = _approve(
+        db,
+        tmp_path,
+        _Toolchain(fail_orphans=True, orphan_selector=".profile"),
+    )
+
+    assert outcome.generation is not None
+    assert current_status(db, outcome.application_id) == "ready"
+    gates = [w.gate for w in warnings_for(db, outcome.application_id)]
+    assert gates.count("check_orphan_lines") >= 1
 
 
 def test_a_clean_generation_records_no_orphan_warning(

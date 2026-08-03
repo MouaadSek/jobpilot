@@ -18,9 +18,11 @@ import unicodedata
 from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import date
+from enum import StrEnum
+from functools import wraps
 from html.entities import codepoint2name
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 import httpx
 
@@ -56,8 +58,99 @@ from jobpilot.vocabulary import load_generic_vocabulary, rejection_message, tier
 log = get_logger("tailoring")
 
 
+class Tier(StrEnum):
+    """What a gate firing is allowed to cost.
+
+    Task 39. Seven consecutive generation failures had seven distinct causes and
+    not one of them caught a fabrication: every gate aborted the whole run, so a
+    fabricated metric and a short last line had identical consequences.
+
+    The rule that decides these, amended after item 1: a gate may abort only if
+    (a) it guards something a reader cannot catch, or (b) the document would be
+    unusable and no degradation exists. Mouaad reads every CV before sending. He
+    cannot verify by eye that a figure traces to the fact bank; he can see a
+    short line in two seconds.
+    """
+
+    #: The document would be false or unusable. Abort, back to queued.
+    FATAL = "fatal"
+    #: Wrong but mechanically fixable. Retry with feedback, then degrade.
+    RECOVERABLE = "recoverable"
+    #: Cosmetic or known-noisy. Never blocks; records a warning.
+    ADVISORY = "advisory"
+
+
 class TailoringError(RuntimeError):
-    """Raised when a plan, quality gate, or document generation step fails."""
+    """Raised when a plan, quality gate, or document generation step fails.
+
+    Still the base of everything this module raises, so nothing outside it
+    changes. What is new is that it carries which gate fired and what that gate
+    costs. The default is FATAL: an error nobody has classified must not become
+    a silent degradation, so an unclassified failure keeps today's behaviour.
+    """
+
+    #: Set by the @gate decorator, from the innermost gate that fired.
+    gate: str = ""
+    #: The gate's own default. The call position may still raise it — see
+    #: ``tier_for``, where tier is a property of (gate, position).
+    tier: Tier = Tier.FATAL
+
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+#: Positions where a gate's own tier is not the whole story. Tier is a property
+#: of (gate, position): the same provenance check is fatal over the letter the
+#: model wrote and recoverable over the profile phrase, because only the latter
+#: has somewhere safe to fall back to.
+_POSITION_TIERS: dict[tuple[str, str], Tier] = {
+    ("validate_generated_phrase", "profile_domain_phrase"): Tier.RECOVERABLE,
+    ("_reject_unsupported_capabilities", "profile_domain_phrase"): Tier.RECOVERABLE,
+    ("_reject_borrowed_quantities", "profile_domain_phrase"): Tier.RECOVERABLE,
+    ("_reject_unverified_skills", "profile_domain_phrase"): Tier.RECOVERABLE,
+}
+
+
+def gate(name: str, tier: Tier = Tier.FATAL) -> Callable[[_F], _F]:
+    """Label what this function refuses, and what refusing costs.
+
+    Attached to the exception rather than returned, so the 65 raise sites inside
+    these functions stay exactly as they are. The innermost gate wins: when
+    validate_provenance calls _reject_unsupported_capabilities, the capability
+    tier is the specific thing that fired and the useful thing to report.
+    """
+
+    def decorate(function: _F) -> _F:
+        @wraps(function)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return function(*args, **kwargs)
+            except TailoringError as exc:
+                if not exc.gate:
+                    exc.gate = name
+                    # An error class that declares its own tier keeps it. An
+                    # unknown fact id is recoverable wherever it is raised from:
+                    # the citation is droppable because of what it IS, not
+                    # because of which gate noticed.
+                    if type(exc).tier is TailoringError.tier:
+                        exc.tier = tier
+                raise
+
+        wrapper.gate_name = name  # type: ignore[attr-defined]
+        wrapper.gate_tier = tier  # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    return decorate
+
+
+def tier_for(exc: TailoringError, *, position: str) -> Tier:
+    """The tier this failure carries HERE.
+
+    An unclassified error is fatal. That default is the whole safety property of
+    this task: forgetting to classify a gate keeps today's behaviour rather than
+    inventing a degradation nobody designed.
+    """
+
+    return _POSITION_TIERS.get((exc.gate, position), exc.tier)
 
 
 class TailoringConfigurationError(TailoringError):
@@ -90,6 +183,10 @@ class UnsupportedNumberError(TailoringError):
     count it separately from invented ids.
     """
 
+    #: Recoverable wherever it is raised: the retry is handed the figures that
+    #: ARE allowed, and the model rewriting its own sentence is the fix.
+    tier = Tier.RECOVERABLE
+
     def __init__(self, number: str, message: str) -> None:
         super().__init__(message)
         self.number = number
@@ -114,6 +211,10 @@ class UnknownFactIdError(TailoringError):
     what is wrong spends that retry re-guessing: the Baïfall id failed twice for
     precisely this reason. Saying what *would* be valid is the whole fix.
     """
+
+    #: Recoverable wherever it is raised. The citation is droppable because of
+    #: what it is, not because of which gate happened to notice it.
+    tier = Tier.RECOVERABLE
 
     def __init__(
         self,
@@ -1340,6 +1441,7 @@ def _replace_required(
     return result
 
 
+@gate("_validate_letter_body", Tier.RECOVERABLE)
 def _validate_letter_body(body: str) -> None:
     # No em-dash check: every path that builds letter_body_html runs
     # _canonicalize_prose first, so the character cannot reach here.
@@ -1372,6 +1474,7 @@ def _validate_letter_body(body: str) -> None:
         raise TailoringError("letter body contains a forbidden claim")
 
 
+@gate("_validate_plan", Tier.RECOVERABLE)
 def _validate_plan(plan: TailoringPlan, selection: VariantSelection) -> None:
     word_pattern = (
         r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+"
@@ -1658,6 +1761,7 @@ def letter_scope(bank: FactBank, *, offer: OfferContext | None = None) -> Proven
     )
 
 
+@gate("_designation_spans", Tier.FATAL)
 def _designation_spans(
     text: str,
     cited: Sequence[str],
@@ -1753,6 +1857,7 @@ def _refuse(
     return TailoringError(message)
 
 
+@gate("_reject_borrowed_quantities", Tier.FATAL)
 def _reject_borrowed_quantities(
     text: str,
     scope: ProvenanceScope,
@@ -1765,6 +1870,7 @@ def _reject_borrowed_quantities(
             raise _refuse("number", number.strip(), cited, scope)
 
 
+@gate("_reject_unverified_skills", Tier.FATAL)
 def _reject_unverified_skills(text: str, bank: FactBank) -> None:
     """A skill the bank has not verified may not be claimed at all, ever."""
 
@@ -1776,6 +1882,7 @@ def _reject_unverified_skills(text: str, bank: FactBank) -> None:
             raise TailoringError(f"unverified skill cannot be claimed: {skill.id}")
 
 
+@gate("_reject_unsupported_capabilities", Tier.FATAL)
 def _reject_unsupported_capabilities(
     text: str,
     bank: FactBank,
@@ -1808,6 +1915,7 @@ def _reject_unsupported_capabilities(
         raise _refuse("capability", as_written, cited, scope)
 
 
+@gate("validate_provenance", Tier.FATAL)
 def validate_provenance(
     bullets: Sequence[SourcedBullet],
     bank: FactBank,
@@ -1897,6 +2005,7 @@ def _reject_unsupported_tokens(
     )
 
 
+@gate("validate_generated_phrase", Tier.FATAL)
 def validate_generated_phrase(
     text: str,
     bank: FactBank,
@@ -1926,6 +2035,7 @@ def validate_generated_phrase(
 _PROFILE_WORD_RE = re.compile(r"[^\W_]+(?:[-/][^\W_]+)*", re.UNICODE)
 
 
+@gate("_validate_profile_candidate", Tier.RECOVERABLE)
 def _validate_profile_candidate(
     phrase: str,
     *,
@@ -1980,16 +2090,30 @@ def _resolve_profile_phrase(
             selection.slug.removesuffix("-stage"),
             "sécurité des systèmes numériques",
         )
-        _validate_profile_candidate(
-            fallback,
-            selection=selection,
-            template=template,
-            bank=bank,
-        )
+        try:
+            _validate_profile_candidate(
+                fallback,
+                selection=selection,
+                template=template,
+                bank=bank,
+            )
+        except TailoringError as fallback_exc:
+            # The same unwrapped-second-call shape as the orphan fallback had.
+            # A degradation whose own output is validated by the gate it is
+            # escaping from has no third option: the template's phrase is
+            # hand-reviewed and is the floor, so it is used regardless and the
+            # reason is carried out for the warning.
+            log.warning(
+                "profile fallback %r did not pass the same checks: %s",
+                fallback,
+                fallback_exc,
+            )
+            return template.profile_domain_phrase, str(exc)
         return fallback, str(exc)
     return normalized, None
 
 
+@gate("validate_plan_provenance", Tier.FATAL)
 def validate_plan_provenance(
     plan: TailoringPlan,
     bank: FactBank,
@@ -2064,6 +2188,7 @@ def _reverse_chronological_experiences(bank: FactBank) -> tuple[ExperienceFact, 
     return tuple(sorted(bank.experience, key=_experience_start, reverse=True))
 
 
+@gate("_validate_experience_completeness", Tier.FATAL)
 def _validate_experience_completeness(
     plan: TailoringPlan,
     bank: FactBank,
@@ -2126,6 +2251,7 @@ def _fact_id_key(value: str) -> str:
     return re.sub(r"\.+", ".", re.sub(r"[_\-\s]+", ".", value.strip().casefold()))
 
 
+@gate("resolve_fact_id", Tier.RECOVERABLE)
 def resolve_fact_id(
     raw_id: str,
     bank: FactBank,
@@ -2307,6 +2433,7 @@ def _cv_locked_fields(bank: FactBank) -> tuple[str, ...]:
     )
 
 
+@gate("_reject_locked_fields", Tier.FATAL)
 def _reject_locked_fields(
     text: str,
     values: Sequence[str],
@@ -2319,6 +2446,7 @@ def _reject_locked_fields(
             raise TailoringError(message.format(value=value))
 
 
+@gate("_validate_selection", Tier.FATAL)
 def _validate_selection(
     fact_ids: Sequence[str],
     own_facts: Sequence[FactClaim],
@@ -2347,6 +2475,7 @@ def _validate_selection(
             raise TailoringError(f"fact id requires review before use: {fact_id}")
 
 
+@gate("_validate_sourced_plan", Tier.FATAL)
 def _validate_sourced_plan(
     plan: TailoringPlan,
     bank: FactBank,
@@ -2572,6 +2701,7 @@ def _tech_lists(source: str) -> list[tuple[re.Match[str], re.Match[str], list[st
     return rows
 
 
+@gate("_validate_skill_categories", Tier.ADVISORY)
 def _validate_skill_categories(source: str) -> None:
     """Reject a rendered CV that lists the same tool under two categories."""
 
@@ -2593,6 +2723,7 @@ def _validate_skill_categories(source: str) -> None:
             seen[key] = category
 
 
+@gate("_validate_header_location", Tier.RECOVERABLE)
 def _validate_header_location(source: str) -> None:
     """Reject a rendered CV whose header location is a bare country."""
 
@@ -2794,6 +2925,7 @@ def _row_budget(source: str) -> int:
     )
 
 
+@gate("_add_tech_additions", Tier.RECOVERABLE)
 def _add_tech_additions(
     source: str,
     requested: Mapping[str, Sequence[str]],
@@ -2902,6 +3034,7 @@ def _zone6_variant(offer_description: str) -> str | None:
     return None
 
 
+@gate("_swap_baifall_bullet", Tier.RECOVERABLE)
 def _swap_baifall_bullet(
     source: str,
     offer_description: str,
@@ -2940,8 +3073,14 @@ def tailor_cv_html(
     offer_description: str,
     fact_bank: FactBank | None = None,
     offer: OfferContext | None = None,
+    warnings: list[GenerationWarning] | None = None,
 ) -> str:
-    """Apply guarded zones plus sourced AI content when the plan provides it."""
+    """Apply guarded zones plus sourced AI content when the plan provides it.
+
+    ``warnings`` is where advisory gates land. Without a sink they still do not
+    block — an advisory gate that aborts when nobody is listening would be the
+    same bug in a new place — but the finding is only logged.
+    """
 
     _validate_plan(plan, selection)
     bank = fact_bank or load_fact_bank()
@@ -3001,7 +3140,23 @@ def tailor_cv_html(
         )
         if result.count("\n") != original_html.count("\n"):
             raise TailoringError("tailoring unexpectedly changed the template line count")
-    _validate_skill_categories(result)
+    try:
+        _validate_skill_categories(result)
+    except TailoringError as exc:
+        # Advisory: a tool listed under two categories is cosmetic and the
+        # reader sees it at a glance. It never justified losing the document.
+        log.warning("advisory gate _validate_skill_categories: %s", exc)
+        if warnings is not None:
+            warnings.append(
+                GenerationWarning(
+                    gate="_validate_skill_categories",
+                    message=str(exc),
+                    degraded=(
+                        "aucune correction : outil listé dans deux catégories. "
+                        "Vérifier la grille de compétences."
+                    ),
+                )
+            )
     _validate_header_location(result)
     return result
 
@@ -4333,7 +4488,19 @@ def _check_orphans(
     *,
     application_id: int,
 ) -> str:
-    """Run the orphan gate, hard for text we wrote and advisory for the bank's.
+    """Run the orphan gate. Advisory everywhere, including generated text.
+
+    Task 39. This gate cost three of the last seven generations, and an orphan
+    is the single most reader-visible defect in the document: a short last line
+    is obvious in two seconds, which is exactly the test for advisory. The
+    checker's own asset file calls its findings false positives outside a full
+    rendering environment, and verify_page_count still gates the PDF.
+
+    The caller keeps the better-document behaviour — a generated-text orphan
+    still tries the template's own wording first — but a report is no longer
+    able to end a run.
+
+    Historical note, kept because the shape is the point:
 
     skill/assets/stage-baifall-dream.md is explicit that this check reports false
     positives outside a full rendering environment ("largeur de conteneur mal
@@ -4350,11 +4517,14 @@ def _check_orphans(
         toolchain.check_orphan_lines(tailored_path, original_path)
     except TailoringError as exc:
         report = str(exc)
-        if _contains_generated_orphan(report):
-            raise
+        where = (
+            "generated text" if _contains_generated_orphan(report)
+            else "verbatim content"
+        )
         log.warning(
-            "application %d: orphan warning on verbatim content, not blocking: %s",
+            "application %d: orphan warning on %s, not blocking: %s",
             application_id,
+            where,
             report,
         )
         return report
@@ -4713,6 +4883,71 @@ def _salvage_by_dropping(
     return candidate, tailored_html, dropped
 
 
+#: A letter needs 7 or 8 rendered paragraphs, and the renderer injects two, so
+#: omitting one is only available when the model wrote six.
+_MIN_MODEL_LETTER_PARAGRAPHS = 5
+
+
+def _paragraph_offends(text: str) -> bool:
+    """Whether this one paragraph is what _validate_letter_body refused.
+
+    Only the paragraph-local rules are answerable here. A wrong tag set, a bad
+    paragraph count, or a missing signature is a property of the whole body,
+    and omitting an arbitrary paragraph would not fix it — those escalate.
+    """
+
+    if re.search(r"\bEntreprise\b", text):
+        return True
+    lowered = html.unescape(text).casefold()
+    if "en cours" in lowered or "marketplace" in lowered:
+        return True
+    poste_de = re.search(r"poste\s+de\s+([A-Za-zÀ-ÿ])", text, re.IGNORECASE)
+    if poste_de:
+        first = unicodedata.normalize("NFKD", poste_de.group(1))[0].lower()
+        if first in _ELISION_VOWELS:
+            return True
+    return False
+
+
+def _omit_offending_paragraph(
+    plan: TailoringPlan,
+    *,
+    offer: OfferContext,
+) -> tuple[TailoringPlan, str] | None:
+    """Drop the one paragraph the letter gate refused, keeping the rest.
+
+    The retry already regenerated the whole plan once, which is the "regenerate
+    the offending paragraph" half of this degradation. This is the second half:
+    if the model wrote it wrong twice, the letter is better without it than not
+    at all. Evidence is lost, so it is warned about, never silent.
+    """
+
+    paragraphs = list(plan.letter_paragraphs)
+    if len(paragraphs) <= _MIN_MODEL_LETTER_PARAGRAPHS:
+        # Omitting would break the 7-or-8 paragraph rule, so there is no
+        # degradation here and the gate escalates to fatal.
+        return None
+    offending = [
+        index for index, paragraph in enumerate(paragraphs)
+        if _paragraph_offends(paragraph.text)
+    ]
+    if len(offending) != 1:
+        return None
+    removed = paragraphs.pop(offending[0])
+    candidate = replace(plan, letter_paragraphs=tuple(paragraphs))
+    candidate = replace(
+        candidate,
+        letter_body_html=_render_sourced_letter(
+            candidate.letter_paragraphs, offer=offer
+        ),
+    )
+    try:
+        _validate_letter_body(candidate.letter_body_html)
+    except TailoringError:
+        return None
+    return candidate, removed.text
+
+
 def _advise_and_tailor(
     advisor: TailoringAdvisor,
     *,
@@ -4818,6 +5053,7 @@ def _advise_and_tailor(
                 offer_description=offer.description,
                 fact_bank=bank,
                 offer=offer,
+                warnings=warnings,
             )
         except TailoringError as exc:
             errors.append(str(exc))
@@ -4854,6 +5090,53 @@ def _advise_and_tailor(
                 and getattr(advisor, "accepts_correction", False)
             )
             if not retryable:
+                # Retries are spent. A recoverable gate degrades here rather
+                # than aborting; a fatal one, or a recoverable one with no
+                # degradation available for this failure, still aborts.
+                if (
+                    tier_for(exc, position="letter_paragraphs") == Tier.RECOVERABLE
+                    and last_plan is not None
+                    and exc.gate == "_validate_letter_body"
+                ):
+                    omitted = _omit_offending_paragraph(last_plan, offer=offer)
+                    if omitted is not None:
+                        candidate, removed_text = omitted
+                        try:
+                            tailored_html = tailor_cv_html(
+                                original_html,
+                                candidate,
+                                selection,
+                                offer_description=offer.description,
+                                fact_bank=bank,
+                                offer=offer,
+                            )
+                        except TailoringError:
+                            tailored_html = None  # type: ignore[assignment]
+                        if tailored_html is not None:
+                            log.warning(
+                                "application %d: letter paragraph omitted after "
+                                "the rewrite failed too: %s",
+                                application_id,
+                                exc,
+                            )
+                            log_event(
+                                db,
+                                application_id,
+                                "letter_paragraph_omitted",
+                                {"reason": str(exc), "text": removed_text},
+                            )
+                            warnings.append(
+                                GenerationWarning(
+                                    gate="_validate_letter_body",
+                                    message=str(exc),
+                                    degraded=(
+                                        "lettre : un paragraphe retiré après échec "
+                                        "de la réécriture. Une preuve en moins — "
+                                        "relire la lettre."
+                                    ),
+                                )
+                            )
+                            return candidate, tailored_html, None
                 salvaged = _salvage_by_dropping(
                     exc,
                     last_plan,
@@ -4981,68 +5264,79 @@ def generate_application(
             compare_original=not selection.adapted_for_stage,
         )
         profile_layout_fallback = False
-        try:
-            orphan_warning = _check_orphans(
-                chosen_toolchain,
-                cv_html_path,
-                original_path,
-                application_id=application_id,
-            )
-        except TailoringError as exc:
-            report = str(exc)
-            fallback_phrase = template_context.profile_domain_phrase
-            if (
-                not _contains_generated_orphan(report)
-                or plan.profile_domain_phrase == fallback_phrase
-            ):
-                raise
-            fallback_plan = replace(
-                plan,
-                profile_domain_phrase=fallback_phrase,
-            )
-            fallback_html = _restore_template_profile_domain(
-                tailored_html,
-                fallback_phrase,
-                selection=selection,
-            )
-            cv_html_path.write_text(fallback_html, encoding="utf-8")
-            chosen_toolchain.validate_cv(
-                cv_html_path,
-                original_path,
-                compare_original=not selection.adapted_for_stage,
-            )
-            orphan_warning = _check_orphans(
-                chosen_toolchain,
-                cv_html_path,
-                original_path,
-                application_id=application_id,
-            )
-            log.warning(
-                "application %d: profile orphan recovered with template wording",
-                application_id,
-            )
-            log_event(
-                db,
-                application_id,
-                "profile_layout_fallback",
-                {
-                    "reason": report,
-                    "replacement": fallback_phrase,
-                },
-            )
-            plan = fallback_plan
-            tailored_html = fallback_html
-            profile_layout_fallback = True
-            warnings.append(
-                GenerationWarning(
-                    gate="check_orphan_lines",
-                    message=report,
-                    degraded=(
-                        "profil : la phrase générée provoquait une ligne orpheline, "
-                        f"remplacée par celle du modèle, « {fallback_phrase} »"
-                    ),
+        orphan_warning = _check_orphans(
+            chosen_toolchain,
+            cv_html_path,
+            original_path,
+            application_id=application_id,
+        )
+        fallback_phrase = template_context.profile_domain_phrase
+        if (
+            orphan_warning
+            and _contains_generated_orphan(orphan_warning)
+            and plan.profile_domain_phrase != fallback_phrase
+        ):
+            # Advisory now, so this is no longer a rescue from failure — it is
+            # simply the better document, and it is attempted for that reason.
+            # Nothing below may raise: if the template's own wording orphans too,
+            # which is what happened on the Capgemini offer, both readings are
+            # warnings and the generation still completes.
+            report = orphan_warning
+            try:
+                fallback_html = _restore_template_profile_domain(
+                    tailored_html,
+                    fallback_phrase,
+                    selection=selection,
                 )
-            )
+                cv_html_path.write_text(fallback_html, encoding="utf-8")
+                chosen_toolchain.validate_cv(
+                    cv_html_path,
+                    original_path,
+                    compare_original=not selection.adapted_for_stage,
+                )
+            except TailoringError as exc:
+                # Could not restore it; keep the document we already had.
+                log.warning(
+                    "application %d: template profile wording could not be "
+                    "restored, keeping the generated phrase: %s",
+                    application_id,
+                    exc,
+                )
+                cv_html_path.write_text(tailored_html, encoding="utf-8")
+            else:
+                orphan_warning = _check_orphans(
+                    chosen_toolchain,
+                    cv_html_path,
+                    original_path,
+                    application_id=application_id,
+                )
+                log.warning(
+                    "application %d: profile orphan recovered with template wording",
+                    application_id,
+                )
+                log_event(
+                    db,
+                    application_id,
+                    "profile_layout_fallback",
+                    {
+                        "reason": report,
+                        "replacement": fallback_phrase,
+                    },
+                )
+                plan = replace(plan, profile_domain_phrase=fallback_phrase)
+                tailored_html = fallback_html
+                profile_layout_fallback = True
+                warnings.append(
+                    GenerationWarning(
+                        gate="check_orphan_lines",
+                        message=report,
+                        degraded=(
+                            "profil : la phrase générée provoquait une ligne "
+                            "orpheline, remplacée par celle du modèle, "
+                            f"« {fallback_phrase} »"
+                        ),
+                    )
+                )
         if orphan_warning:
             warnings.append(
                 GenerationWarning(

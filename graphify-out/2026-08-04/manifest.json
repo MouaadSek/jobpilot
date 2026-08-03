@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/tailoring.py": {
-    "mtime": 1785777560.5456364,
-    "ast_hash": "8a498691ef2df967254da968796f29be",
+    "mtime": 1785794960.7293687,
+    "ast_hash": "afe236b5ac69ea87cd0afe18f5ce652a",
     "semantic_hash": ""
   },
   "src/jobpilot/variant_catalogue.py": {
@@ -610,12 +610,12 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785777978.1775446,
+    "mtime": 1785779255.5481555,
     "ast_hash": "61cd2271016c1e0fcc419e077c4275f4",
     "semantic_hash": ""
   },
   "config/fact_bank.yaml": {
-    "mtime": 1785778520.6906042,
+    "mtime": 1785779255.548982,
     "ast_hash": "df9bd0872780086b5fb9923bef139db0",
     "semantic_hash": ""
   },
@@ -980,18 +980,23 @@
     "semantic_hash": ""
   },
   "tests/test_generated_prose_scope.py": {
-    "mtime": 1785777641.1911132,
+    "mtime": 1785779255.551683,
     "ast_hash": "551412fda93243872ee2fedcf5c35029",
     "semantic_hash": ""
   },
   "tests/test_generation_resilience.py": {
-    "mtime": 1785777582.3969636,
+    "mtime": 1785779255.5521083,
     "ast_hash": "55e701d428244c5964655e49426f579a",
     "semantic_hash": ""
   },
   "tests/test_experience_line_budget.py": {
-    "mtime": 1785777853.9320252,
+    "mtime": 1785779255.551204,
     "ast_hash": "d6c858f98587c1ce1f7403d74644cba4",
+    "semantic_hash": ""
+  },
+  "tests/test_renderer_owned_fields.py": {
+    "mtime": 1785794992.8493042,
+    "ast_hash": "312d01686380d4ca9b229ff254fd0171",
     "semantic_hash": ""
   }
 }

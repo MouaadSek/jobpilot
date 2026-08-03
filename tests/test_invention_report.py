@@ -118,8 +118,27 @@ def test_a_recovered_invention_is_counted_as_recovered(
 
 
 def test_an_invention_that_never_recovers_is_counted_as_unresolved(
-    db: sqlite3.Connection, tmp_path: Path
+    db: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Counting is about what the model invented, not about what was salvaged.
+
+    Dropping is held off here so the count is read on the same path Task 37
+    measured: an id invented three times is three rejections and no recovery,
+    whether the run then degraded or aborted.
+    """
+
+    import dataclasses
+
+    from jobpilot import tailoring
+    from jobpilot.config import get_settings
+
+    monkeypatch.setattr(
+        tailoring,
+        "get_settings",
+        lambda: dataclasses.replace(
+            get_settings(), tailoring_drop_unknown_citations=False
+        ),
+    )
     application_id = _queued_application(db, suffix="never")
 
     with pytest.raises(ApplicationGenerationError):

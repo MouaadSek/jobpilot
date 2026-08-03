@@ -1,12 +1,15 @@
-"""Task 37 item 3: degradation, shipped OFF.
+"""Task 37 item 3: degradation. Shipped off, turned ON by Task 39.
 
-If the advisor still cites an id that does not exist after every retry, and only
-if TAILORING_DROP_UNKNOWN_CITATIONS is on, that one citation can be dropped and
-the CV generated without it — but only from a position where losing it cannot
-weaken the CV, and never silently.
+If the advisor still cites an id that does not exist after every retry, that one
+citation can be dropped and the CV generated without it — but only from a
+position where losing it cannot weaken the CV, and never silently.
 
-The flag ships disabled. Item 4 measures whether it is needed; turning it on is
-a separate decision with evidence behind it.
+Task 37 shipped it disabled and asked for evidence. The evidence arrived: unknown
+fact ids are the most common failure in the events history, and they are the
+cheapest to recover from. The objection was that a silently weaker CV is worse
+than a failed generation — so Task 39 item 2 made it visible first, in amber, on
+the application page and with a marker in the library and the tracker, and item 3
+turned the flag on. Setting it to false restores the old behaviour exactly.
 """
 
 from __future__ import annotations
@@ -69,18 +72,23 @@ def _dropping_enabled(monkeypatch, enabled: bool = True) -> Iterator[None]:
 # ----- the flag ships off -----
 
 
-def test_the_flag_defaults_to_false() -> None:
-    """A silently weaker CV is worse than a failed generation."""
+def test_the_flag_defaults_to_on_since_task_39() -> None:
+    """The objection that kept it off was silence, and it is no longer silent.
 
-    assert get_settings().tailoring_drop_unknown_citations is False
+    Unknown fact ids are the most common failure in the events history and the
+    cheapest to recover from. Every drop now names the fact id it removed, in
+    amber, on the application page and with a marker in the library.
+    """
+
+    assert get_settings().tailoring_drop_unknown_citations is True
 
 
-def test_the_env_example_documents_it_as_off() -> None:
+def test_the_env_example_documents_it_as_on() -> None:
     example = (Path(__file__).resolve().parents[1] / ".env.example").read_text(
         encoding="utf-8"
     )
 
-    assert "TAILORING_DROP_UNKNOWN_CITATIONS=false" in example
+    assert "TAILORING_DROP_UNKNOWN_CITATIONS=true" in example
 
 
 # ----- what may be dropped -----
@@ -203,13 +211,16 @@ class _InventsForever:
 
 
 def test_with_the_flag_off_an_invented_id_still_fails(
-    db: sqlite3.Connection, tmp_path: Path
+    db: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The shipped default: nothing is dropped and the generation fails."""
+    """Turning it off restores the old behaviour exactly."""
 
     application_id = _queued_application(db, suffix="drop-off")
 
-    with pytest.raises(ApplicationGenerationError, match="skill.rules.sigma"):
+    with (
+        _dropping_enabled(monkeypatch, enabled=False),
+        pytest.raises(ApplicationGenerationError, match="skill.rules.sigma"),
+    ):
         approve_application(
             db, application_id, via="test",
             advisor=_InventsForever(), toolchain=_Toolchain(), output_root=tmp_path,
