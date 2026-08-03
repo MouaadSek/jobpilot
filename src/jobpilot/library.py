@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from jobpilot.apply_flow import ARCHIVE_DIR_NAME
+from jobpilot.generation_warnings import warning_gates_by_application
 from jobpilot.logging_conf import get_logger
 
 log = get_logger("library")
@@ -85,6 +86,9 @@ class LibraryEntry:
     apply_route: str | None
     current: Generation | None
     archives: tuple[Generation, ...]
+    #: Gates that degraded the current generation. A degraded document has to be
+    #: identifiable here too, months later, not only on the day it was made.
+    warning_gates: tuple[str, ...] = ()
 
     @property
     def generations(self) -> int:
@@ -101,6 +105,7 @@ class LibraryEntry:
             "current": self.current.as_dict() if self.current else None,
             "archives": [archive.as_dict() for archive in self.archives],
             "generations": self.generations,
+            "warning_gates": list(self.warning_gates),
         }
 
 
@@ -191,6 +196,7 @@ def library_entries(
     ).fetchall()
 
     root = Path(output_root)
+    warning_marks = warning_gates_by_application(db)
     entries: list[LibraryEntry] = []
     for row in rows:
         application_dir = root / str(row["id"])
@@ -210,6 +216,7 @@ def library_entries(
                 apply_route=row["apply_route"],
                 current=current,
                 archives=archives,
+                warning_gates=warning_marks.get(int(row["id"]), ()),
             )
         )
     return tuple(entries)

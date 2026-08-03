@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from jobpilot.generation_warnings import warning_gates_by_application
 from jobpilot.logging_conf import get_logger
 
 log = get_logger("tracker")
@@ -125,7 +126,15 @@ def tracker_rows(
         f"WHERE a.kind = 'offer'{clause} ORDER BY {order}",
         params,
     ).fetchall()
-    return tuple(dict(row) for row in rows)
+    # A degraded generation has to be identifiable from the list, not only from
+    # the detail page nobody opens for an application they think is fine.
+    warning_marks = warning_gates_by_application(db)
+    enriched = []
+    for row in rows:
+        entry = dict(row)
+        entry["warning_gates"] = list(warning_marks.get(int(row["application_id"]), ()))
+        enriched.append(entry)
+    return tuple(enriched)
 
 
 def statuses(db: sqlite3.Connection) -> list[str]:

@@ -38,6 +38,11 @@ from jobpilot.facts import (
     load_fact_bank,
 )
 from jobpilot.facts import normalise_role_title as normalise_role_title
+from jobpilot.generation_warnings import (
+    GenerationWarning,
+    clear_warnings,
+    record_warnings,
+)
 from jobpilot.logging_conf import get_logger
 from jobpilot.profile import CvProfile, load_cv_profile
 from jobpilot.state import current_status, log_event, transition
@@ -4718,6 +4723,7 @@ def _advise_and_tailor(
     original_html: str,
     bank: FactBank,
     application_id: int,
+    warnings: list[GenerationWarning],
 ) -> tuple[TailoringPlan, str, DroppedCitation | None]:
     """Produce a validated plan and its tailored HTML, retrying on rejection.
 
@@ -4793,6 +4799,16 @@ def _advise_and_tailor(
                         "reason": profile_fallback_reason,
                         "replacement": profile_phrase,
                     },
+                )
+                warnings.append(
+                    GenerationWarning(
+                        gate="_validate_profile_candidate",
+                        message=profile_fallback_reason,
+                        degraded=(
+                            "profil : la phrase générée a été remplacée par celle "
+                            f"de la variante, « {profile_phrase} »"
+                        ),
+                    )
                 )
             last_plan = plan
             tailored_html = tailor_cv_html(
@@ -4897,6 +4913,10 @@ def generate_application(
 
     if current_status(db, application_id) != "generating":
         raise TailoringError("application must be in 'generating' state")
+    # Replaced, never appended to: the previous run's compromises say nothing
+    # about the document this run is about to put on disk.
+    clear_warnings(db, application_id)
+    warnings: list[GenerationWarning] = []
     chosen_toolchain = toolchain or ScriptToolchain()
     settings = get_settings()
     root = Path(output_root or settings.output_dir)
@@ -4948,6 +4968,7 @@ def generate_application(
             original_html=original_html,
             bank=bank,
             application_id=application_id,
+            warnings=warnings,
         )
 
         cv_html_path.write_text(tailored_html, encoding="utf-8")
@@ -5012,6 +5033,28 @@ def generate_application(
             plan = fallback_plan
             tailored_html = fallback_html
             profile_layout_fallback = True
+            warnings.append(
+                GenerationWarning(
+                    gate="check_orphan_lines",
+                    message=report,
+                    degraded=(
+                        "profil : la phrase générée provoquait une ligne orpheline, "
+                        f"remplacée par celle du modèle, « {fallback_phrase} »"
+                    ),
+                )
+            )
+        if orphan_warning:
+            warnings.append(
+                GenerationWarning(
+                    gate="check_orphan_lines",
+                    message=orphan_warning,
+                    degraded=(
+                        "aucune correction : contrôle indicatif sur du texte repris "
+                        "mot pour mot de la base de faits. Vérifier la mise en page "
+                        "du PDF."
+                    ),
+                )
+            )
         chosen_toolchain.generate_cv_pdf(cv_html_path, cv_pdf_path)
         chosen_toolchain.verify_page_count(cv_pdf_path)
         chosen_toolchain.generate_letter_pdf(
@@ -5103,6 +5146,18 @@ def generate_application(
                     "warning": dropped_citation.warning,
                 },
             )
+            warnings.append(
+                GenerationWarning(
+                    gate="resolve_fact_id",
+                    message=dropped_citation.warning,
+                    degraded=(
+                        f"citation retirée : {dropped_citation.fact_id} "
+                        f"({dropped_citation.position}). Le reste du document est "
+                        "inchangé."
+                    ),
+                )
+            )
+        record_warnings(db, application_id, warnings)
         if decision.justification:
             ready_detail["routing_justification"] = decision.justification
         if decision.runner_up:

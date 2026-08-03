@@ -314,6 +314,7 @@ def _advise(advisor: Any) -> None:
             original_html=original,
             bank=load_fact_bank(),
             application_id=1,
+            warnings=[],
         )
     finally:
         connection.close()

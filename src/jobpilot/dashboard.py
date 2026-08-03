@@ -47,6 +47,7 @@ from jobpilot.config import get_settings
 from jobpilot.db import connect
 from jobpilot.downloads import download_filename
 from jobpilot.facts import FactBankError, load_fact_bank
+from jobpilot.generation_warnings import as_dicts, warnings_for
 from jobpilot.library import is_archive_stamp, library_entries
 from jobpilot.mailer import (
     MailerError,
@@ -283,6 +284,38 @@ def _citation_warning(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def _generation_warnings(
+    db: sqlite3.Connection,
+    application_id: int,
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """What this generation degraded, for the amber block on the detail page.
+
+    Applications generated before the column existed carry NULL rather than an
+    empty list, so their one recorded degradation is still read back from the
+    events table. Once a run has written warnings, the stored set is the answer.
+    """
+
+    row = db.execute(
+        "SELECT generation_warnings FROM applications WHERE id = ?",
+        (application_id,),
+    ).fetchone()
+    if row is not None and row["generation_warnings"] is not None:
+        return as_dicts(warnings_for(db, application_id))
+    legacy = _citation_warning(events)
+    if not legacy:
+        return []
+    return [
+        {
+            "gate": "resolve_fact_id",
+            "message": legacy,
+            "degraded": (
+                "citation retirée, avant le suivi des avertissements"
+            ),
+        }
+    ]
+
+
 def create_app(
     *,
     advisor: Any | None = None,
@@ -376,7 +409,9 @@ def create_app(
                     and latest_event_name != "submit_unconfirmed"
                 ),
                 "wttj_alert": wttj_alert,
-                "citation_warning": _citation_warning(events),
+                "generation_warnings": _generation_warnings(
+                    db, application_id, events
+                ),
                 "error": error,
             },
             status_code=status_code,

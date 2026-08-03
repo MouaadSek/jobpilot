@@ -298,7 +298,12 @@ def test_the_warning_is_visible_on_the_application_page(
 
     assert "skill.rules.sigma" in page.text
     assert "Relisez le CV" in page.text
-    assert 'role="alert"' in page.text
+    # role="status", not role="alert": Task 39 made this amber rather than red.
+    # The document exists and is usable — it is "check this before sending", not
+    # "this failed" — and an assertive live region for every degraded generation
+    # is how a reviewer learns to dismiss the banner without reading it.
+    assert 'role="status"' in page.text
+    assert 'class="warn"' in page.text
 
 
 def test_the_warning_names_where_the_citation_was_removed_from() -> None:

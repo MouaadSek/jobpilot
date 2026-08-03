@@ -22,6 +22,7 @@
             <div>
               <strong>{{ entry.company or "Entreprise inconnue" }}</strong>
               <span class="muted">— {{ entry.title or "Sans intitulé" }}</span>
+              {% if entry.warning_gates %}<span class="warn-mark" title="Généré avec avertissement : {{ entry.warning_gates|join(', ') }}">⚠ {{ entry.warning_gates|length }}</span>{% endif %}
             </div>
             <div class="library-meta muted">
               <span>{{ entry.status }}</span>

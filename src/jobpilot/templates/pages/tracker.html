@@ -41,7 +41,10 @@
           <tbody>
             {% for row in rows %}
               <tr>
-                <td><a href="/application/{{ row.application_id }}">{{ row.company or "—" }}</a></td>
+                <td>
+                  <a href="/application/{{ row.application_id }}">{{ row.company or "—" }}</a>
+                  {% if row.warning_gates %}<span class="warn-mark" title="Généré avec avertissement : {{ row.warning_gates|join(', ') }}">⚠</span>{% endif %}
+                </td>
                 <td>{{ row.title or "—" }}</td>
                 <td>{{ row.source or "—" }}</td>
                 <td class="score">{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>

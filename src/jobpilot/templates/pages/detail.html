@@ -4,7 +4,20 @@
 
     {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
     {% if wttj_alert and not error %}<div class="error" role="alert">{{ wttj_alert }}</div>{% endif %}
-    {% if citation_warning %}<div class="error" role="alert">{{ citation_warning }}</div>{% endif %}
+    {% if generation_warnings %}
+      <div class="warn" role="status">
+        <p class="warn-lead">Document généré avec {{ generation_warnings|length }} avertissement{{ "s" if generation_warnings|length > 1 }} — à vérifier avant envoi.</p>
+        <ul class="warn-list">
+          {% for warning in generation_warnings %}
+            <li>
+              <code>{{ warning.gate }}</code>
+              <span class="warn-said">{{ warning.message }}</span>
+              <span class="warn-did">{{ warning.degraded }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
 
     <dl class="meta">
       <div><dt>Statut</dt><dd>{{ application.status }}</dd></div>
