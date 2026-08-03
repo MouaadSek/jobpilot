@@ -12,6 +12,14 @@ plausibly — but in prose rather than in a citation slot:
   wrong for a place — and no amount of fact-bank curation would ever have fixed
   it, because a bank of the candidate's career cannot contain the employer's
   town.
+
+Task 38 widened that second one from the town to the whole parsed offer. Three
+further generations died on `unsupported capability 'Ikivia'` / `'AXA'` /
+`'Capgemini'`, and « le poste d'Analyste Cybersécurité SecOps » was the next in
+line: one class of failure, not four bugs, so the bounded field set is admitted
+at once. The prompt rule that told the model not to repeat the company went with
+it — naming the employer is what a motivation letter does, the model did it
+anyway, and only the scope was ever protecting anything.
 """
 
 from __future__ import annotations
@@ -19,6 +27,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -27,12 +36,14 @@ from jobpilot.facts import load_fact_bank
 from jobpilot.review import invention_report
 from jobpilot.tailoring import (
     MAX_SECTION_FACT_IDS,
+    OfferContext,
     SourcedBullet,
     TailoringError,
     UnsupportedNumberError,
     _advisor_prompt,
     _normalized_number,
     _valid_fact_ids_block,
+    _validate_selection,
     allowed_numbers,
     extract_template_context,
     letter_scope,
@@ -157,67 +168,147 @@ def test_a_plain_rejection_still_gets_no_block(rendered, bank) -> None:
     ) == ""
 
 
-# ----- places: the root cause of "unsupported capability 'Cergy'" -----
+# ----- the offer's own identity: 'Cergy', then 'Ikivia', 'AXA', 'Capgemini' -----
 
 
-def test_the_offers_own_town_is_nameable_in_the_letter(bank) -> None:
-    """It claims nothing about the candidate; it says where the job is."""
+def _posting(
+    *,
+    company: str = "Ikivia",
+    title: str = "Analyste Cybersécurité SecOps",
+    city: str = "Cergy",
+    company_known: bool = True,
+) -> OfferContext:
+    """A parsed offer, which is the only thing letter_scope ever admits."""
 
-    bullet = SourcedBullet(
-        text="Je serais ravi de rejoindre votre équipe à Cergy.",
-        sources=(next(iter(bank.claims)),),
+    return OfferContext(
+        title=title,
+        company=company,
+        description="Rejoignez notre équipe.",
+        contract_type="alternance",
+        duration_months=12,
+        city=city,
+        source="france_travail",
+        url="https://example.test/jobs/38",
+        company_known=company_known,
     )
 
-    with pytest.raises(TailoringError, match="Cergy"):
+
+def _letter(text: str, bank) -> SourcedBullet:
+    return SourcedBullet(text=text, sources=(next(iter(bank.claims)),))
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    (
+        "Je serais ravi de rejoindre votre équipe à Cergy.",
+        "Votre annonce Ikivia a retenu toute mon attention.",
+        "Le poste d'Analyste Cybersécurité SecOps que vous proposez m'intéresse.",
+    ),
+)
+def test_the_offers_own_identity_is_nameable_in_the_letter(bank, sentence) -> None:
+    """Saying who the letter is addressed to claims nothing about the candidate."""
+
+    bullet = _letter(sentence, bank)
+
+    with pytest.raises(TailoringError):
         validate_provenance([bullet], bank, scope=whole_bank_scope(bank))
 
-    validate_provenance([bullet], bank, scope=letter_scope(bank, location="Cergy"))
+    validate_provenance([bullet], bank, scope=letter_scope(bank, offer=_posting()))
 
 
-def test_a_postcode_in_the_city_field_never_becomes_a_claimable_quantity(bank) -> None:
-    """The narrow limit that keeps this from being a hole."""
+def test_a_postcode_in_a_parsed_field_never_becomes_a_claimable_quantity(bank) -> None:
+    """The first narrow limit that keeps this from being a hole."""
 
     base = whole_bank_scope(bank)
-    widened = letter_scope(bank, location="Cergy 95000")
+    widened = letter_scope(bank, offer=_posting(city="Cergy 95000"))
 
     assert widened.numbers == base.numbers
-    bullet = SourcedBullet(
-        text="Traitement de 95000 incidents.", sources=(next(iter(bank.claims)),)
-    )
     with pytest.raises(UnsupportedNumberError):
-        validate_provenance([bullet], bank, scope=widened)
+        validate_provenance(
+            [_letter("Traitement de 95000 incidents.", bank)], bank, scope=widened
+        )
 
 
-def test_a_capability_the_bank_never_records_is_still_refused(bank) -> None:
-    """Widening for places must not widen for tools."""
+def test_the_offers_prose_is_not_admitted_only_its_parsed_fields(bank) -> None:
+    """The second narrow limit: a posting is untrusted input."""
 
-    bullet = SourcedBullet(
-        text="Mission réalisée avec Splunk Enterprise Security.",
-        sources=(next(iter(bank.claims)),),
+    offer = _posting()
+    offer = replace(
+        offer, description="Notre SOC est outillé avec Splunk Enterprise Security."
     )
 
     with pytest.raises(TailoringError, match="unsupported capability"):
         validate_provenance(
-            [bullet], bank, scope=letter_scope(bank, location="Cergy")
+            [_letter("Supervision via Splunk Enterprise Security.", bank)],
+            bank,
+            scope=letter_scope(bank, offer=offer),
         )
 
 
-def test_an_absent_location_leaves_the_scope_exactly_as_it_was(bank) -> None:
-    base = whole_bank_scope(bank)
+def test_a_capability_the_bank_never_records_is_still_refused(bank) -> None:
+    """Widening for the offer's identity must not widen for tools."""
 
-    for location in (None, "", "   ", "95000"):
-        widened = letter_scope(bank, location=location)
+    bullet = _letter("Mission réalisée avec CrowdStrike Falcon.", bank)
+
+    with pytest.raises(TailoringError, match="unsupported capability"):
+        validate_provenance(
+            [bullet], bank, scope=letter_scope(bank, offer=_posting())
+        )
+
+
+def test_naming_the_employer_is_not_claiming_to_have_worked_there(bank) -> None:
+    """The letter may address Ikivia; the CV may not grow an Ikivia experience.
+
+    Attribution on the CV is a different check from the letter's token tiers,
+    and it is the one that holds the line here: a selected fact must belong to a
+    real entry of the bank, so no widening of the letter's scope can invent an
+    employer for the candidate.
+    """
+
+    scope = letter_scope(bank, offer=_posting())
+    assert "ikivia" in scope.normalized
+
+    borrowed = next(iter(bank.experience)).facts[0].id
+    with pytest.raises(TailoringError, match="does not belong to entry"):
+        _validate_selection([borrowed], (), bank, entry_id="experience.ikivia")
+
+    with pytest.raises(TailoringError, match="unknown fact id"):
+        _validate_selection(
+            ["experience.ikivia.supervision"], (), bank, entry_id="experience.ikivia"
+        )
+
+
+def test_an_absent_offer_leaves_the_scope_exactly_as_it_was(bank) -> None:
+    base = whole_bank_scope(bank)
+    blank = _posting(company="", title="", city="")
+    blank = replace(blank, contract_type="")
+
+    for offer in (None, blank, replace(blank, city="95000")):
+        widened = letter_scope(bank, offer=offer)
         assert widened.normalized == base.normalized
         assert widened.numbers == base.numbers
 
 
-def test_the_domain_phrase_is_not_widened_for_places(bank) -> None:
-    """It describes an orientation and has no business naming a city."""
+def test_an_unnamed_company_admits_nothing(bank) -> None:
+    """« votre entreprise » has no name to admit, so the field stays out."""
+
+    widened = letter_scope(
+        bank, offer=_posting(company="Ikivia", company_known=False)
+    )
+
+    assert "ikivia" not in widened.normalized
+
+
+def test_the_domain_phrase_is_not_widened_for_the_offer(bank) -> None:
+    """It describes an orientation and has no business naming a city or a firm."""
 
     from jobpilot.tailoring import validate_generated_phrase
 
     with pytest.raises(TailoringError, match="Cergy"):
         validate_generated_phrase("sécurité opérationnelle à Cergy", bank)
+
+    with pytest.raises(TailoringError, match="Ikivia"):
+        validate_generated_phrase("sécurité opérationnelle chez Ikivia", bank)
 
 
 # ----- counting, same report, separate category -----

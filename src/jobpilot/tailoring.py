@@ -1624,39 +1624,72 @@ def whole_bank_scope(bank: FactBank) -> ProvenanceScope:
     )
 
 
-#: Digits are stripped out of an admitted place before it joins the scope, so a
-#: postcode in a city field can never legitimise a quantity.
-_PLACE_DIGITS_RE = re.compile(r"[\d]+")
+#: Digits are stripped out of an admitted offer field before it joins the scope,
+#: so a postcode in a city field can never legitimise a quantity.
+_OFFER_FIELD_DIGITS_RE = re.compile(r"[\d]+")
 
 
-def letter_scope(bank: FactBank, *, location: str | None = None) -> ProvenanceScope:
-    """The whole bank, plus the one place the letter is entitled to name.
+def _offer_identity(offer: OfferContext) -> tuple[str, ...]:
+    """The parsed fields a letter is entitled to say back to its reader.
+
+    An unnamed company is left out rather than admitted blank: the letter then
+    addresses « votre entreprise » and there is no name to name.
+    """
+
+    fields = (
+        offer.company if offer.company_known else "",
+        offer.title,
+        offer.city,
+        offer.contract_type,
+    )
+    return tuple(field for field in fields if field and field.strip())
+
+
+def letter_scope(bank: FactBank, *, offer: OfferContext | None = None) -> ProvenanceScope:
+    """The whole bank, plus the offer identity the letter is entitled to name.
 
     A letter is addressed to a specific employer about a specific posting, so
-    naming where that posting is claims nothing about the candidate: it is a
-    fact about the offer. The capability tier judges every proper noun as a
-    capability claim, which is right for a tool and wrong for a commune — and
-    "Cergy" is not something the fact bank could ever contain, so no amount of
-    bank curation would have fixed it.
+    saying who it is addressed to and what it is about claims nothing about the
+    candidate: those are facts about the offer. The capability tier judges every
+    proper noun as a capability claim, which is right for a tool and wrong for
+    an employer, a commune, or a job title — and none of them is something a
+    bank of the candidate's own career could ever contain, so no amount of bank
+    curation would have fixed it.
+
+    All four failures so far were one class, not four bugs: 'Cergy' the city,
+    then 'Ikivia', 'AXA' and 'Capgemini' the employers, and « le poste
+    d'Analyste Cybersécurité SecOps » is the next one waiting. So the whole
+    parsed field set is admitted at once rather than a field per incident.
 
     Two deliberate limits keep this from becoming a hole:
 
-    * only the PARSED location field is admitted, never the offer's prose. A
-      posting is untrusted input and may not legitimise a claim, which is why
-      ``_bank_parts`` excludes offer text entirely; a city field is a bounded
-      value the ingest layer already parsed.
+    * only the PARSED fields are admitted, never the offer's prose. A posting is
+      untrusted input and may not legitimise a claim, which is why
+      ``_bank_parts`` excludes offer text entirely; these are bounded values the
+      ingest layer already parsed.
     * digits are stripped first, so it widens the capability dimension only.
       "Cergy 95000" must never make 95000 a quantity the candidate can claim.
+
+    Naming the employer is not claiming to have worked for it. Attribution on
+    the CV is a different check: ``_validate_selection`` requires every selected
+    fact to belong to a real entry of the bank, so an experience at the offer's
+    employer stays impossible however widely the letter may address it.
     """
 
     scope = whole_bank_scope(bank)
-    place = _PLACE_DIGITS_RE.sub(" ", location or "").strip()
-    if not place:
+    if offer is None:
+        return scope
+    admitted = [
+        stripped
+        for field in _offer_identity(offer)
+        if (stripped := _OFFER_FIELD_DIGITS_RE.sub(" ", field).strip())
+    ]
+    if not admitted:
         return scope
     return replace(
         scope,
-        label=f"{scope.label} plus the offer's location",
-        normalized=f"{scope.normalized} {_normalize(place)}",
+        label=f"{scope.label} plus the offer's own identity",
+        normalized=" ".join([scope.normalized, *map(_normalize, admitted)]),
     )
 
 
@@ -1996,7 +2029,7 @@ def validate_plan_provenance(
     plan: TailoringPlan,
     bank: FactBank,
     *,
-    offer_location: str | None = None,
+    offer: OfferContext | None = None,
     vocabulary_path: Path | None = None,
 ) -> None:
     """Validate the content the advisor wrote, against the scope it claims in.
@@ -2006,10 +2039,11 @@ def validate_plan_provenance(
     ``_validate_selection``. What is still written is the profile's domain phrase
     and the letter, and both describe the whole career rather than one entry.
 
-    The letter alone may also name the offer's own location: it is addressed to
-    that posting, and where the job is says nothing about the candidate. The
-    domain phrase is judged against the bank only — it describes an orientation
-    and has no business naming a city.
+    The letter alone may also name the offer's own identity — its employer, its
+    title, its town, its contract type: it is addressed to that posting, and who
+    it is addressed to says nothing about the candidate. The domain phrase is
+    judged against the bank only — it describes an orientation and has no
+    business naming a company or a city.
     """
 
     validate_generated_phrase(
@@ -2020,7 +2054,7 @@ def validate_plan_provenance(
     validate_provenance(
         plan.letter_paragraphs,
         bank,
-        scope=letter_scope(bank, location=offer_location),
+        scope=letter_scope(bank, offer=offer),
         vocabulary_path=vocabulary_path,
     )
 
@@ -2431,9 +2465,7 @@ def _validate_sourced_plan(
             _contact_fields(bank),
             message="letter must not repeat a contact field the header carries: {value}",
         )
-    validate_plan_provenance(
-        plan, bank, offer_location=offer.city if offer else None
-    )
+    validate_plan_provenance(plan, bank, offer=offer)
     _validate_letter_body(plan.letter_body_html)
 
 
@@ -3422,10 +3454,6 @@ Rules:
 - You DO write the profile_domain_phrase and the letter. Both are plain text, no
   HTML and no em dash. Numbers, tools, and proper nouns in them must be supported
   by the fact bank.
-- Do not repeat the company name, job title, or location in letter_paragraphs.
-  The renderer injects the offer identity into the first paragraph from parsed
-  offer fields. Your paragraphs provide tailored, fact-backed motivation and
-  evidence only.
 - valid_numbers above is the COMPLETE and CLOSED set of figures you may state.
   Never introduce a figure, percentage, duration, headcount or date that is not
   in it. This applies to everything you write, the letter especially.
@@ -3441,7 +3469,9 @@ Rules:
   needs-review fact or an unverified skill.
 - Produce 5 or 6 letter_paragraphs. Salutation, addressee, locked identity, and
   signature are renderer-injected. The renderer injects the offer identity before
-  your first paragraph; write naturally and specifically without repeating it.
+  your first paragraph; write naturally and specifically from there. Naming the
+  company, the title or the town where the sentence calls for it is normal
+  French and is allowed; claiming to have worked there is not.
 - {exact_stage}
 - rhythm_phrase must always be null; the profile rhythm is immutable.
 - Never name Baifall Dream's end client and never write a certification as "en cours".

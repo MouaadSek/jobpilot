@@ -103,7 +103,7 @@ def test_offer_identity_is_renderer_owned_without_losing_evidence() -> None:
     assert "Thales" in plan.letter_body_html
     assert "Analyst N2" in plan.letter_body_html
     assert all(text in plan.letter_body_html for text in evidence)
-    validate_plan_provenance(plan, load_fact_bank(), offer_location=offer.city)
+    validate_plan_provenance(plan, load_fact_bank(), offer=offer)
 
 
 def test_an_unsupported_candidate_claim_remains_a_hard_failure() -> None:
@@ -119,7 +119,7 @@ def test_an_unsupported_candidate_claim_remains_a_hard_failure() -> None:
     )
 
     with pytest.raises(TailoringError, match="unsupported capability 'CrowdStrike'"):
-        validate_plan_provenance(plan, load_fact_bank(), offer_location=offer.city)
+        validate_plan_provenance(plan, load_fact_bank(), offer=offer)
 
 
 def test_model_prose_dashes_are_canonicalized_before_validation() -> None:
@@ -145,7 +145,14 @@ def test_model_prose_dashes_are_canonicalized_before_validation() -> None:
     assert " - " in plan.letter_paragraphs[0].text
 
 
-def test_prompt_keeps_offer_identity_out_of_model_evidence() -> None:
+def test_the_prompt_no_longer_forbids_naming_the_offer() -> None:
+    """Naming the employer is what a motivation letter does.
+
+    The rule was never load-bearing: three generations named the company anyway
+    and died in the validator instead. What protects the letter is the scope, so
+    the rule only bought unnatural French.
+    """
+
     offer = _offer()
     selection = pick_variant(offer.description, title=offer.title)
     prompt = _advisor_prompt(
@@ -154,7 +161,7 @@ def test_prompt_keeps_offer_identity_out_of_model_evidence() -> None:
         extract_template_context(TEMPLATE_PATH.read_text(encoding="utf-8")),
     )
 
-    assert "Do not repeat the company name, job title, or location" in prompt
+    assert "Do not repeat the company name" not in prompt
     assert "renderer injects the offer identity" in prompt
 
 

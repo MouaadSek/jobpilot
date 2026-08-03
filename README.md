@@ -199,20 +199,22 @@ offer-specific terms to the generic vocabulary. Interactive input still fails
 validation so a human typo is never silently replaced.
 
 **In the letter.** The renderer safely injects the parsed company and job title
-into the first paragraph. They are offer identity, not claims about the candidate,
-and therefore never widen what model prose may claim. The model's five or six
-fact-backed paragraphs are kept intact and must not repeat company, title, or
-location. Prose about the career may still say « Mon stage actuel chez Baïfall
-Dream… », name Supinfo, or cite the AZ-900. Two limits still hold and they come
-from different rules:
+into the first paragraph. The model's five or six fact-backed paragraphs are kept
+intact, and they may name the offer back: « le poste d'Analyste Cybersécurité
+SecOps que vous proposez chez Ikivia » is what a French motivation letter says,
+so the offer's own parsed identity is admitted to the letter's scope (below).
+Prose about the career may still say « Mon stage actuel chez Baïfall Dream… »,
+name Supinfo, or cite the AZ-900. Two limits still hold and they come from
+different rules:
 
 - **contact details** — name, email, phone, LinkedIn — are refused in the letter
   body, because the renderer injects the address block and a body that repeats it
   is duplicating the header rather than writing a sentence;
-- an employer, school or certification the **bank never records** is refused by
-  the capability tier exactly like any other unsupported proper noun, so
-  « Capgemini » does not become sayable. The bank's own dates are part of the
-  whole-bank scope, so « depuis juillet 2026 » is fine and « depuis 2014 » is not.
+- an employer, school or certification that is **neither in the bank nor this
+  offer's own identity** is refused by the capability tier exactly like any other
+  unsupported proper noun, so « Capgemini » is sayable in a letter addressed to
+  Capgemini and nowhere else. The bank's own dates are part of the whole-bank
+  scope, so « depuis juillet 2026 » is fine and « depuis 2014 » is not.
 
 ### The advisor selects; the renderer inserts
 
@@ -230,6 +232,14 @@ that are already true. `skill/assets/stage-baifall-dream.md` holds eight
 pre-written Baïfall bullet-3 variants (GRC, DevSecOps, AppSec, CloudSec, SOC, Chef
 de Projet, Consultant, IAM), and each is a fact-bank entry: selecting is how they
 were meant to be used.
+
+Because the renderer inserts a claim verbatim, an over-long one does not fail
+anywhere — it wraps to a second line and pushes the CV toward a second page. A
+test therefore bounds every experience claim by the template's own widest
+line-fit bullet (129 characters), derived from the file the way the zone 3 row
+budget is. The Baïfall rows are excluded from that derivation: they were pasted
+from `stage-baifall-dream.md` rather than fitted, so they describe the defect
+instead of bounding it.
 
 Several facts of one employer say the same thing for different audiences, so
 selection is a real judgement — the advisor also returns a one-line justification
@@ -268,7 +278,24 @@ Generated model text is judged against a **scope**. The letter evidence and the
 domain phrase describe a whole career, so their scope is the whole verified bank.
 The renderer-owned company/title introduction is checked as escaped offer identity
 instead; it is never added to the bank scope and cannot license a sentence such as
-« j'ai utilisé [unsupported tool] ». A selected bullet has no scope question left
+« j'ai utilisé [unsupported tool] ».
+
+**The letter's scope is the bank plus this offer's own identity** — its parsed
+company, title, city and contract type (`letter_scope`). A letter is addressed to
+a specific employer about a specific posting, so naming who it is addressed to
+claims nothing about the candidate, while the capability tier judges every proper
+noun as a capability claim: right for a tool, wrong for AXA, Cergy or « Analyste
+SecOps », none of which a bank of *this* career could ever contain. Two limits
+keep it from being a hole: only the **parsed fields** are admitted, never the
+offer's prose, which stays untrusted input; and **digits are stripped first**, so
+a postcode in a city field widens the capability dimension only and « 95000
+incidents » is still refused. Naming the employer is not claiming to have worked
+there — the CV cannot grow an experience entry at it, because a selected fact
+must belong to a real entry of the bank (`_validate_selection`). The domain
+phrase is *not* widened: it describes an orientation and has no business naming a
+company or a city.
+
+A selected bullet has no scope question left
 — its text is the bank's own — so its whole check is the selection: the id must
 resolve (below) and must belong to *that* entry. Borrowing another employer's
 achievement is no longer something the validator has to catch in prose; it is
