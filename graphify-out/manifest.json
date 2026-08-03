@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/tailoring.py": {
-    "mtime": 1785799263.4120011,
-    "ast_hash": "459b78392dd4bb1a0a6934bb14d3337a",
+    "mtime": 1785801210.1585495,
+    "ast_hash": "a715f217a1dca984052d8e2cb9e4fbeb",
     "semantic_hash": ""
   },
   "src/jobpilot/variant_catalogue.py": {
@@ -990,8 +990,8 @@
     "semantic_hash": ""
   },
   "tests/test_experience_line_budget.py": {
-    "mtime": 1785779255.551204,
-    "ast_hash": "d6c858f98587c1ce1f7403d74644cba4",
+    "mtime": 1785801117.1215675,
+    "ast_hash": "c07ae40f0fa430b9bbcfdf4e663fdd9c",
     "semantic_hash": ""
   },
   "tests/test_renderer_owned_fields.py": {
@@ -1027,6 +1027,11 @@
   "tests/test_stage_contract_fallback.py": {
     "mtime": 1785800707.1778612,
     "ast_hash": "9683b4dc52329db3987b1d1cd58a54d3",
+    "semantic_hash": ""
+  },
+  "tests/test_bullet_ceiling.py": {
+    "mtime": 1785801041.449967,
+    "ast_hash": "dda424104f3365d41c3f30d5916966cf",
     "semantic_hash": ""
   }
 }

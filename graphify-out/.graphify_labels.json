@@ -141,5 +141,7 @@
   "139": "Any",
   "140": "Protocol",
   "141": "RuntimeError",
-  "142": "StrEnum"
+  "142": "StrEnum",
+  "143": "Connection",
+  "144": "Path"
 }
