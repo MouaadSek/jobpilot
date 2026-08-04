@@ -19,6 +19,10 @@ _SEED_SOURCES: tuple[tuple[str, str, int], ...] = (
     ("linkedin_alert", "api", 360),
     ("indeed_alert", "api", 360),
     ("wttj", "api", 360),
+    # Task 43: offers whose description was captured from a page the user
+    # opened. Nothing in sources/registry.py builds it, so the daemon never
+    # ingests from it; the row exists for offers.source_id to point at.
+    ("manual_import", "manual", 0),
 )
 
 

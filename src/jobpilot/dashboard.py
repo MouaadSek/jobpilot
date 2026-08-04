@@ -10,7 +10,7 @@ import webbrowser
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -49,6 +49,7 @@ from jobpilot.downloads import download_filename
 from jobpilot.facts import FactBankError, load_fact_bank
 from jobpilot.generation_warnings import as_dicts, warnings_for
 from jobpilot.library import is_archive_stamp, library_entries
+from jobpilot.logging_conf import get_logger
 from jobpilot.mailer import (
     MailerError,
     SendBlocked,
@@ -57,6 +58,10 @@ from jobpilot.mailer import (
     prepare_cold_email,
     send_application_email,
     send_cold_email,
+)
+from jobpilot.offer_import import (
+    OfferImportError,
+    import_offer_description,
 )
 from jobpilot.progress import MIN_POLL_INTERVAL_MS, REGISTRY, refresh_operation, track
 from jobpilot.refresh import RefreshAlreadyRunning, RefreshRunner
@@ -111,6 +116,8 @@ from jobpilot.tracker import (
     tracker_rows,
 )
 
+log = get_logger("dashboard")
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 ALLOWED_ARTIFACTS = frozenset(
@@ -123,6 +130,57 @@ ALLOWED_ARTIFACTS = frozenset(
         "tracker.tsv",
     }
 )
+
+
+#: The one path with CORS. Kept as a constant because the guard middleware, the
+#: route and the extension all have to name the same string.
+IMPORT_PATH = "/offer/import"
+
+#: Web origins allowed to POST an offer description.
+#:
+#: The job sites are here because a content script runs in the page's origin,
+#: not the extension's, so the extension's request says
+#: ``Origin: https://www.linkedin.com``. They must match the extension's
+#: host_permissions in extension/manifest.json — change one, change the other.
+#: Loopback covers the paste box on the detail page.
+#:
+#: This is an allowlist for a single write endpoint that stores text the caller
+#: supplied; it grants no read access to anything.
+IMPORT_ALLOWED_ORIGIN_HOSTS = frozenset(
+    {
+        "linkedin.com",
+        "indeed.fr",
+        "indeed.com",
+        "welcometothejungle.com",
+        "127.0.0.1",
+        "localhost",
+    }
+)
+
+
+def import_origin_allowed(origin: str) -> bool:
+    """True when `origin` may POST to IMPORT_PATH.
+
+    Host-suffix matching, so ``www.linkedin.com`` and ``fr.indeed.com`` are
+    covered without listing every subdomain — but anchored on a dot, so
+    ``linkedin.com.evil.test`` is not a subdomain of anything allowed and is
+    rejected. ``chrome-extension://`` is allowed outright: that origin is the
+    user's own installed extension, not a web page.
+    """
+
+    text = (origin or "").strip()
+    if not text or text == "null":
+        return False
+    if text.startswith("chrome-extension://") or text.startswith("moz-extension://"):
+        return True
+    parts = urlsplit(text)
+    if parts.scheme not in ("http", "https"):
+        return False
+    host = (parts.hostname or "").lower()
+    return any(
+        host == allowed or host.endswith(f".{allowed}")
+        for allowed in IMPORT_ALLOWED_ORIGIN_HOSTS
+    )
 
 
 def _ymd(value: Any) -> str:
@@ -333,10 +391,68 @@ def create_app(
     fact_bank_path: Path | None = None,
     opener: Callable[[str], bool] | None = None,
     copier: Callable[[str], bool] | None = None,
+    score_pass: Callable[..., Any] | None = None,
 ) -> FastAPI:
     """Build the local dashboard, with injectable generation collaborators for tests."""
 
     app = FastAPI(title="JobPilot Review Dashboard", docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def import_guard(request: Request, call_next: Callable[..., Any]) -> Response:
+        """Origin allowlist and CORS, for ``/offer/import`` and nothing else.
+
+        Every other path leaves this function untouched, which is the point: the
+        dashboard has no CORS and must not acquire any. A page on the internet
+        must not be able to read the queue by asking a browser nicely.
+
+        The allowlist is not "127.0.0.1 and localhost", and that is a deliberate
+        departure from the letter of the spec — see README, "Importer une
+        annonce". A content script runs in the *page's* origin, so the extension's
+        request carries ``Origin: https://www.linkedin.com``. Restricting to
+        loopback origins would reject every request the extension can make, and
+        the only way back would be a background service worker, which the same
+        spec forbids. The three job sites are therefore allowed here, and only
+        here, and only for this one write.
+
+        The network restriction is unchanged and is the stronger one: uvicorn
+        binds DASHBOARD_HOST, so nothing off this machine can open the socket at
+        all. This check is about which *web page* may talk to it.
+
+        A request with no Origin header is allowed: browsers attach one to every
+        cross-site request, so its absence means a local process — curl, the
+        tests — which already had to be on this machine to connect.
+        """
+
+        if request.url.path != IMPORT_PATH:
+            return await call_next(request)
+
+        origin = request.headers.get("origin")
+        if origin is not None and not import_origin_allowed(origin):
+            log.warning("rejected /offer/import from origin %s", origin)
+            return JSONResponse(
+                {"detail": f"origine non autorisée : {origin}"}, status_code=403
+            )
+
+        if request.method == "OPTIONS":
+            # Preflight. A JSON body is not a CORS-simple request, so the
+            # browser asks before it sends.
+            response: Response = Response(status_code=204)
+        else:
+            response = await call_next(request)
+
+        if origin is not None:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Max-Age"] = "600"
+        return response
+
+    @app.options(IMPORT_PATH)
+    def import_preflight() -> Response:  # pragma: no cover - handled above
+        """Routed so the preflight is a 204 rather than a 405 if it gets here."""
+
+        return Response(status_code=204)
     # The design system lives in a real stylesheet rather than a <style> block,
     # so it is cacheable, diffable and has one place to change a token.
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -725,6 +841,38 @@ def create_app(
         """Poll target. Deliberately touches no database, so it never blocks."""
 
         return JSONResponse(refresher.status().as_dict())
+
+    @app.post(IMPORT_PATH)
+    def import_offer(
+        payload: dict[str, Any],
+        db: Database,
+    ) -> JSONResponse:
+        """Store an offer description captured from a page the user had open.
+
+        Reachable from the browser extension and from the paste box on the
+        detail page; both send the same body. Nothing here fetches a URL — the
+        text arrives in the request (see CLAUDE.md, "Scope of rule 11").
+
+        Guarded by ``import_guard`` below, which is the only place CORS is
+        enabled and which rejects any other origin.
+        """
+
+        url = str(payload.get("url") or "").strip()
+        description = str(payload.get("description") or "")
+        title = payload.get("title")
+        company = payload.get("company")
+        try:
+            result = import_offer_description(
+                db,
+                url=url,
+                description=description,
+                title=str(title) if title else None,
+                company=str(company) if company else None,
+                score_pass=score_pass,
+            )
+        except OfferImportError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=422)
+        return JSONResponse(result.as_dict(), status_code=200)
 
     @app.get("/outreach", response_class=HTMLResponse)
     def outreach_page(request: Request, db: Database) -> HTMLResponse:
