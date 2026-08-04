@@ -12,6 +12,7 @@ import hashlib
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,17 @@ from jobpilot.state import current_status
 THRESHOLD = 0.35
 
 
+def _days_ago(days: int) -> str:
+    """A posting date relative to now.
+
+    Task 41 gave the lists a staleness filter with a default of seven days, so a
+    hard-coded fixture date silently ages past it and the test starts failing on
+    a calendar rather than on a change. Relative dates cannot rot that way.
+    """
+
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
 def _offer(
     db: sqlite3.Connection,
     *,
@@ -38,7 +50,7 @@ def _offer(
     score: float,
     hard_pass: int = 1,
     source: str = "linkedin_alert",
-    posted_at: str = "2026-07-20T08:00:00+00:00",
+    posted_at: str | None = None,
     title: str = "Alternance Cybersécurité",
     city: str = "Lille",
 ) -> int:
@@ -55,7 +67,8 @@ def _offer(
         "VALUES (?, ?, ?, ?, ?, 'Description courte.', 'alternance', ?, ?, ?)",
         (
             source_id, company_id, f"offer-{suffix}",
-            f"https://example.test/jobs/{suffix}", title, city, posted_at, digest,
+            f"https://example.test/jobs/{suffix}", title, city,
+            posted_at if posted_at is not None else _days_ago(1), digest,
         ),
     ).lastrowid
     db.execute(
@@ -119,14 +132,20 @@ def test_an_offer_that_failed_the_hard_filter_never_appears(
 def test_the_newest_offer_comes_first_and_score_sorting_is_available(
     db: sqlite3.Connection,
 ) -> None:
-    old_high = _offer(db, suffix="old", score=0.30, posted_at="2026-06-01T08:00:00+00:00")
-    new_low = _offer(db, suffix="new", score=0.05, posted_at="2026-07-28T08:00:00+00:00")
+    old_high = _offer(db, suffix="old", score=0.30, posted_at=_days_ago(60))
+    new_low = _offer(db, suffix="new", score=0.05, posted_at=_days_ago(1))
 
-    assert [r["offer_id"] for r in skim_offers(db, threshold=THRESHOLD).rows] == [
-        new_low, old_high,
-    ]
+    # include_stale: this test is about the ordering, and the 60-day offer is
+    # hidden by the staleness filter otherwise.
     assert [
-        r["offer_id"] for r in skim_offers(db, sort="score", threshold=THRESHOLD).rows
+        r["offer_id"]
+        for r in skim_offers(db, threshold=THRESHOLD, include_stale=True).rows
+    ] == [new_low, old_high]
+    assert [
+        r["offer_id"]
+        for r in skim_offers(
+            db, sort="score", threshold=THRESHOLD, include_stale=True
+        ).rows
     ] == [old_high, new_low]
 
 

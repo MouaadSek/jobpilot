@@ -4,8 +4,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from typing import Any
 
+from jobpilot.freshness import (
+    PUBLISHED_COLUMNS_SQL,
+    RECENT_ORDER_SQL,
+    Freshness,
+    annotate,
+    describe,
+    drop_stale,
+)
 from jobpilot.state import LEGAL
 from jobpilot.vocabulary import TokenTier, parse_rejections
 
@@ -20,15 +29,38 @@ TAB_STATUSES: tuple[str, ...] = tuple(
 )
 
 
+#: How the review lists may be ordered. Recency is the default because an offer
+#: that scores 0.72 and closed last week is worth less than one that scores 0.61
+#: and opened yesterday — the queue was ordered by score, and offers aged out of
+#: usefulness before they were reached. Score is still available and still shown
+#: as a column; it stopped being the ordering, not the information.
+SORTS: dict[str, str] = {
+    "recent": f"{RECENT_ORDER_SQL}, m.final_score IS NULL, m.final_score DESC, a.id",
+    "score": f"m.final_score IS NULL, m.final_score DESC, {RECENT_ORDER_SQL}, a.id",
+}
+DEFAULT_SORT = "recent"
+
+
 def applications_by_status(
     db: sqlite3.Connection,
     status: str,
-) -> list[dict[str, Any]]:
-    """Return offer applications in one status, in stable descending score order."""
+    *,
+    sort: str = DEFAULT_SORT,
+    include_stale: bool = False,
+    max_age_days: int | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Offer applications in one status, newest first, with their age.
 
+    Returns the visible rows and how many were hidden for being older than the
+    staleness threshold. Hidden is all it is: no status changes, no writes.
+    """
+
+    order = SORTS.get(sort, SORTS[DEFAULT_SORT])
     rows = db.execute(
         "SELECT a.id, m.final_score AS score, o.title, o.city, "
         "       o.contract_type, o.url, o.posted_at, "
+        f"       {PUBLISHED_COLUMNS_SQL}, "
         "       c.name AS company, s.name AS source "
         "FROM applications a "
         "JOIN offers o ON o.id = a.offer_id "
@@ -36,16 +68,24 @@ def applications_by_status(
         "LEFT JOIN companies c ON c.id = o.company_id "
         "LEFT JOIN sources s ON s.id = o.source_id "
         "WHERE a.status = ? "
-        "ORDER BY m.final_score IS NULL, m.final_score DESC, a.id",
+        f"ORDER BY {order}",
         (status,),
     ).fetchall()
-    return [dict(row) for row in rows]
+    annotated = annotate(
+        [dict(row) for row in rows], max_age_days=max_age_days, now=now
+    )
+    return drop_stale(annotated, include_stale=include_stale)
 
 
 def queued_applications(db: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Return the review queue (queued offers) in stable descending score order."""
+    """The review queue (queued offers), newest first, staleness filter off.
 
-    return applications_by_status(db, "queued")
+    The plain list, for callers with no page to render — ``jobpilot review`` and
+    the tests. Surfaces that can offer a toggle call applications_by_status.
+    """
+
+    rows, _hidden = applications_by_status(db, "queued", include_stale=True)
+    return rows
 
 
 def outreach_drafts(db: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -105,7 +145,8 @@ def application_detail(
         "       c.name AS company, s.name AS source, "
         "       m.hard_filter_pass, m.hard_filter_reason, "
         "       m.semantic_score, m.keyword_score, m.bonus_score, "
-        "       m.final_score, v.label AS variant_label, v.slug AS variant_slug "
+        "       m.final_score, v.label AS variant_label, v.slug AS variant_slug, "
+        f"       {PUBLISHED_COLUMNS_SQL} "
         "FROM applications a "
         "LEFT JOIN offers o ON o.id = a.offer_id "
         "LEFT JOIN companies c ON c.id = COALESCE(o.company_id, a.company_id) "
@@ -115,7 +156,39 @@ def application_detail(
         "WHERE a.id = ?",
         (application_id,),
     ).fetchone()
-    return dict(row) if row is not None else None
+    if row is None:
+        return None
+    return annotate([dict(row)])[0]
+
+
+def offer_freshness(
+    db: sqlite3.Connection,
+    application_id: int,
+    *,
+    max_age_days: int | None = None,
+    now: datetime | None = None,
+) -> Freshness | None:
+    """How old the offer behind one application is. None if it has no offer.
+
+    Read on its own rather than off application_detail so the approve path can
+    ask the question before it does any work — a generation costs an API call
+    and about twenty seconds, and a closed posting is the one case where that is
+    certainly wasted.
+    """
+
+    row = db.execute(
+        f"SELECT {PUBLISHED_COLUMNS_SQL} "
+        "FROM applications a JOIN offers o ON o.id = a.offer_id WHERE a.id = ?",
+        (application_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return describe(
+        row["published_at"],
+        inferred=bool(row["published_inferred"]),
+        max_age_days=max_age_days,
+        now=now,
+    )
 
 
 #: Written by tailoring.generate_application onto the ready status_change event.

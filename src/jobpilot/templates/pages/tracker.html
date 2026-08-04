@@ -1,3 +1,4 @@
+{% from "partials/age.html" import age_cell %}
   <section class="panel">
     <h2>Suivi des candidatures</h2>
 
@@ -21,14 +22,20 @@
       <label>
         Tri
         <select name="sort" onchange="this.form.submit()">
-          <option value="recent" {% if sort == "recent" %}selected{% endif %}>Activité récente</option>
+          <option value="recent" {% if sort == "recent" %}selected{% endif %}>Offre la plus récente</option>
+          <option value="activity" {% if sort == "activity" %}selected{% endif %}>Activité récente</option>
           <option value="company" {% if sort == "company" %}selected{% endif %}>Entreprise</option>
           <option value="score" {% if sort == "score" %}selected{% endif %}>Score</option>
           <option value="status" {% if sort == "status" %}selected{% endif %}>Statut</option>
           <option value="applied" {% if sort == "applied" %}selected{% endif %}>Date d'envoi</option>
         </select>
       </label>
-      <a class="btn secondary" href="/tracker.csv?sort={{ sort }}{% if status %}&status={{ status }}{% endif %}">Exporter en CSV</a>
+      <label class="checkbox">
+        <input type="checkbox" name="hide_stale" value="1"
+               {% if hide_stale %}checked{% endif %} onchange="this.form.submit()">
+        Masquer les offres de plus de {{ max_age_days }} jours
+      </label>
+      <a class="btn secondary" href="/tracker.csv?sort={{ sort }}{% if status %}&status={{ status }}{% endif %}{% if hide_stale %}&hide_stale=1{% endif %}">Exporter en CSV</a>
       <span class="muted">{{ rows|length }} candidature(s)</span>
     </form>
 
@@ -47,6 +54,7 @@
                 </td>
                 <td>{{ row.title or "—" }}</td>
                 <td>{{ row.source or "—" }}</td>
+                {{ age_cell(row.freshness) }}
                 <td class="score">{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>
                 <td><span class="state is-{{ row.status }}">{{ row.status }}</span></td>
                 <td {% if row.applied_at %}title="{{ row.applied_at }}"{% endif %}>{{ row.applied_at|ymd or "—" }}</td>

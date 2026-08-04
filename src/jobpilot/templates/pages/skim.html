@@ -1,3 +1,4 @@
+{% from "partials/age.html" import age_cell %}
   <section class="panel">
     <h2>Offres à trier</h2>
     <p class="muted">
@@ -31,7 +32,16 @@
                onchange="this.form.submit()">
         Afficher les offres ignorées
       </label>
-      <span class="muted">{{ skim.total }} offre(s)</span>
+      <label class="checkbox">
+        <input type="checkbox" name="include_stale" value="1"
+               {% if skim.include_stale %}checked{% endif %}
+               onchange="this.form.submit()">
+        Afficher les offres de plus de {{ skim.max_age_days }} jours
+      </label>
+      <span class="muted">
+        {{ skim.total }} offre(s){% if skim.hidden_stale %} —
+        {{ skim.hidden_stale }} masquée(s) pour ancienneté, pas écartée(s){% endif %}
+      </span>
     </form>
 
     {% if skim.rows %}
@@ -39,13 +49,14 @@
         <table class="dense">
           <thead>
             <tr>
-              <th>Intitulé</th><th>Entreprise</th><th>Ville</th>
-              <th>Source</th><th>Publiée</th><th>Score</th><th>Actions</th>
+              <th>Publiée</th><th>Intitulé</th><th>Entreprise</th><th>Ville</th>
+              <th>Source</th><th>Score</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for row in skim.rows %}
               <tr>
+                {{ age_cell(row.freshness) }}
                 <td>
                   {% if row.url %}
                     <a href="{{ row.url }}" rel="noreferrer">{{ row.title }}</a>
@@ -54,18 +65,17 @@
                 <td>{{ row.company or "—" }}</td>
                 <td>{{ row.city or "—" }}</td>
                 <td>{{ row.source or "—" }}</td>
-                <td {% if row.posted_at %}title="{{ row.posted_at }}"{% endif %}>{{ row.posted_at|ymd or "—" }}</td>
                 <td class="score">{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% else %}—{% endif %}</td>
                 <td class="row-actions">
                   {% if row.application_status == "skipped" %}
                     <span class="muted">Ignorée</span>
                   {% else %}
                     <form method="post" data-busy
-                          action="/skim/{{ row.offer_id }}/queue?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}">
+                          action="/skim/{{ row.offer_id }}/queue?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}{% if skim.include_stale %}&include_stale=1{% endif %}">
                       <button type="submit" data-label="Mise en file">Mettre en file</button>
                     </form>
                     <form method="post" data-busy
-                          action="/skim/{{ row.offer_id }}/ignore?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}">
+                          action="/skim/{{ row.offer_id }}/ignore?page={{ skim.page }}&sort={{ skim.sort }}{% if skim.source %}&source={{ skim.source }}{% endif %}{% if skim.include_ignored %}&include_ignored=1{% endif %}{% if skim.include_stale %}&include_stale=1{% endif %}">
                       <button class="secondary" type="submit" data-label="Ignorer">Ignorer</button>
                     </form>
                   {% endif %}
@@ -78,7 +88,7 @@
 
       {% if skim.pages > 1 %}
         <nav class="pager" aria-label="Pagination">
-          {% set base = "/skim?sort=" ~ skim.sort ~ ("&source=" ~ skim.source if skim.source else "") ~ ("&include_ignored=1" if skim.include_ignored else "") %}
+          {% set base = "/skim?sort=" ~ skim.sort ~ ("&source=" ~ skim.source if skim.source else "") ~ ("&include_ignored=1" if skim.include_ignored else "") ~ ("&include_stale=1" if skim.include_stale else "") %}
           {% if skim.has_previous %}
             <a class="btn secondary" href="{{ base }}&page={{ skim.page - 1 }}">← Précédentes</a>
           {% endif %}
@@ -90,8 +100,14 @@
       {% endif %}
     {% else %}
       <div class="empty">
-        <strong>Rien à trier pour l'instant.</strong>
-        Lancez « Actualiser les offres » depuis la file pour en récupérer de nouvelles.
+        {% if skim.hidden_stale and not skim.include_stale %}
+          <strong>Tout ce qu'il y a à trier a plus de {{ skim.max_age_days }} jours.</strong>
+          {{ skim.hidden_stale }} offre(s) sont masquées, pas écartées : cochez la
+          case ci-dessus pour les revoir.
+        {% else %}
+          <strong>Rien à trier pour l'instant.</strong>
+          Lancez « Actualiser les offres » depuis la file pour en récupérer de nouvelles.
+        {% endif %}
       </div>
     {% endif %}
   </section>

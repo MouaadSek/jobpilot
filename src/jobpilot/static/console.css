@@ -326,6 +326,20 @@ td.title { min-width: 240px; white-space: normal; }
 td .num, .score, td time { font-family: var(--face-data); font-variant-numeric: tabular-nums; }
 .score { color: var(--amber); font-weight: 650; }
 
+/* Age: readable as a colour before it is read as a number. An offer posted more
+   than a week ago is usually closed, so freshness is the first thing the eye
+   should land on in every list. */
+td.age { font-family: var(--face-data); font-variant-numeric: tabular-nums; }
+td.age::before { content: "● "; }
+td.age.is-fresh { color: var(--ok); }
+td.age.is-amber { color: var(--amber); }
+td.age.is-old, td.age.is-unknown { color: var(--dim); }
+/* Inferred from first sighting: a lower bound on the real age, so never green.
+   Dotted rather than simply dim, so it stays distinguishable from an offer that
+   is known to be old. */
+td.age.is-inferred { color: var(--dim); text-decoration: underline dotted; }
+.age-mark { cursor: help; }
+
 /* Planification: a source that has stopped answering must not read as healthy. */
 .run-failed { color: var(--amber); }
 .run-dead { color: var(--alert); font-weight: 650; }

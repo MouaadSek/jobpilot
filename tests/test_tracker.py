@@ -197,9 +197,13 @@ def test_the_csv_exports_the_visible_rows_in_the_visible_order(
     body = to_csv(tracker_rows(db))
     parsed = list(csv.reader(io.StringIO(body)))
 
+    # Indexed off COLUMNS rather than hard-coded: Task 41 inserted « Publiée »
+    # into the middle of the table, and a literal position would have made this
+    # a test of the column order rather than of the export.
+    keys = [key for key, _ in COLUMNS]
     assert parsed[0] == [label for _, label in COLUMNS]
-    assert parsed[1][0] == "Advens"
-    assert parsed[1][4] == "ready"
+    assert parsed[1][keys.index("company")] == "Advens"
+    assert parsed[1][keys.index("status")] == "ready"
     assert len(parsed) == 2
 
 

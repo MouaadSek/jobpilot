@@ -1,0 +1,19 @@
+{#
+  The « Publiée » cell, in one place so the queue, the skim list and the tracker
+  cannot disagree about what an age looks like.
+
+  `freshness` is the mapping jobpilot.freshness.describe() produces. The tone
+  class carries the colour: fresh under 7 days, amber to 14, muted beyond, and a
+  fourth tone for a date inferred from when JobPilot first saw the offer — which
+  is a lower bound on its real age and is never shown as fresh.
+#}
+{% macro age_cell(freshness) -%}
+  {%- if not freshness -%}
+    <td class="muted">—</td>
+  {%- else -%}
+    <td class="age is-{{ freshness.tone }}"
+        title="{% if freshness.inferred %}Date de publication inconnue : âge calculé depuis la première fois que JobPilot a vu cette offre, donc l'offre est au moins aussi ancienne. {% endif %}{{ freshness.published_at or "aucune date" }}">
+      {{ freshness.label }}{% if freshness.inferred %}<span class="age-mark"> ≈</span>{% endif %}
+    </td>
+  {%- endif -%}
+{%- endmacro %}

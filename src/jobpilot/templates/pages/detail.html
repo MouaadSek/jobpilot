@@ -4,6 +4,25 @@
 
     {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
     {% if wttj_alert and not error %}<div class="error" role="alert">{{ wttj_alert }}</div>{% endif %}
+    {% if stale_warning %}
+      <div class="warn" role="alert">
+        <p class="warn-lead">
+          Offre {{ stale_warning.label }} — plus de {{ max_age_days }} jours.
+        </p>
+        <p class="warn-said">
+          {% if stale_warning.inferred %}
+            Cette offre n'a pas de date de publication : l'âge est compté depuis
+            la première fois que JobPilot l'a vue, donc elle est au moins aussi
+            ancienne. {% endif %}Générer coûte un appel API et une vingtaine de
+          secondes, et une annonce fermée les dépense pour rien. Rien n'a été
+          généré ; la candidature reste en file.
+        </p>
+        <form method="post" data-busy
+              action="/application/{{ application.id }}/approve?confirm_stale=1">
+          <button type="submit" data-label="Génération">Générer quand même</button>
+        </form>
+      </div>
+    {% endif %}
     {% if generation_warnings %}
       <div class="warn" role="status">
         <p class="warn-lead">Document généré avec {{ generation_warnings|length }} avertissement{{ "s" if generation_warnings|length > 1 }} — à vérifier avant envoi.</p>
@@ -25,7 +44,13 @@
       <div><dt>Ville</dt><dd>{{ application.city or "—" }}</dd></div>
       <div><dt>Contrat</dt><dd>{{ application.contract_type or "—" }}</dd></div>
       <div><dt>Source</dt><dd>{{ application.source or "—" }}</dd></div>
-      <div><dt>Publiée</dt><dd {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</dd></div>
+      <div>
+        <dt>Publiée</dt>
+        <dd class="age is-{{ application.freshness.tone }}"
+            title="{% if application.freshness.inferred %}Date de publication inconnue : âge compté depuis la première fois que JobPilot a vu l'offre. {% endif %}{{ application.freshness.published_at or "aucune date" }}">
+          {{ application.freshness.label }}{% if application.freshness.inferred %} ≈{% endif %}
+        </dd>
+      </div>
     </dl>
 
     {% if application.status == "queued" %}

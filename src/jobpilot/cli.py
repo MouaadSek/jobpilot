@@ -210,33 +210,42 @@ def rescore_cmd(
 @app.command("queue")
 def queue_cmd(
     limit: int = typer.Option(30, "--limit", "-n", help="Max rows to show."),
+    sort: str = typer.Option(
+        "recent", "--sort", help="recent (default) or score."
+    ),
+    include_stale: bool = typer.Option(
+        False, "--all", help="Include offers past the staleness threshold."
+    ),
 ) -> None:
-    """List queued applications, highest final_score first."""
+    """List queued applications, newest posting first.
+
+    Same ordering and the same staleness filter as the dashboard queue, so the
+    two surfaces cannot disagree about what is worth looking at.
+    """
+    from jobpilot.review import applications_by_status
+
     conn = connect()
     try:
-        rows = conn.execute(
-            "SELECT a.id, m.final_score AS score, o.title, o.city, "
-            "       o.contract_type, o.url, c.name AS company "
-            "FROM applications a "
-            "JOIN offers o ON o.id = a.offer_id "
-            "LEFT JOIN match_scores m ON m.offer_id = o.id "
-            "LEFT JOIN companies c ON c.id = o.company_id "
-            "WHERE a.status = 'queued' "
-            "ORDER BY m.final_score DESC NULLS LAST LIMIT ?",
-            (limit,),
-        ).fetchall()
+        rows, hidden = applications_by_status(
+            conn, "queued", sort=sort, include_stale=include_stale
+        )
     finally:
         conn.close()
     if not rows:
         typer.echo("queue empty")
+        if hidden:
+            typer.echo(f"({hidden} masquée(s) pour ancienneté — `--all` pour les voir)")
         return
-    for r in rows:
+    for r in rows[:limit]:
         score = f"{r['score']:.2f}" if r["score"] is not None else " -- "
         typer.echo(
-            f"[{r['id']:>4}] {score}  {(r['title'] or '')[:48]:48}  "
+            f"[{r['id']:>4}] {score}  {r['freshness']['label']:>16}  "
+            f"{(r['title'] or '')[:44]:44}  "
             f"{(r['company'] or '?')[:22]:22}  {(r['city'] or '?')[:18]:18}  "
             f"{r['contract_type'] or '?':10}  {r['url']}"
         )
+    if hidden:
+        typer.echo(f"({hidden} masquée(s) pour ancienneté — `--all` pour les voir)")
 
 
 @app.command("apply")

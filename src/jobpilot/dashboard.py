@@ -61,10 +61,17 @@ from jobpilot.mailer import (
 from jobpilot.progress import MIN_POLL_INTERVAL_MS, REGISTRY, refresh_operation, track
 from jobpilot.refresh import RefreshAlreadyRunning, RefreshRunner
 from jobpilot.review import (
+    DEFAULT_SORT as REVIEW_DEFAULT_SORT,
+)
+from jobpilot.review import (
+    SORTS as REVIEW_SORTS,
+)
+from jobpilot.review import (
     TAB_STATUSES,
     application_detail,
     applications_by_status,
     event_history,
+    offer_freshness,
     outreach_drafts,
     status_tabs,
     variant_decision,
@@ -360,6 +367,7 @@ def create_app(
         application_id: int,
         *,
         error: str | None = None,
+        stale_warning: dict[str, Any] | None = None,
         status_code: int = 200,
     ) -> HTMLResponse:
         detail = application_detail(db, application_id)
@@ -412,6 +420,8 @@ def create_app(
                 "generation_warnings": _generation_warnings(
                     db, application_id, events
                 ),
+                "stale_warning": stale_warning,
+                "max_age_days": get_settings().max_offer_age_days,
                 "error": error,
             },
             status_code=status_code,
@@ -536,16 +546,25 @@ def create_app(
         request: Request,
         db: Database,
         status: str = "queued",
+        sort: str = REVIEW_DEFAULT_SORT,
+        include_stale: bool = False,
     ) -> HTMLResponse:
         if status not in TAB_STATUSES:
             raise HTTPException(status_code=404, detail="unknown status tab")
+        applications, hidden_stale = applications_by_status(
+            db, status, sort=sort, include_stale=include_stale
+        )
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
             context={
                 "view": "queue",
                 "status": status,
-                "applications": applications_by_status(db, status),
+                "applications": applications,
+                "sort": sort if sort in REVIEW_SORTS else REVIEW_DEFAULT_SORT,
+                "include_stale": include_stale,
+                "hidden_stale": hidden_stale,
+                "max_age_days": get_settings().max_offer_age_days,
                 "tabs": status_tabs(db, status),
                 "refresh_status": refresher.status().as_dict(),
                 "scheduler": scheduler_status(db),
@@ -561,6 +580,7 @@ def create_app(
         sort: str = DEFAULT_SORT,
         page: int = 1,
         include_ignored: bool = False,
+        include_stale: bool = False,
         error: str | None = None,
     ) -> HTMLResponse:
         """Offers that passed the hard filter but scored below the threshold.
@@ -579,6 +599,7 @@ def create_app(
                     db,
                     source=source or None,
                     include_ignored=include_ignored,
+                    include_stale=include_stale,
                     sort=sort,
                     page=page,
                 ),
@@ -730,7 +751,23 @@ def create_app(
         request: Request,
         application_id: int,
         db: Database,
+        confirm_stale: bool = False,
     ) -> Response:
+        # Asked before any work is done. A generation is an API call and about
+        # twenty seconds, and spending it on a posting that closed two weeks ago
+        # is the one case where that is certainly wasted. It is a warning and
+        # not a refusal: an old posting is often still open, and the operator is
+        # the one who can tell.
+        freshness = offer_freshness(db, application_id)
+        if freshness is not None and freshness.stale and not confirm_stale:
+            return detail_response(
+                request,
+                db,
+                application_id,
+                stale_warning=freshness.as_dict(),
+                status_code=409,
+            )
+
         with APPLICATION_LOCK, track(
             f"generate:{application_id}",
             "Génération des documents",
@@ -1313,6 +1350,7 @@ def create_app(
         db: Database,
         status: str | None = None,
         sort: str = TRACKER_DEFAULT_SORT,
+        hide_stale: bool = False,
     ) -> HTMLResponse:
         """Where every application stands. Read-only on purpose."""
 
@@ -1321,12 +1359,19 @@ def create_app(
             name="dashboard.html",
             context={
                 "view": "tracker",
-                "rows": tracker_rows(db, status=status or None, sort=sort),
+                "rows": tracker_rows(
+                    db,
+                    status=status or None,
+                    sort=sort,
+                    include_stale=not hide_stale,
+                ),
                 "columns": TRACKER_COLUMNS,
                 "counts": tracker_counts(db).as_dict(),
                 "statuses": tracker_statuses(db),
                 "status": status or "",
                 "sort": sort if sort in TRACKER_SORTS else TRACKER_DEFAULT_SORT,
+                "hide_stale": hide_stale,
+                "max_age_days": get_settings().max_offer_age_days,
                 "error": None,
             },
         )
@@ -1336,10 +1381,15 @@ def create_app(
         db: Database,
         status: str | None = None,
         sort: str = TRACKER_DEFAULT_SORT,
+        hide_stale: bool = False,
     ) -> Response:
         """The visible rows, in the visible order, as CSV."""
 
-        body = tracker_to_csv(tracker_rows(db, status=status or None, sort=sort))
+        body = tracker_to_csv(
+            tracker_rows(
+                db, status=status or None, sort=sort, include_stale=not hide_stale
+            )
+        )
         return Response(
             content=body,
             media_type="text/csv; charset=utf-8",

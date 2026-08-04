@@ -7,6 +7,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +20,17 @@ from jobpilot.state import current_status, log_event, transition
 from tests.test_tailoring import _Advisor, _Toolchain
 
 
+def _days_ago(days: int) -> str:
+    """A posting date relative to now.
+
+    Task 41 hides offers older than seven days by default and warns before
+    generating for one, so a hard-coded fixture date would age past the
+    threshold and start failing these tests on a calendar rather than a change.
+    """
+
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
 def _offer_application(
     db: sqlite3.Connection,
     *,
@@ -26,6 +38,7 @@ def _offer_application(
     score: float,
     status: str = "queued",
     suffix: str,
+    posted_at: str | None = None,
 ) -> int:
     source_id = db.execute(
         "SELECT id FROM sources WHERE name = 'france_travail'"
@@ -39,7 +52,7 @@ def _offer_application(
         "INSERT INTO offers (source_id, company_id, external_id, url, title, "
         "description, contract_type, duration_months, city, remote_policy, "
         "posted_at, content_hash) VALUES (?, ?, ?, ?, ?, ?, 'alternance', 12, "
-        "'Paris', 'hybrid', '2026-07-20T08:00:00+00:00', ?)",
+        "'Paris', 'hybrid', ?, ?)",
         (
             source_id,
             company_id,
@@ -47,6 +60,7 @@ def _offer_application(
             f"https://example.test/jobs/{suffix}",
             title,
             description,
+            posted_at if posted_at is not None else _days_ago(1),
             digest,
         ),
     ).lastrowid
@@ -316,7 +330,9 @@ def test_status_tabs_filter_the_table_by_status(
     assert "Poste envoyé" in applied_view.text
     assert "Poste en file" not in applied_view.text
     assert f"/application/{applied_id}" in applied_view.text
-    assert 'href="/?status=applied"' in applied_view.text
+    # The tab link carries the current sort and staleness toggle, so switching
+    # status does not silently reset either.
+    assert 'href="/?status=applied&sort=recent"' in applied_view.text
 
     assert unknown_tab.status_code == 404
 
@@ -495,7 +511,11 @@ def test_ready_wttj_detail_links_to_confirmation_with_artifacts_and_mode(
     monkeypatch.setattr(
         dashboard,
         "get_settings",
-        lambda: SimpleNamespace(wttj_auto_submit_enabled=live_mode),
+        # max_offer_age_days: the detail page reports the staleness threshold it
+        # applied, so the stub has to carry it as well as the flag under test.
+        lambda: SimpleNamespace(
+            wttj_auto_submit_enabled=live_mode, max_offer_age_days=7
+        ),
     )
 
     with _client(dashboard_db, tmp_path) as client:

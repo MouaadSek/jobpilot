@@ -18,6 +18,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from jobpilot.freshness import (
+    PUBLISHED_COLUMNS_SQL,
+    RECENT_ORDER_SQL,
+    annotate,
+    drop_stale,
+)
 from jobpilot.generation_warnings import warning_gates_by_application
 from jobpilot.logging_conf import get_logger
 
@@ -29,6 +35,7 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     ("company", "Entreprise"),
     ("title", "Intitulé"),
     ("source", "Source"),
+    ("published", "Publiée"),
     ("score", "Score"),
     ("status", "Statut"),
     ("applied_at", "Envoyée le"),
@@ -36,10 +43,15 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     ("variant", "CV"),
 )
 
+#: "recent" means the offer's publication date, not the application's last
+#: event. The old meaning answered "what did I touch last", which every other
+#: column already tells you; the question that was going unanswered was "what is
+#: still open". The previous ordering is kept as "activité" rather than dropped.
 SORTS: dict[str, str] = {
-    "recent": "a.last_event_at IS NULL, a.last_event_at DESC, a.id DESC",
+    "recent": f"{RECENT_ORDER_SQL}, a.id DESC",
+    "activity": "a.last_event_at IS NULL, a.last_event_at DESC, a.id DESC",
     "company": "lower(COALESCE(c.name, c2.name, '')), a.id DESC",
-    "score": "m.final_score IS NULL, m.final_score DESC, a.id DESC",
+    "score": f"m.final_score IS NULL, m.final_score DESC, {RECENT_ORDER_SQL}, a.id DESC",
     "status": "a.status, a.id DESC",
     "applied": "a.applied_at IS NULL, a.applied_at DESC, a.id DESC",
 }
@@ -101,8 +113,17 @@ def tracker_rows(
     *,
     status: str | None = None,
     sort: str = DEFAULT_SORT,
+    include_stale: bool = True,
+    max_age_days: int | None = None,
+    now: datetime | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Every offer application, optionally narrowed to one status."""
+    """Every offer application, optionally narrowed to one status.
+
+    ``include_stale`` defaults to True here and nowhere else: the tracker is the
+    surface that answers "where does everything stand", and an answer that
+    quietly omits two thirds of the history is not one. The toggle exists so the
+    page can offer it; the default is the honest total.
+    """
 
     order = SORTS.get(sort, SORTS[DEFAULT_SORT])
     clause = ""
@@ -114,6 +135,7 @@ def tracker_rows(
     rows = db.execute(
         "SELECT a.id AS application_id, a.status, a.applied_at, a.apply_route, "
         "       o.title, o.url, m.final_score AS score, "
+        f"       {PUBLISHED_COLUMNS_SQL}, "
         "       COALESCE(c.name, c2.name) AS company, s.name AS source, "
         "       v.label AS variant "
         "FROM applications a "
@@ -134,7 +156,13 @@ def tracker_rows(
         entry = dict(row)
         entry["warning_gates"] = list(warning_marks.get(int(row["application_id"]), ()))
         enriched.append(entry)
-    return tuple(enriched)
+    annotated = annotate(enriched, max_age_days=max_age_days, now=now)
+    kept, _hidden = drop_stale(annotated, include_stale=include_stale)
+    # The CSV exports exactly the visible rows, so the age has to be a string
+    # in the row rather than only a nested mapping the template reads.
+    for row in kept:
+        row["published"] = row["freshness"]["label"]
+    return tuple(kept)
 
 
 def statuses(db: sqlite3.Connection) -> list[str]:

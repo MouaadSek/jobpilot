@@ -1,3 +1,4 @@
+{% from "partials/age.html" import age_cell %}
   <section class="panel" id="refresh-panel"
            data-status='{{ refresh_status|tojson }}'>
     <div class="refresh-head">
@@ -11,7 +12,7 @@
   <nav class="tabs" aria-label="Candidatures par statut">
     {% for tab in tabs %}
       <a class="chip{% if tab.active %} active{% endif %}"
-         href="/?status={{ tab.status }}"
+         href="/?status={{ tab.status }}&sort={{ sort }}{% if include_stale %}&include_stale=1{% endif %}"
          {% if tab.active %}aria-current="page"{% endif %}>
         {{ tab.status }} <span class="n">{{ tab.count }}</span>
       </a>
@@ -19,40 +20,68 @@
   </nav>
   <section class="panel">
     <h2>{% if status == "queued" %}File de revue{% else %}{{ status }}{% endif %}</h2>
+
+    <form method="get" action="/" class="filters">
+      <input type="hidden" name="status" value="{{ status }}">
+      <label>
+        Tri
+        <select name="sort" onchange="this.form.submit()">
+          <option value="recent" {% if sort == "recent" %}selected{% endif %}>Plus récentes</option>
+          <option value="score" {% if sort == "score" %}selected{% endif %}>Score</option>
+        </select>
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="include_stale" value="1"
+               {% if include_stale %}checked{% endif %} onchange="this.form.submit()">
+        Afficher les offres de plus de {{ max_age_days }} jours
+      </label>
+      {% if hidden_stale and not include_stale %}
+        <span class="muted">
+          {{ hidden_stale }} offre(s) masquée(s) pour ancienneté — masquées, pas écartées.
+        </span>
+      {% endif %}
+    </form>
+
     {% if applications %}
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Score</th>
+              <th>Publiée</th>
               <th>Intitulé</th>
               <th>Entreprise</th>
               <th>Ville</th>
               <th>Contrat</th>
               <th>Source</th>
-              <th>Publiée</th>
+              <th>Score</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {% for application in applications %}
               <tr>
-                <td class="score">
-                  {% if application.score is not none %}
-                    {{ "%.2f"|format(application.score) }}
-                  {% else %}—{% endif %}
-                </td>
+                {{ age_cell(application.freshness) }}
                 <td class="title">{{ application.title or "Offre sans intitulé" }}</td>
                 <td>{{ application.company or "—" }}</td>
                 <td>{{ application.city or "—" }}</td>
                 <td>{{ application.contract_type or "—" }}</td>
                 <td>{{ application.source or "—" }}</td>
-                <td {% if application.posted_at %}title="{{ application.posted_at }}"{% endif %}>{{ application.posted_at|ymd or "—" }}</td>
+                <td class="score">
+                  {% if application.score is not none %}
+                    {{ "%.2f"|format(application.score) }}
+                  {% else %}—{% endif %}
+                </td>
                 <td><a href="/application/{{ application.id }}">Examiner</a></td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    {% elif hidden_stale and not include_stale %}
+      <div class="empty">
+        <strong>Toutes les offres « {{ status }} » ont plus de {{ max_age_days }} jours.</strong>
+        {{ hidden_stale }} offre(s) sont masquées, pas écartées : cochez la case
+        ci-dessus pour les revoir.
       </div>
     {% else %}
       <div class="empty">

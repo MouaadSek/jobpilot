@@ -24,6 +24,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from jobpilot.config import get_settings
+from jobpilot.freshness import (
+    NOT_STALE_SQL,
+    PUBLISHED_COLUMNS_SQL,
+    RECENT_ORDER_SQL,
+    annotate,
+    max_offer_age_days,
+    stale_cutoff,
+)
 from jobpilot.logging_conf import get_logger
 from jobpilot.state import current_status, log_event, transition
 
@@ -34,9 +42,14 @@ PAGE_SIZE = 50
 
 #: Sorts the page offers. Newest first is the default: a skim is triage, and a
 #: stale offer is usually already filled.
+#:
+#: "recent" used to order on o.posted_at alone, which put every alert-sourced
+#: offer — 408 of 669 rows, none of which carry one — in a single NULL block at
+#: the bottom regardless of when it arrived. It now orders on the same fallback
+#: the age column shows.
 SORTS: dict[str, str] = {
-    "recent": "o.posted_at IS NULL, o.posted_at DESC, o.id DESC",
-    "score": "m.final_score DESC, o.id DESC",
+    "recent": f"{RECENT_ORDER_SQL}, o.id DESC",
+    "score": f"m.final_score DESC, {RECENT_ORDER_SQL}, o.id DESC",
 }
 DEFAULT_SORT = "recent"
 
@@ -64,6 +77,9 @@ class SkimPage:
     sort: str
     source: str | None
     include_ignored: bool
+    include_stale: bool = False
+    hidden_stale: int = 0
+    max_age_days: int = 0
 
     @property
     def has_previous(self) -> bool:
@@ -99,20 +115,28 @@ def skim_offers(
     *,
     source: str | None = None,
     include_ignored: bool = False,
+    include_stale: bool = False,
     sort: str = DEFAULT_SORT,
     page: int = 1,
     per_page: int = PAGE_SIZE,
     threshold: float | None = None,
+    max_age_days: int | None = None,
+    now: datetime | None = None,
 ) -> SkimPage:
     """Offers that passed the hard filter and scored below the queue threshold.
 
     An offer that failed the hard filter is never listed: it was rejected on
     contract, location or duration, and no amount of skimming changes that.
+
+    The staleness filter is applied in SQL rather than to the fetched page: this
+    list is paginated, and a page trimmed after the fact would report a total
+    and a page count that describe rows the reader cannot see.
     """
 
     bar = _threshold(threshold)
     order = SORTS.get(sort, SORTS[DEFAULT_SORT])
     sort = sort if sort in SORTS else DEFAULT_SORT
+    limit_days = max_offer_age_days(max_age_days)
 
     where = ["m.hard_filter_pass = 1", "m.final_score < ?"]
     params: list[Any] = [bar]
@@ -138,27 +162,49 @@ def skim_offers(
     total = int(
         db.execute(f"SELECT count(*) AS n {joins} WHERE {clause}", params).fetchone()["n"]
     )
+
+    visible_clause, visible_params = clause, list(params)
+    hidden = 0
+    if not include_stale:
+        visible_clause = f"{clause} AND {NOT_STALE_SQL}"
+        visible_params = [*params, stale_cutoff(limit_days, now=now)]
+        visible_total = int(
+            db.execute(
+                f"SELECT count(*) AS n {joins} WHERE {visible_clause}", visible_params
+            ).fetchone()["n"]
+        )
+        hidden = total - visible_total
+        total = visible_total
+
     per_page = max(1, per_page)
     pages = max(1, -(-total // per_page))
     page = min(max(1, page), pages)
 
     rows = db.execute(
         "SELECT o.id AS offer_id, o.title, o.city, o.url, o.posted_at, "
+        f"       {PUBLISHED_COLUMNS_SQL}, "
         "       o.contract_type, m.final_score AS score, "
         "       c.name AS company, s.name AS source, "
         "       a.id AS application_id, a.status AS application_status "
-        f"{joins} WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
-        [*params, per_page, (page - 1) * per_page],
+        f"{joins} WHERE {visible_clause} ORDER BY {order} LIMIT ? OFFSET ?",
+        [*visible_params, per_page, (page - 1) * per_page],
     ).fetchall()
 
     return SkimPage(
-        rows=tuple(dict(row) for row in rows),
+        rows=tuple(
+            annotate(
+                [dict(row) for row in rows], max_age_days=limit_days, now=now
+            )
+        ),
         total=total,
         page=page,
         pages=pages,
         sort=sort,
         source=source,
         include_ignored=include_ignored,
+        include_stale=include_stale,
+        hidden_stale=hidden,
+        max_age_days=limit_days,
     )
 
 
