@@ -711,8 +711,31 @@ a « Coller la description de l'offre » box, always visible. Some pages will
 never parse cleanly, and the extension is the automatic route rather than the
 correct one. Both hit the same endpoint and trigger the same re-score.
 
+**Régénérer after an import.** An application that was already `ready` had its
+CV tailored against the alert card. Importing the real posting re-scores the
+offer but does not touch documents already on disk, so the detail page says so
+and offers « Régénérer avec le texte importé » — Task 34's regenerate, not a
+second generation path. A `queued` application gets the ordinary Approve
+instead, since nothing has been generated yet to redo.
+
+The warning is read from stored state, not from the redirect, because the
+extension posts from the offer page and never lands on the dashboard: it shows
+whenever the offer carries an imported description that is newer than the
+documents. Regenerating dates the documents after the import, so the warning
+retires by itself with no flag to reset. Importing never generates anything on
+its own — that costs an API call and stays behind a human click.
+
 **An imported description is never overwritten.** `offers.imported_at` marks
-it, and the description backfill skips any offer carrying it.
+it. The description backfill skips any offer carrying it, in normal and `force`
+mode alike, rather than relying on length to keep synthesised text away from a
+real posting — the backfill threshold is a setting, and raising it past the
+200-character import floor would otherwise make a short imported posting
+eligible to be replaced. Re-ingestion is safe for a different reason: offers is
+`UNIQUE (source_id, external_id)` and ingest is `INSERT OR IGNORE`, so a source
+re-offering the same job neither overwrites the row nor creates a second one.
+Both are asserted, because both are properties a future migration could relax
+without noticing. This matters immediately: the daemon ingests every three
+hours, so anything that put the card back would do it within the day.
 
 ### Recency comes first
 
