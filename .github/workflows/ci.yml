@@ -2,8 +2,11 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    # Every branch, not just main: a branch that only runs CI once it is opened
+    # as a pull request gets its first honest signal after the work is done.
+    # The .venv break in Task 39 sat green locally for four commits because
+    # nothing ran until the PR existed.
+    branches: ['**']
   pull_request:
 
 permissions:
