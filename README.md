@@ -872,15 +872,24 @@ property of the file, so the first connection converts it and the rest inherit
 it; a filesystem that refuses the conversion (a network share) is logged as a
 warning, because two writers there are not safe.
 
-That covers readers. It does **not** fully cover the second writer — see
-`ingest_source`'s docstring: its transaction opens at the first insert and
-closes at the final commit, which means it is held across `fetch_offers`, a
-paginated HTTP walk with per-domain rate limiting in it. A dashboard generation
-that needs to write during a long ingest waits on that lock and gives up after
-`db.BUSY_TIMEOUT_MS`. The fix is to stop holding a write transaction across the
-network — commit per page, or drain the source into memory before opening the
-transaction — but that trades the current all-or-nothing ingest for a partial
-one, so it is a call to make deliberately rather than a change to slip in here.
+That covers readers. It does not on its own cover the *second writer*, so
+`ingest_source` runs in two phases: the source is drained into memory first,
+with no transaction open, and only then does the write phase begin. The
+transaction used to open at the first insert and close at the final commit,
+which held it across `fetch_offers` — a paginated HTTP walk with per-domain rate
+limiting in it. Under WAL there is exactly one writer, so a dashboard generation
+starting mid-cycle waited for the whole walk and then failed with "database is
+locked" after `db.BUSY_TIMEOUT_MS`.
+
+Draining rather than committing per page: per-page commits would also have freed
+the lock, but at the cost of the all-or-nothing ingest that the idempotency rule
+is written against, turning a failed run into a partially applied one. A few
+hundred records of memory is not a cost at these volumes.
+
+`tests/test_ingest_concurrency.py` pins this with two real connections on a real
+database file — the one thing the in-memory fixture cannot express, since
+`:memory:` gives each connection its own database. The load-bearing test fails
+against the pre-fix code; the others are regression guards and say so.
 
 ### Form learning (an unknown form costs effort once)
 

@@ -154,36 +154,77 @@ def _insert_offer(
     return cur.rowcount > 0
 
 
+def _drain(src: Source, result: IngestResult) -> tuple[list[CompanyRecord], list[OfferRecord]]:
+    """Pull everything the source has, before any write begins.
+
+    ``fetch_companies`` and ``fetch_offers`` are lazy generators walking a
+    paginated API with per-domain rate limiting in them, so consuming them
+    inside the write transaction held that transaction open across the network.
+    Materialising first is what keeps the lock down to the inserts.
+
+    ``result.fetched`` is incremented as records arrive rather than from
+    ``len``, so a walk that fails on page three still reports the two pages that
+    did arrive — which is what the failed source_runs row shows.
+    """
+
+    companies = list(src.fetch_companies())
+    offers: list[OfferRecord] = []
+    for offer in src.fetch_offers():
+        offers.append(offer)
+        result.fetched += 1
+    return companies, offers
+
+
 def ingest_source(db: sqlite3.Connection, src: Source) -> IngestResult:
     """Run one source end to end. Commits once at the end for atomicity.
+
+    Two phases, and the split is the point. The source is drained into memory
+    first, with no transaction open; only then does the write phase start, so
+    the write lock is held for the inserts and nothing else. It used to be held
+    across ``fetch_offers`` as well — a paginated HTTP walk with rate limiting
+    in it — which under WAL still blocked the *other* writer: a dashboard
+    generation starting mid-cycle waited for the whole walk and then gave up
+    after db.BUSY_TIMEOUT_MS. Draining costs a few hundred records of memory at
+    these volumes and buys back the all-or-nothing commit, which per-page
+    committing would have cost instead.
 
     Every outcome is recorded in source_runs, success or failure, because this
     is the only place that knows both. A source that has stopped returning
     anything keeps ticking sources.last_run_at forward and looks healthy from
-    the outside — WTTJ did that for a week — so the failure path commits its
+    the outside — WTTJ did that for a week — so both failure paths commit their
     own row rather than re-raising into silence.
-
-    One caution on the transaction: it opens at the first insert and closes at
-    the commit below, which means it is held across ``fetch_offers``, and that
-    is a paginated HTTP walk with rate limiting in it. Under WAL a reader is
-    never blocked by it, but a second writer — the dashboard generating an
-    application while the daemon ingests — waits on it for as long as the walk
-    takes, and gives up after db.BUSY_TIMEOUT_MS.
     """
     sid = source_id(db, src.name)
     started_at = _utc_now()
     result = IngestResult(source=src.name)
     company_cache: dict[str, int] = {}
 
+    def fail(exc: BaseException) -> None:
+        record_run(
+            db, sid, started_at=started_at, result=result,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        db.commit()
+        log.exception("ingest %s failed after %d fetched", src.name, result.fetched)
+
+    # ----- phase 1: the network, with no transaction open -----
+    try:
+        companies, offers = _drain(src, result)
+    except Exception as exc:
+        # No rollback: nothing has been written yet, which is the whole reason
+        # this phase is separate.
+        fail(exc)
+        raise
+
+    # ----- phase 2: the writes, and nothing else -----
     try:
         # Companies-likely-to-hire (used by later cold-mail phase) go in first.
-        for company in src.fetch_companies():
+        for company in companies:
             _, created = get_or_create_company(db, company, company_cache)
             if created:
                 result.companies_created += 1
 
-        for offer in src.fetch_offers():
-            result.fetched += 1
+        for offer in offers:
             company_id: int | None = None
             if offer.company_name:
                 company_id, created = get_or_create_company(
@@ -205,11 +246,7 @@ def ingest_source(db: sqlite3.Connection, src: Source) -> IngestResult:
         # Roll the partial ingest back first, so the row written next is the
         # only thing this run leaves behind — and so its zeros are true.
         db.rollback()
-        record_run(
-            db, sid, started_at=started_at, result=result, error=f"{type(exc).__name__}: {exc}"
-        )
-        db.commit()
-        log.exception("ingest %s failed after %d fetched", src.name, result.fetched)
+        fail(exc)
         raise
 
     log.info("ingest %s: %s", src.name, result.as_dict())
