@@ -658,6 +658,47 @@ details and lets you approve or skip through the same state-machine paths as the
 CLI. Approval generates the CV, motivation letter, and tracker row synchronously
 for local review. The server always binds to loopback only.
 
+### Recency comes first
+
+Every list — the review queue, `jobpilot queue`, the skim list and the tracker —
+defaults to **newest posting first**. Score is a column and a sort option, not
+the ordering. It was the ordering, and the effect was that a three-week-old 0.72
+sat above a one-day-old 0.61 and stayed there until the posting had closed.
+
+**« Publiée » on every list.** Relative age (« hier », « il y a 3 j »), coloured:
+green under 7 days, amber to 14, muted beyond.
+
+**Missing dates.** 408 of 669 offers carry no `posted_at` — LinkedIn and Indeed
+arrive as email alerts, which have a title, a link and little else. Those fall
+back to `offers.scraped_at` and are labelled « vue il y a N j » with a `≈` mark.
+The two are not interchangeable: an offer is always *seen* after it is *posted*,
+so an age from `scraped_at` is a **lower bound**. Such a row is therefore never
+coloured green, and never hidden for age unless even that lower bound is past
+the threshold — exceeding it proves the offer is old, staying under it proves
+nothing.
+
+**The staleness filter, on by default.** Offers older than
+`JOBPILOT_MAX_OFFER_AGE_DAYS` (default 7) are hidden. *Hidden* is the whole of
+it — no status change, no event, nothing deleted — and every list has a checkbox
+that shows them again along with a count of what it hid. The tracker is the
+exception and shows everything by default: it answers "where does everything
+stand", and an answer omitting two thirds of the history is not one.
+
+**Approving a stale offer warns first.** A generation costs an API call and about
+twenty seconds, and a closed posting spends both for nothing, so the click
+returns a warning with a « Générer quand même » button instead. It is a warning
+and not a refusal: an old posting is often still open, and only the reader can
+tell. Nothing is generated and the application stays queued until confirmed.
+
+The stored timestamps disagree on format — France Travail writes `...Z`, WTTJ
+writes `...+02:00`, `scraped_at` writes `...+00:00` — so ordering normalises
+through SQLite's `strftime` rather than assuming ISO text sorts chronologically.
+It does, but only once every value is in one zone.
+
+None of this touches scoring: `matcher.py` is frozen (constitution), this is
+ordering and display. Whether freshness should influence `final_score` itself is
+a separate decision and has not been taken.
+
 ### Actualiser les offres (refresh from the page)
 
 The queue page carries an **Actualiser les offres** button that runs the same
