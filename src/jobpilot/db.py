@@ -22,10 +22,27 @@ _SEED_SOURCES: tuple[tuple[str, str, int], ...] = (
 )
 
 
+#: How long a writer waits for the lock before raising "database is locked".
+#: The daemon and the dashboard are two processes on one file now, so a blocked
+#: writer is a normal event rather than a bug, and failing instantly on it would
+#: be. Thirty seconds covers every write either process makes on its own; it
+#: does not cover a writer that holds its transaction open across the network —
+#: see the note on ``ingest_source``.
+BUSY_TIMEOUT_MS = 30_000
+
+
 def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
-    """Open a connection with Row factory and foreign keys enabled.
+    """Open a connection with Row factory, foreign keys, WAL, and a busy timeout.
 
     matcher.py relies on sqlite3.Row access (offer["title"]); keep it here.
+
+    WAL is what makes two processes on this file workable at all: under the
+    default rollback journal a single dashboard read blocks the daemon's writes
+    and vice versa. Under WAL, readers never block the writer and the writer
+    never blocks readers, so the dashboard stays answerable through a whole
+    ingest cycle. It is a property of the database file, not of the connection,
+    so setting it here is a one-time conversion that every later connection
+    inherits; re-issuing it is a no-op.
     """
     path = Path(db_path) if db_path else get_settings().db_path
     if path != Path(":memory:"):
@@ -33,6 +50,20 @@ def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    # An in-memory database has no file to journal and reports back "memory";
+    # asking is harmless, so the call is not special-cased, only the check is.
+    mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()
+    if path != Path(":memory:") and mode is not None and mode[0].lower() != "wal":
+        # A refused conversion means the file is on a filesystem that cannot do
+        # WAL (a network share). Two writers on that file is not safe, and the
+        # daemon would find out by corrupting nothing and losing everything.
+        log.warning(
+            "WAL unavailable on %s (journal_mode=%s); concurrent daemon and "
+            "dashboard writes are not safe on this filesystem",
+            path,
+            mode[0],
+        )
     return conn
 
 
