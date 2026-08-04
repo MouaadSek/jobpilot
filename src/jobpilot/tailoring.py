@@ -2142,18 +2142,30 @@ def _validate_profile_candidate(
 #: contract line describes the candidate's availability, not the posting, so
 #: this is true of an offer that never states a duration — which is all three of
 #: the stage offers in the queue. Pinned against those templates by
-#: tests/test_stage_contract_fallback.py so it cannot drift silently.
+#: tests/test_stage_contract_phrase.py so it cannot drift silently.
 _STAGE_DEFAULT_DURATION = "3 à 6 mois"
 
 
-def _stage_contract_fallback(offer: OfferContext) -> str:
-    """The stage contract line to fall back to, built from what is known.
+def _stage_contract_phrase(offer: OfferContext) -> str:
+    """The stage contract line, built from what is known.
 
-    Deterministic, and the same two inputs build_cv_title already uses for the
-    title of the same document: the offer's duration when it states one, and the
-    start date parsed from its text. When the offer states no duration the
-    templates' own wording stands in, because the sentence is about what he
-    seeks rather than about what the posting offers.
+    Task 44 item 1: this is now the only way the line is produced, not a
+    fallback. It was a fallback under Task 40, behind a model that was told the
+    phrase must be exactly 'Stage de [offer duration] mois dès [offer start
+    date]' — and one generation complied with that literally, shipping both
+    brackets into a PDF. No gate could catch it, because the result is a
+    perfectly well-formed contract line; it just names two fields instead of
+    stating them.
+
+    Duration and start date are parsed offer fields. Building the sentence here
+    is the same move Task 38 made for the job title and the header location: a
+    field the renderer can derive is a field the model cannot get wrong.
+
+    Deterministic, and the same two inputs build_cv_title uses for the title of
+    the same document: the offer's duration when it states one, and the start
+    date parsed from its text. When the offer states no duration the templates'
+    own wording stands in — never a placeholder — because the sentence is about
+    what he seeks rather than about what the posting offers.
     """
 
     duration = f"{offer.duration_months} mois" if offer.duration_months else (
@@ -2162,30 +2174,20 @@ def _stage_contract_fallback(offer: OfferContext) -> str:
     return f"Stage de {duration} dès {_offer_start(offer.description)}"
 
 
-def _resolve_stage_contract_phrase(
-    candidate: str | None,
-    *,
-    selection: VariantSelection,
-    offer: OfferContext,
-) -> tuple[str | None, str | None]:
-    """Preserve a valid contract phrase; replace only a rejected one.
+def _renderer_contract_phrase(
+    selection: VariantSelection, offer: OfferContext
+) -> str | None:
+    """The contract line for this plan, or None when the template owns it.
 
-    Same shape as ``_resolve_profile_phrase``: this gate was recoverable with no
-    degradation, so it escalated to fatal and killed applications 25 and 28
-    outright. It has one now, and the replacement is validated by the same rule
-    the candidate failed — with the difference that this fallback is built, not
-    guessed, so it cannot fail that rule in turn.
+    Replaces Task 40's ``_resolve_stage_contract_phrase``, which preserved a
+    valid model phrase and rebuilt only a rejected one. That distinction is gone
+    with the field: there is no candidate to preserve, so there is nothing to
+    resolve. Outside a stage adaptation the profile's contract line is the
+    template's own and stays untouched, which is now enforced by construction
+    rather than by rejecting the model for writing to it.
     """
 
-    if not selection.adapted_for_stage:
-        return candidate, None
-    try:
-        _validate_stage_contract_phrase(candidate)
-    except TailoringError as exc:
-        fallback = _stage_contract_fallback(offer)
-        _validate_stage_contract_phrase(fallback)
-        return fallback, str(exc)
-    return candidate, None
+    return _stage_contract_phrase(offer) if selection.adapted_for_stage else None
 
 
 def _resolve_profile_phrase(
@@ -2944,6 +2946,48 @@ def _validate_header_location(source: str) -> None:
         )
 
 
+#: Stripped before the placeholder scan below: a CSS attribute selector
+#: (`input[type]`) is bracketed text that never reaches the page. No template
+#: carries one today — all 21 are bracket-free, CSS included — so this is about
+#: not making a future stylesheet edit fail a generation.
+_STYLE_OR_SCRIPT_RE = re.compile(r"<(style|script)\b.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
+
+#: Bounded so a stray "[" and a "]" three paragraphs apart cannot pair up into a
+#: false positive. Every real placeholder is a short label.
+_PLACEHOLDER_RE = re.compile(r"\[[^\[\]]{1,80}\]")
+
+
+@gate("_reject_placeholders", Tier.FATAL)
+def _reject_placeholders(source: str) -> None:
+    """No rendered CV may carry bracketed text. Task 44 item 1.
+
+    '[offer duration]' and '[offer start date]' reached two PDFs because the
+    prompt told the model to write a phrase containing them and it complied
+    literally. Every other gate passed it: the sentence is well formed, every
+    word is supported, the layout fits. Only the brackets were wrong, and
+    nothing was looking at them.
+
+    Fatal, which is the rarer half of Task 39's rule. A placeholder in a PDF is
+    the definition of unusable — it advertises that the document was machine
+    generated and never read — and there is no degradation available, because
+    the renderer cannot know what the bracket was standing in for.
+
+    Scoped to the CV. The letter is not scanned: offer titles carry bracketed
+    tags ('[Stage]', '[ALTERNANCE]' — 8 of 674 stored offers) and the letter
+    quotes the title, so the same rule there would abort real generations over
+    the posting's own words. That is a different bug and Task 44 item 3 reports
+    it rather than fixing it here.
+    """
+
+    text = _plain(_STYLE_OR_SCRIPT_RE.sub(" ", source))
+    found = _PLACEHOLDER_RE.findall(text)
+    if found:
+        raise TailoringError(
+            "rendered CV contains unfilled placeholders: "
+            + ", ".join(sorted(set(found))[:5])
+        )
+
+
 def _tailor_profile(
     source: str,
     plan: TailoringPlan,
@@ -3365,6 +3409,9 @@ def tailor_cv_html(
                 )
             )
     _validate_header_location(result)
+    # Last, over the finished document: the point is what reaches the PDF, not
+    # what any one step produced.
+    _reject_placeholders(result)
     return result
 
 
@@ -3673,12 +3720,15 @@ def _advisor_prompt(
     facts = _advisor_fact_context(selection, template, bank)
     allowed_ids = valid_fact_ids(facts)
     allowed_figures = allowed_numbers(bank)
+    # Task 44 item 1. This used to demand, on the adapted-stage path, a phrase
+    # "exactly 'Stage de [offer duration] mois dès [offer start date]'". A model
+    # duly returned that string with the brackets still in it, and no gate could
+    # object: as a contract line it is perfectly well formed. The instruction is
+    # gone rather than reworded, because the renderer now builds the line from
+    # offers.duration_months and the parsed start date.
     exact_stage = (
-        "Because this stage uses an adapted alternance template, "
-        "profile_contract_phrase is required and must be exactly "
-        "'Stage de [offer duration] mois dès [offer start date]'."
-        if selection.adapted_for_stage
-        else "profile_contract_phrase must be null; the profile contract line is immutable."
+        "profile_contract_phrase must be null. The renderer builds the profile "
+        "contract line from the offer's own duration and start date."
     )
     # The layout contract, said out loud. The model has never been told there was
     # a ceiling, and one generation duly selected nine of one employer's eleven
@@ -4301,10 +4351,8 @@ class InteractiveTailoringAdvisor:
         if selection.contract_type == "stage":
             duration = str(offer.duration_months or "3 à 6")
             title_default = f"{offer.title} - Stage {duration} mois dès {start.title()}"
-            contract_default = f"Stage de {duration} mois dès {start}"
         else:
             title_default = f"{offer.title} - Alternance M2 dès {start.title()}"
-            contract_default = ""
         base_slug = selection.slug.removesuffix("-stage")
         domain_default = _PROFILE_DEFAULTS.get(base_slug, "sécurité des systèmes numériques")
         title = self.prompt("CV title", title_default)
@@ -4337,12 +4385,9 @@ class InteractiveTailoringAdvisor:
             " | ".join(template.project_titles),
         )
         location = self.prompt("Offer region", _infer_region(offer.city))
-        contract = ""
-        if selection.adapted_for_stage:
-            contract = self.prompt(
-                "Stage profile contract phrase",
-                contract_default,
-            )
+        # Not prompted for any more: _advise_and_tailor overwrites it with the
+        # built line, so asking would be asking for an answer nobody reads.
+        contract = _renderer_contract_phrase(selection, offer) or ""
         letter = self.prompt("Letter body HTML on one line", _default_letter(offer))
         rationale = self.prompt(
             "Tailoring rationale",
@@ -5224,41 +5269,12 @@ def _advise_and_tailor(
                     )
                 ),
                 location_region=resolve_header_location(offer.city),
+                # Renderer-owned, exactly like the two above it. Whatever the
+                # model put here is discarded rather than validated: it is told
+                # to leave the field null, and a field built from parsed offer
+                # data has nothing to gain from a second opinion.
+                profile_contract_phrase=_renderer_contract_phrase(selection, offer),
             )
-            contract_phrase, contract_fallback_reason = _resolve_stage_contract_phrase(
-                plan.profile_contract_phrase,
-                selection=selection,
-                offer=offer,
-            )
-            if contract_fallback_reason is not None and attempt >= budget:
-                plan = replace(plan, profile_contract_phrase=contract_phrase)
-                log.warning(
-                    "application %d: rejected stage contract phrase %r; using "
-                    "%r: %s",
-                    application_id,
-                    plan.profile_contract_phrase,
-                    contract_phrase,
-                    contract_fallback_reason,
-                )
-                log_event(
-                    db,
-                    application_id,
-                    "stage_contract_fallback",
-                    {
-                        "reason": contract_fallback_reason,
-                        "replacement": contract_phrase,
-                    },
-                )
-                warnings.append(
-                    GenerationWarning(
-                        gate="_validate_stage_contract_phrase",
-                        message=contract_fallback_reason,
-                        degraded=(
-                            "profil : la ligne de contrat a été construite à partir "
-                            f"de l'offre, « {contract_phrase} »"
-                        ),
-                    )
-                )
             profile_phrase, profile_fallback_reason = _resolve_profile_phrase(
                 plan.profile_domain_phrase,
                 selection=selection,
