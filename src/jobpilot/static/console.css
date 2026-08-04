@@ -326,6 +326,19 @@ td.title { min-width: 240px; white-space: normal; }
 td .num, .score, td time { font-family: var(--face-data); font-variant-numeric: tabular-nums; }
 .score { color: var(--amber); font-weight: 650; }
 
+/* The paste box: a first-class path, not a fallback, so it is not styled as an
+   error state or tucked behind a disclosure. */
+.import-box {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--s4);
+  margin: var(--s5) 0;
+  background: var(--raised);
+}
+.import-box h3 { margin-top: 0; }
+.import-box textarea { width: 100%; }
+.import-box .actions { margin-bottom: 0; }
+
 /* Age: readable as a colour before it is read as a number. An offer posted more
    than a week ago is usually closed, so freshness is the first thing the eye
    should land on in every list. */

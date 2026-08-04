@@ -218,6 +218,27 @@ async def _posted_body(request: Request) -> str:
     return parse_qs(raw, keep_blank_values=True).get("body", [""])[0]
 
 
+async def _import_payload(request: Request) -> dict[str, Any]:
+    """Read the import body, whether it arrived as JSON or as a form.
+
+    The extension can only send JSON (no form, no page). The paste box can only
+    send a form (an HTML form has no other option, and the dashboard ships no
+    build step to turn it into JSON). Reading both here keeps them on one
+    endpoint instead of duplicating the import into a second route.
+    """
+
+    raw = await request.body()
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("application/json"):
+        try:
+            parsed = json.loads(raw.decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    fields = parse_qs(raw.decode("utf-8"), keep_blank_values=True)
+    return {name: values[0] for name, values in fields.items() if values}
+
+
 async def _posted_plan_hash(request: Request) -> str:
     """Read the plan_hash the confirmation page put in the form."""
 
@@ -843,35 +864,53 @@ def create_app(
         return JSONResponse(refresher.status().as_dict())
 
     @app.post(IMPORT_PATH)
-    def import_offer(
-        payload: dict[str, Any],
+    async def import_offer(
+        request: Request,
+        payload: Annotated[dict[str, Any], Depends(_import_payload)],
         db: Database,
-    ) -> JSONResponse:
+    ) -> Response:
         """Store an offer description captured from a page the user had open.
 
-        Reachable from the browser extension and from the paste box on the
-        detail page; both send the same body. Nothing here fetches a URL — the
-        text arrives in the request (see CLAUDE.md, "Scope of rule 11").
+        One endpoint, two callers, two representations of the same result. The
+        extension sends JSON and wants JSON back. The paste box on the detail
+        page is an ordinary HTML form — it cannot send JSON, and rendering raw
+        JSON over the page it was submitted from would be a poor answer — so a
+        form submission is redirected back to the application it came from.
+        Both take the identical path through ``import_offer_description``;
+        neither has any logic the other lacks.
 
-        Guarded by ``import_guard`` below, which is the only place CORS is
+        Nothing here fetches a URL: the text arrives in the request (see
+        CLAUDE.md, "Scope of rule 11").
+
+        Guarded by ``import_guard`` above, which is the only place CORS is
         enabled and which rejects any other origin.
         """
 
         url = str(payload.get("url") or "").strip()
-        description = str(payload.get("description") or "")
-        title = payload.get("title")
-        company = payload.get("company")
+        application_id = payload.get("application_id")
+        wants_html = bool(application_id)
+
         try:
             result = import_offer_description(
                 db,
                 url=url,
-                description=description,
-                title=str(title) if title else None,
-                company=str(company) if company else None,
+                description=str(payload.get("description") or ""),
+                title=str(payload["title"]) if payload.get("title") else None,
+                company=str(payload["company"]) if payload.get("company") else None,
                 score_pass=score_pass,
             )
         except OfferImportError as exc:
+            if wants_html:
+                return detail_response(
+                    request, db, int(application_id), error=str(exc), status_code=422
+                )
             return JSONResponse({"detail": str(exc)}, status_code=422)
+
+        if wants_html:
+            return RedirectResponse(
+                f"/application/{int(application_id)}?imported={result.imported_chars}",
+                status_code=303,
+            )
         return JSONResponse(result.as_dict(), status_code=200)
 
     @app.get("/outreach", response_class=HTMLResponse)

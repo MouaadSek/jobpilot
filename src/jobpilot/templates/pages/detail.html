@@ -123,6 +123,42 @@
     {% if application.url %}<p><a href="{{ application.url }}" rel="noreferrer">Ouvrir l'offre d'origine</a></p>{% endif %}
     <pre class="description">{{ application.description or "No description stored." }}</pre>
 
+    {#
+      The manual route, always visible and never conditional on the extension
+      having failed. Some pages will never parse cleanly, and pasting must not
+      feel like the error case: the extension is the automatic path, this is the
+      other one, and either may be used at any time.
+    #}
+    <div class="import-box">
+      <h3>Coller la description de l'offre</h3>
+      <p class="muted">
+        {% if application.imported_at %}
+          Description importée le {{ application.imported_at|ymd }} —
+          {{ (application.description or "")|length }} caractères. Coller à
+          nouveau remplace le texte importé.
+        {% elif application.description and application.description|length < 400 %}
+          La description stockée fait {{ application.description|length }}
+          caractères : une carte d'alerte, pas une annonce. Le CV est adapté
+          à ce texte. Collez l'annonce complète depuis la page de l'offre.
+        {% else %}
+          Collez ici l'annonce complète si le texte stocké est incomplet. Elle
+          remplacera la description et l'offre sera re-notée.
+        {% endif %}
+      </p>
+      <form method="post" action="/offer/import" data-busy>
+        <input type="hidden" name="application_id" value="{{ application.id }}">
+        <input type="hidden" name="url" value="{{ application.url or '' }}">
+        <textarea name="description" class="body-edit" rows="10"
+                  placeholder="Coller ici le texte de l'annonce…"
+                  aria-label="Description de l'offre"></textarea>
+        <div class="actions">
+          <button type="submit" data-label="Import en cours">
+            Enregistrer la description
+          </button>
+        </div>
+      </form>
+    </div>
+
     <h3>Détail du score</h3>
     <div class="score-grid">
       <div><strong>Semantic</strong><br>{% if application.semantic_score is not none %}{{ "%.3f"|format(application.semantic_score) }}{% else %}—{% endif %}</div>
