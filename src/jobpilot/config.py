@@ -75,6 +75,11 @@ class Settings:
 
     # Phase 2 application artifacts and optional automated tailoring.
     # Defaults keep direct Settings(...) construction in tests/backends compatible.
+    #: Offers published more than this many days ago are hidden from the review
+    #: surfaces by default, and approving one warns first. Defaulted rather than
+    #: required so a direct Settings(...) in a test or a backend keeps working.
+    max_offer_age_days: int = 7
+
     output_dir: Path = PROJECT_ROOT / "output" / "applications"
     tailoring_provider: str = "auto"
     anthropic_api_key: str | None = None
@@ -183,6 +188,7 @@ def get_settings() -> Settings:
         migrations_dir=PROJECT_ROOT / "migrations",
         embed_model=os.getenv("JOBPILOT_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
         queue_threshold=float(os.getenv("JOBPILOT_QUEUE_THRESHOLD", "0.35")),
+        max_offer_age_days=int(os.getenv("JOBPILOT_MAX_OFFER_AGE_DAYS", "7")),
         ft_client_id=os.getenv("FRANCE_TRAVAIL_CLIENT_ID") or None,
         ft_client_secret=os.getenv("FRANCE_TRAVAIL_CLIENT_SECRET") or None,
         ft_token_url=os.getenv(
