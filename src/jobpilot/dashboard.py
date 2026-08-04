@@ -76,6 +76,7 @@ from jobpilot.review import (
     application_detail,
     applications_by_status,
     event_history,
+    import_supersedes_documents,
     offer_freshness,
     outreach_drafts,
     status_tabs,
@@ -505,6 +506,7 @@ def create_app(
         *,
         error: str | None = None,
         stale_warning: dict[str, Any] | None = None,
+        imported_chars: int | None = None,
         status_code: int = 200,
     ) -> HTMLResponse:
         detail = application_detail(db, application_id)
@@ -558,6 +560,8 @@ def create_app(
                     db, application_id, events
                 ),
                 "stale_warning": stale_warning,
+                "imported_chars": imported_chars,
+                "import_supersedes": import_supersedes_documents(db, application_id),
                 "max_age_days": get_settings().max_offer_age_days,
                 "error": error,
             },
@@ -930,8 +934,11 @@ def create_app(
         request: Request,
         application_id: int,
         db: Database,
+        imported: int | None = None,
     ) -> HTMLResponse:
-        return detail_response(request, db, application_id)
+        """``imported`` is set by the redirect the paste box lands on."""
+
+        return detail_response(request, db, application_id, imported_chars=imported)
 
     @app.post("/application/{application_id}/approve")
     def approve(

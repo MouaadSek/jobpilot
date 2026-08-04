@@ -4,6 +4,66 @@
 
     {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
     {% if wttj_alert and not error %}<div class="error" role="alert">{{ wttj_alert }}</div>{% endif %}
+    {#
+      Item 4: a description has arrived for an application that is already
+      queued or ready. Both buttons below are the paths that already exist —
+      Régénérer is Task 34's, Approuver is the ordinary generation — because a
+      second generation entry point is a second thing to keep correct.
+
+      `imported_chars` is the paste box's redirect confirming what it just
+      saved. `import_supersedes` is the durable half, read from stored state:
+      the extension POSTs from the offer page and never lands here, so without
+      it the automatic route would import 1900 characters and show nothing.
+      It clears itself when the documents are regenerated after the import.
+    #}
+    {% if imported_chars or import_supersedes %}
+      <div class="warn" role="status">
+        {% if imported_chars %}
+          <p class="warn-lead">
+            Description importée : {{ imported_chars }} caractères.
+          </p>
+        {% else %}
+          {#
+            No redirect brought us here: the extension imported from the offer
+            page and this is simply the next time the application was opened.
+          #}
+          <p class="warn-lead">
+            Description importée le {{ application.imported_at|ymd }} —
+            {{ (application.description or "")|length }} caractères.
+          </p>
+        {% endif %}
+        {% if import_supersedes %}
+          <p class="warn-said">
+            Les documents actuels ont été adaptés au texte précédent. Régénérer
+            les refait à partir de l'annonce importée ; la version actuelle est
+            archivée, pas écrasée.
+          </p>
+          <form method="post" action="/application/{{ application.id }}/regenerate" data-busy>
+            <button type="submit" data-label="Régénération">Régénérer avec le texte importé</button>
+          </form>
+        {% elif application.status == "queued" %}
+          <p class="warn-said">
+            L'adaptation utilisera l'annonce importée. Rien n'a encore été
+            généré pour cette candidature.
+          </p>
+          <form method="post" action="/application/{{ application.id }}/approve" data-busy>
+            <button type="submit" data-label="Génération">Approuver et générer</button>
+          </form>
+        {% elif application.status == "ready" %}
+          {# Regenerated since the import: the documents already read it. #}
+          <p class="warn-said">
+            Les documents ont été générés après l'import : ils utilisent déjà
+            l'annonce importée.
+          </p>
+        {% else %}
+          <p class="warn-said">
+            Statut « {{ application.status }} » : l'offre est re-notée, mais
+            aucune régénération n'est proposée depuis cet état.
+          </p>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if stale_warning %}
       <div class="warn" role="alert">
         <p class="warn-lead">

@@ -14,6 +14,7 @@ from jobpilot.freshness import (
     annotate,
     describe,
     drop_stale,
+    parse_timestamp,
 )
 from jobpilot.state import LEGAL
 from jobpilot.vocabulary import TokenTier, parse_rejections
@@ -189,6 +190,50 @@ def offer_freshness(
         max_age_days=max_age_days,
         now=now,
     )
+
+
+def import_supersedes_documents(
+    db: sqlite3.Connection,
+    application_id: int,
+) -> bool:
+    """True when a ready application's documents predate its imported text.
+
+    Task 43 item 4 needs to know when tailoring has gone stale, and it cannot
+    learn that from the request. The paste box redirects and can say "just
+    imported" from a query parameter, but the extension POSTs JSON from the
+    offer page and never lands on the dashboard at all — so a banner riding
+    only on that parameter would leave the automatic route, which is the point
+    of the feature, importing 1900 characters and showing nothing, with a CV on
+    disk still adapted to a 113-character card.
+
+    So the question is asked of stored state: the offer carries an imported
+    description, and the documents now on disk were generated before it
+    arrived. Regenerating clears it by itself, because Task 34 runs
+    `ready -> queued -> ready` and writes a fresh status_change on the way back
+    — there is no flag to reset and nothing to go stale a second time.
+
+    Only `ready` can be superseded. A queued application has no documents to
+    invalidate, and an applied one has already been sent.
+
+    `last_event_at` dates the documents without any need to walk the audit
+    trail: state.transition is its only writer, so on an application that is
+    still `ready` the last transition recorded is necessarily the one that made
+    it ready.
+    """
+
+    row = db.execute(
+        "SELECT a.status, a.last_event_at, o.imported_at FROM applications a "
+        "JOIN offers o ON o.id = a.offer_id WHERE a.id = ?",
+        (application_id,),
+    ).fetchone()
+    if row is None or row["status"] != "ready":
+        return False
+
+    imported_at = parse_timestamp(row["imported_at"])
+    generated_at = parse_timestamp(row["last_event_at"])
+    if imported_at is None or generated_at is None:
+        return False
+    return imported_at > generated_at
 
 
 #: Written by tailoring.generate_application onto the ready status_change event.

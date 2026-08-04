@@ -112,6 +112,18 @@ def _parse(raw: Any) -> datetime | None:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
+def parse_timestamp(raw: Any) -> datetime | None:
+    """Public name for the tolerant reader above.
+
+    Timestamps in this database arrive in two shapes: `datetime.now(UTC).
+    isoformat()` from the Python writers, and SQLite's own `datetime('now')`
+    from a column default, which is naive and space-separated. Anything
+    comparing two of them needs to parse rather than compare strings.
+    """
+
+    return _parse(raw)
+
+
 def age_in_days(raw: Any, *, now: datetime | None = None) -> int | None:
     """Whole days between ``raw`` and now, or None if it is not a date.
 
