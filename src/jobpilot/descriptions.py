@@ -135,6 +135,7 @@ class BackfillResult:
     already_synthesized: int = 0
     skipped_with_application: int = 0
     skipped_degraded: int = 0
+    skipped_imported: int = 0
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -145,6 +146,7 @@ class BackfillResult:
             "already_synthesized": self.already_synthesized,
             "skipped_with_application": self.skipped_with_application,
             "skipped_degraded": self.skipped_degraded,
+            "skipped_imported": self.skipped_imported,
         }
 
 
@@ -193,15 +195,40 @@ def backfill_descriptions(
     normally skips it because it carries the prefix, and that stale text is what
     the semantic score embeds. Forcing changes nothing about how the text is
     built — still field assembly, no LLM, no scraping, nothing invented.
+
+    Neither path touches an offer carrying `imported_at`, in either mode:
+    synthesised text must never replace an imported posting. `skipped_imported`
+    counts the imported rows thin enough to have been eligible on length.
     """
     clause, params = source_filter(db, source)
     result = BackfillResult(source=source or "all")
+
+    # Task 43 item 5: an imported description is the employer's own prose,
+    # captured from the posting a human had open. Synthesised text is field
+    # assembly standing in for prose nobody has. Replacing the first with the
+    # second is a strict loss, so `imported_at IS NOT NULL` is excluded here
+    # rather than relying on length to keep them apart.
+    #
+    # Length nearly does: the import floor is 200 characters and this threshold
+    # defaults to 120. But `min_chars` comes from a setting, and raising
+    # ALERT_MIN_DESCRIPTION_CHARS past the import floor would silently make a
+    # short imported posting eligible. The daemon runs every three hours, so
+    # "silently" would mean within the day.
+    result.skipped_imported = int(
+        db.execute(
+            "SELECT count(*) AS n FROM offers o "
+            "WHERE o.imported_at IS NOT NULL "
+            "  AND length(coalesce(o.description, '')) < ?" + clause,
+            [min_chars, *params],
+        ).fetchone()["n"]
+    )
 
     if not force:
         rows = db.execute(
             "SELECT o.id, o.title, o.description, o.city, c.name AS company_name "
             "FROM offers o LEFT JOIN companies c ON c.id = o.company_id "
-            "WHERE length(coalesce(o.description, '')) < ?" + clause,
+            "WHERE o.imported_at IS NULL "
+            "  AND length(coalesce(o.description, '')) < ?" + clause,
             [min_chars, *params],
         ).fetchall()
     else:
@@ -226,6 +253,7 @@ def backfill_descriptions(
             "LEFT JOIN companies c ON c.id = o.company_id "
             "LEFT JOIN applications a ON a.offer_id = o.id "
             "WHERE a.offer_id IS NULL "
+            "  AND o.imported_at IS NULL "
             f"  AND (length(coalesce(o.description, '')) < ? OR {prefix_test})" + clause,
             [min_chars, *prefix_params, *params],
         ).fetchall()
