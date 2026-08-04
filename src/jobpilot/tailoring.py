@@ -35,6 +35,7 @@ from jobpilot.config import (
 from jobpilot.facts import (
     ExperienceFact,
     FactBank,
+    FactBankError,
     FactClaim,
     build_cv_title,
     load_fact_bank,
@@ -2188,6 +2189,145 @@ def _renderer_contract_phrase(
     """
 
     return _stage_contract_phrase(offer) if selection.adapted_for_stage else None
+
+
+#: The CV title's layout budget, in characters. Task 44 item 2.
+#:
+#: Same reasoning as _row_budget: the templates are line-fit by hand, so the
+#: widest title their designer accepted is the honest bound. Pooled across the
+#: 21 templates rather than read from the one in use, because each contributes
+#: exactly one title — one sample of a row's capacity is not the capacity, and
+#: the narrowest sample (41 characters) would reject titles that plainly fit.
+#: Pooling is only sound because every template renders .job-title at 12.5pt in
+#: the same full-width header; tests/test_cv_title_budget.py pins both that and
+#: this number against the files, so neither can drift silently.
+_CV_TITLE_BUDGET = 70
+
+#: Where an offer title may be cut. Postings routinely append a subtitle to the
+#: role ("Ingénieur en data - Optimisation d'une base de données et suivi
+#: d'incidents cyber"); the head is the role, and the rest is detail the CV body
+#: already carries.
+_TITLE_CLAUSE_RE = re.compile(r"\s+[-–—|:]\s+|\s*,\s+")
+
+#: How short a cut-back role may be before the template's own is preferred.
+#:
+#: Cutting keeps the head clause, which is the role in a well-formed title and
+#: noise in a badly-formed one — real stored titles lead with "6mois", "école",
+#: "Contenu", "📣 Stage", "Alternant". Those produce a CV headed "6mois - Stage
+#: dès septembre 2026", which is the same class of bug as the placeholder: a
+#: machine-assembled string nobody would write.
+#:
+#: A length floor separates them imperfectly and is chosen knowing that: it
+#: drops the seven worst heads measured over the 605 stored offers while
+#: costing nothing above it, since every cyber-relevant role that reached this
+#: step ("Ingénieur en data", "Security Engineer", "Assistant RSSI/RPCA") is
+#: comfortably longer. Below the floor the template's hand-written role is used
+#: instead, which is never nonsense.
+_MIN_SHORTENED_ROLE_CHARS = 12
+
+
+def _fit_cv_title(
+    offer: OfferContext,
+    *,
+    selection: VariantSelection,
+    template: TemplateContext,
+) -> tuple[str, str | None]:
+    """The CV title, kept inside the template's own title row.
+
+    Nothing budgeted this before, and « Ingénieur en data - Optimisation d'une
+    base de données et suivi d'incidents cyber - Stage dès septembre 2026 » —
+    108 characters against a row that accepts 70 — rendered on three lines.
+
+    Three steps, in order of how much they cost the reader:
+
+    1. The offer's title, if it fits. 63% of stored offers.
+    2. The offer's title with trailing clauses dropped. The head is the actual
+       role, so "Ingénieur en data - Stage dès septembre 2026" keeps what the
+       title is for and loses only the subtitle. Rescues the case above. Only
+       taken while the head stays substantial — see _MIN_SHORTENED_ROLE_CHARS,
+       because a badly-formed posting leads with noise rather than a role.
+    3. The template's own role with this offer's contract suffix. Its role is
+       hand-written and true of the variant, so it is the floor rather than a
+       truncation — a title cut mid-word reads as a bug, and the CV body still
+       names the posting.
+
+    Step 3 rebuilds rather than reusing template.job_title verbatim, because
+    that string ends "Alternance M2 dès Septembre 2026" and would put the wrong
+    contract on a stage CV. Its widest possible result is exactly the budget.
+
+    Returns the title and, only for step 3, why the offer's own title was not
+    usable. Step 2 is not reported as a degradation: it keeps the role, and the
+    dropped clause is detail rather than loss.
+    """
+
+    start = _offer_start(offer.description)
+
+    def build(role_source: str) -> str | None:
+        try:
+            return _canonicalize_prose(
+                build_cv_title(
+                    role_source,
+                    contract_type=selection.contract_type,
+                    duration_months=offer.duration_months,
+                    start_date=start,
+                )
+            )
+        except FactBankError:
+            # A clause that normalises to nothing ("H/F", "6mois"). Not an
+            # error here — the next-shorter candidate is tried instead.
+            return None
+
+    full = build(offer.title)
+    if full is None:
+        # The offer title alone cannot make a title. That was fatal before this
+        # function existed and stays fatal, via the same call.
+        full = _canonicalize_prose(
+            build_cv_title(
+                offer.title,
+                contract_type=selection.contract_type,
+                duration_months=offer.duration_months,
+                start_date=start,
+            )
+        )
+    if len(full) <= _CV_TITLE_BUDGET:
+        return full, None
+
+    clauses = [clause for clause in _TITLE_CLAUSE_RE.split(offer.title) if clause.strip()]
+    for count in range(len(clauses) - 1, 0, -1):
+        role = " - ".join(clauses[:count])
+        try:
+            # Measured after normalisation, not before: that is what reaches the
+            # CV, and it is where "Apprenti(e) IT H/F" becomes "IT".
+            normalised = normalise_role_title(role)
+        except FactBankError:
+            continue
+        if len(normalised) < _MIN_SHORTENED_ROLE_CHARS:
+            # Prefixes only get shorter from here.
+            break
+        shortened = build(role)
+        if shortened is not None and len(shortened) <= _CV_TITLE_BUDGET:
+            log.info(
+                "CV title %d > %d characters; using the role without its "
+                "trailing clauses: %r",
+                len(full),
+                _CV_TITLE_BUDGET,
+                shortened,
+            )
+            return shortened, None
+
+    fallback = build(template.job_title.rsplit(" - ", 1)[0])
+    if fallback is None or len(fallback) > _CV_TITLE_BUDGET:
+        # Only reachable if a template's own role stops fitting, which the
+        # budget test would have caught. Keep the offer's title over a
+        # guaranteed-broken one and let the warning say so.
+        return full, (
+            f"CV title is {len(full)} characters against a {_CV_TITLE_BUDGET}"
+            " character row and no shorter form was available"
+        )
+    return fallback, (
+        f"offer title does not fit the CV title row ({len(full)} characters "
+        f"against {_CV_TITLE_BUDGET})"
+    )
 
 
 def _resolve_profile_phrase(
@@ -5247,6 +5387,35 @@ def _advise_and_tailor(
     attempt = 0
     last_plan: TailoringPlan | None = None
     invented: list[str] = []
+    # Outside the loop deliberately. The title is built from the offer, the
+    # selection and the template — none of which a retry changes — so computing
+    # it per attempt would only append the same warning once per attempt.
+    cv_title, title_overflow_reason = _fit_cv_title(
+        offer, selection=selection, template=template_context
+    )
+    if title_overflow_reason is not None:
+        log.warning(
+            "application %d: %s; using %r",
+            application_id,
+            title_overflow_reason,
+            cv_title,
+        )
+        log_event(
+            db,
+            application_id,
+            "cv_title_overflow",
+            {"reason": title_overflow_reason, "replacement": cv_title},
+        )
+        warnings.append(
+            GenerationWarning(
+                gate="_fit_cv_title",
+                message=title_overflow_reason,
+                degraded=(
+                    "titre : l'intitulé de l'offre dépassait la ligne du CV, "
+                    f"remplacé par celui de la variante, « {cv_title} »"
+                ),
+            )
+        )
     while True:
         correction: str | None = None
         if last_error is not None:
@@ -5260,14 +5429,7 @@ def _advise_and_tailor(
             plan = advisor.advise(offer, selection, template_context, **options)
             plan = replace(
                 plan,
-                job_title=_canonicalize_prose(
-                    build_cv_title(
-                        offer.title,
-                        contract_type=selection.contract_type,
-                        duration_months=offer.duration_months,
-                        start_date=_offer_start(offer.description),
-                    )
-                ),
+                job_title=cv_title,
                 location_region=resolve_header_location(offer.city),
                 # Renderer-owned, exactly like the two above it. Whatever the
                 # model put here is discarded rather than validated: it is told
