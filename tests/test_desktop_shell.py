@@ -159,8 +159,63 @@ def test_install_agent_writes_a_keepalive_plist_with_a_resolved_interpreter(
 
 
 @needs_posix_shell
+def test_install_agent_writes_a_keepalive_plist_for_the_daemon(tmp_path: Path) -> None:
+    """`jobpilot daemon` heartbeats but nothing kept it alive; launchd does now."""
+
+    with _fake_macos(tmp_path) as (env, home, repo):
+        result = subprocess.run(
+            ["sh", str(repo / "scripts" / "install_agent.sh"), "8788", "6"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=repo,
+        )
+
+    assert result.returncode == 0, result.stderr
+    plist = home / "Library" / "LaunchAgents" / "com.jobpilot.scheduler.plist"
+    content = plist.read_text(encoding="utf-8")
+    assert "<string>com.jobpilot.scheduler</string>" in content
+    assert "<key>RunAtLoad</key>" in content
+    assert "<key>KeepAlive</key>" in content
+    assert "<string>daemon</string>" in content
+    assert "<string>--interval-hours</string>" in content
+    assert "<string>6</string>" in content
+    assert str(repo / ".venv") in content
+    logs = home / "Library" / "Logs" / "jobpilot"
+    assert f"{logs}/scheduler.out.log" in content
+    assert f"{logs}/scheduler.err.log" in content
+    # KeepAlive restarts whatever the exit status, so a daemon that dies at
+    # startup needs a floor between respawns or it becomes a hot loop.
+    assert "<key>ThrottleInterval</key>" in content
+
+
+@needs_posix_shell
+def test_the_two_agents_are_independent(tmp_path: Path) -> None:
+    """Separate labels, separate logs, separate commands.
+
+    launchd supervises a label at a time, so this is what makes the dashboard
+    survive the daemon crashing on a bad source and the daemon survive a
+    dashboard restart. One plist running both would give up exactly that.
+    """
+
+    with _fake_macos(tmp_path) as (env, home, repo):
+        subprocess.run(
+            ["sh", str(repo / "scripts" / "install_agent.sh")],
+            check=True, capture_output=True, env=env, cwd=repo,
+        )
+        agents = home / "Library" / "LaunchAgents"
+        dashboard = (agents / "com.jobpilot.dashboard.plist").read_text(encoding="utf-8")
+        scheduler = (agents / "com.jobpilot.scheduler.plist").read_text(encoding="utf-8")
+
+    assert "daemon" not in dashboard
+    assert "dashboard" not in scheduler
+    assert "scheduler.out.log" not in dashboard
+    assert "dashboard.out.log" not in scheduler
+
+
+@needs_posix_shell
 def test_install_agent_is_idempotent(tmp_path: Path) -> None:
-    """Running it twice leaves one agent, not two."""
+    """Running it twice leaves one of each agent, not two."""
 
     with _fake_macos(tmp_path) as (env, home, repo):
         for _ in range(2):
@@ -178,15 +233,18 @@ def test_install_agent_is_idempotent(tmp_path: Path) -> None:
             encoding="utf-8"
         ).splitlines()
 
-    assert [path.name for path in agents] == ["com.jobpilot.dashboard.plist"]
+    assert [path.name for path in agents] == [
+        "com.jobpilot.dashboard.plist",
+        "com.jobpilot.scheduler.plist",
+    ]
     # The second run unloads before loading, so launchd picks the new plist up
     # instead of keeping the old ProgramArguments until the next login.
-    assert sum(1 for call in calls if call.startswith("load ")) == 2
-    assert any(call.startswith("unload ") for call in calls)
+    assert sum(1 for call in calls if call.startswith("load ")) == 4
+    assert sum(1 for call in calls if call.startswith("unload ")) == 2
 
 
 @needs_posix_shell
-def test_uninstall_agent_removes_it_and_tolerates_being_run_twice(
+def test_uninstall_agent_removes_both_and_tolerates_being_run_twice(
     tmp_path: Path,
 ) -> None:
     """An agent you cannot remove is a trap, especially under KeepAlive."""
@@ -196,8 +254,12 @@ def test_uninstall_agent_removes_it_and_tolerates_being_run_twice(
             ["sh", str(repo / "scripts" / "install_agent.sh")], env=env, cwd=repo, check=True,
             capture_output=True,
         )
-        plist = home / "Library" / "LaunchAgents" / "com.jobpilot.dashboard.plist"
-        assert plist.is_file()
+        agents = home / "Library" / "LaunchAgents"
+        plists = [
+            agents / "com.jobpilot.dashboard.plist",
+            agents / "com.jobpilot.scheduler.plist",
+        ]
+        assert all(plist.is_file() for plist in plists)
 
         first = subprocess.run(
             ["sh", str(repo / "scripts" / "uninstall_agent.sh")],
@@ -209,9 +271,30 @@ def test_uninstall_agent_removes_it_and_tolerates_being_run_twice(
         )
 
     assert first.returncode == 0
-    assert not plist.exists()
+    assert not any(plist.exists() for plist in plists)
     assert second.returncode == 0
     assert "Aucun agent installé" in second.stdout
+
+
+@needs_posix_shell
+def test_uninstall_agent_can_remove_one_agent_without_the_other(
+    tmp_path: Path,
+) -> None:
+    """Stopping ingestion must not take the dashboard down with it."""
+
+    with _fake_macos(tmp_path) as (env, home, repo):
+        subprocess.run(
+            ["sh", str(repo / "scripts" / "install_agent.sh")], env=env, cwd=repo,
+            check=True, capture_output=True,
+        )
+        result = subprocess.run(
+            ["sh", str(repo / "scripts" / "uninstall_agent.sh"), "com.jobpilot.scheduler"],
+            capture_output=True, text=True, env=env, cwd=repo,
+        )
+        agents = sorted((home / "Library" / "LaunchAgents").iterdir())
+
+    assert result.returncode == 0, result.stderr
+    assert [path.name for path in agents] == ["com.jobpilot.dashboard.plist"]
 
 
 # ----- JobPilot.app -----
@@ -268,6 +351,17 @@ def test_the_windows_launcher_is_committed_and_port_aware() -> None:
     assert "@echo off" in body
     assert r".venv\Scripts\python.exe" in body
     assert "dashboard --port" in body
+
+
+def test_the_windows_daemon_launcher_is_committed_and_interval_aware() -> None:
+    """The macOS daemon agent is written by a script; Sam gets a documented
+    double-click instead, for the same reason the dashboard one is not a task."""
+
+    body = (SCRIPTS / "jobpilot-daemon.bat").read_text(encoding="utf-8")
+
+    assert "@echo off" in body
+    assert r".venv\Scripts\python.exe" in body
+    assert "daemon --interval-hours" in body
 
 
 # ----- the rule that keeps Windows CI green -----
