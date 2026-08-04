@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/ingest.py": {
-    "mtime": 1785821808.3146327,
-    "ast_hash": "8d07aca3a0f2f65786a0aeb18213c6f7",
+    "mtime": 1785825913.4162822,
+    "ast_hash": "3c61c70a6cdd07c2fb31cabce79536d0",
     "semantic_hash": ""
   },
   "src/jobpilot/logging_conf.py": {
@@ -610,8 +610,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785824191.928031,
-    "ast_hash": "e04a9e1eb630274b231eb21b12a2c0eb",
+    "mtime": 1785826059.570745,
+    "ast_hash": "bd0b1d6c79d942680aec474bb39753be",
     "semantic_hash": ""
   },
   "config/fact_bank.yaml": {
@@ -1077,6 +1077,11 @@
   "src/jobpilot/templates/partials/age.html": {
     "mtime": 1785822758.891145,
     "ast_hash": "665815c2129cfb4f4e945c935dff14c8",
+    "semantic_hash": ""
+  },
+  "tests/test_ingest_concurrency.py": {
+    "mtime": 1785825941.0184984,
+    "ast_hash": "5fead880992cf8ee91e35e010414637c",
     "semantic_hash": ""
   }
 }
