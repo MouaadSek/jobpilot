@@ -1206,6 +1206,25 @@ _PROFILE_DOMAIN_RE = re.compile(
     r'(<span class="profile-domain">)(.*?)(</span>)',
     re.DOTALL,
 )
+#: The header location, found the same way and for the same reason.
+#:
+#: It used to anchor on the pin emoji before it and the separator after it:
+#: ``(?:&#x1F4CD;|📍)\s*(.*?)\s*(?:&nbsp;\|&nbsp;|<br\s*/?>)``. Both ends were a
+#: list of the encodings the 21 templates happen to use today — two for the
+#: emoji, because half the templates are entity-encoded, and two for the
+#: separator, because one template ends the contact line with ``<br/>`` instead
+#: of a pipe. The same shape as the profile-domain anchor that broke every stage
+#: generation in Task 40: an enumeration of neighbouring text, correct until a
+#: template is re-exported or one more is added.
+#:
+#: Three sites read this, and two of them read tailored output — where the
+#: encoding of the pin and of the separator is whatever the previous step wrote,
+#: not what the template held. A marker we emit ourselves is one alternative in
+#: one place and is written by us in both.
+_CONTACT_LOCATION_RE = re.compile(
+    r'(<span class="contact-location">)(.*?)(</span>)',
+    re.DOTALL,
+)
 _TECH_ROW_RE = re.compile(r'^[ \t]*<div class="tech-row">.*?</div>\s*$', re.MULTILINE)
 _EXPERIENCE_RE = re.compile(
     r'^[ \t]*<div class="experience-item">.*?</ul>\s*</div>',
@@ -1425,10 +1444,7 @@ def extract_template_context(source: str) -> TemplateContext:
         raise TailoringError(
             f"CV must contain between 1 and 3 projects, found {len(project_titles)}"
         )
-    location_match = re.search(
-        r"(?:&#x1F4CD;|📍)\s*(.*?)\s*(?:&nbsp;\|&nbsp;|<br\s*/?>)",
-        source,
-    )
+    location_match = _CONTACT_LOCATION_RE.search(source)
     if not location_match:
         raise TailoringError("template contact location not found")
     employer_rows = tuple(
@@ -1442,7 +1458,7 @@ def extract_template_context(source: str) -> TemplateContext:
         profile_domain_phrase=_extract_profile_domain(source),
         tech_categories=tech_categories,
         project_titles=project_titles,
-        location_region=_plain(location_match.group(1)),
+        location_region=_plain(location_match.group(2)),
         tech_skills=tech_skills,
         experience_bullets=employer_rows,
     )
@@ -2918,13 +2934,10 @@ def _validate_skill_categories(source: str) -> None:
 def _validate_header_location(source: str) -> None:
     """Reject a rendered CV whose header location is a bare country."""
 
-    match = re.search(
-        r"(?:&#x1F4CD;|📍)\s*(.*?)\s*(?:&nbsp;\|&nbsp;|<br\s*/?>)",
-        source,
-    )
+    match = _CONTACT_LOCATION_RE.search(source)
     if not match:
         raise TailoringError("tailored contact location not found")
-    location = _plain(match.group(1))
+    location = _plain(match.group(2))
     if _normalize(location) in _BARE_COUNTRIES:
         raise TailoringError(
             f"CV header location must not be a bare country: {location}"
@@ -3303,8 +3316,8 @@ def tailor_cv_html(
     encoded_location = _encode_text(plan.location_region, entities=selection.entity_encoded)
     result = _replace_required(
         result,
-        re.compile(r"((?:&#x1F4CD;|📍)\s*).*?(\s*(?:&nbsp;\|&nbsp;|<br\s*/?>))"),
-        rf"\g<1>{encoded_location}\g<2>",
+        _CONTACT_LOCATION_RE,
+        rf"\g<1>{encoded_location}\g<3>",
         "contact location",
     )
     if plan.has_sourced_content:
