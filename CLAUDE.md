@@ -47,6 +47,43 @@ shell assumptions portable. Single user, no multi-tenancy, no cloud deploy.
 - Never auto-submit an application or send an email without a prior human
   approval recorded in the events table (event = 'human_approved').
 
+### Scope of rule 11
+
+Rule 11 is the scraper rail above — the one that keeps LinkedIn and Indeed
+scrapers out of scope unless explicitly re-authorized. Task 43 added a browser
+extension that reads LinkedIn, Indeed and WTTJ pages and sends their text to
+JobPilot, which looks like it crosses that line. It does not, and this section
+records why so a future reader does not have to reconstruct the reasoning.
+
+What the rail forbids is JobPilot going and getting pages: choosing a URL,
+requesting it, and taking what comes back. That is what generates load on
+someone else's site, what robots.txt speaks to, and what LinkedIn's terms and
+its lawsuits are about.
+
+The extension does none of that. It reads a page the user opened, in their own
+browser, in their own session, while they are looking at it. It never
+navigates, never fetches, never runs on a page the user did not open, and never
+touches more than the page currently in front of them. The text was already
+delivered to the human; the extension moves it from their screen into their
+database. Removing the extension would not remove a single request from
+LinkedIn's servers.
+
+`POST /offer/import` is the same fact on the server side: it receives text in
+the request body and never dereferences the URL it is given. The URL is an
+identifier used to match an existing offer, not something to retrieve.
+`test_the_import_path_never_fetches_anything` holds that.
+
+Concretely, and non-negotiably, this scope means the extension must have:
+
+- no background script or service worker,
+- no scheduled job,
+- nothing that opens, navigates or reloads a tab,
+- no host permissions beyond the three domains it reads,
+- no request the user's own browsing did not already cause.
+
+Adding any of those turns the extension into a scraper and puts it back under
+rule 11. If a feature seems to need one, it is out of scope: stop and say so.
+
 ## Interaction rules for Claude Code
 
 - If credentials or config are missing, ask; never silently mock.
