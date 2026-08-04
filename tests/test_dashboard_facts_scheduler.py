@@ -186,8 +186,9 @@ def test_queue_page_lists_last_run_per_enabled_source(
     assert "2026-07-26T06:00:00+00:00" in page.text
     # A source that never ran says so rather than showing a blank cell.
     assert "jamais" in page.text
-    # The database keeps no per-cycle outcome, and the page does not invent one.
-    assert "inconnu (non enregistré)" in page.text
+    # Task 41: a run predating source_runs has no outcome, and the page does not
+    # invent one — but it no longer says that about every source.
+    assert "inconnu (aucun cycle enregistré)" in page.text
 
 
 def test_daemon_state_is_unknown_without_a_recorded_heartbeat(

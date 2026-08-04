@@ -131,20 +131,79 @@ def daemon_status(settings: Settings | None = None) -> DaemonStatus:
     )
 
 
+#: How many consecutive failed runs make a source dead rather than unlucky.
+#: One failure is a timeout; three in a row, at a six-hour interval, is close to
+#: a day of a source returning nothing — which is how WTTJ went unnoticed.
+DEAD_AFTER_FAILURES = 3
+
+#: How far back to look when counting that streak. Only the leading runs matter,
+#: so there is nothing to gain from reading past the threshold.
+_STREAK_WINDOW = DEAD_AFTER_FAILURES
+
+
+def _last_runs(db: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
+    return db.execute(
+        "SELECT started_at, fetched, inserted, duplicates, companies_created, error "
+        "FROM source_runs WHERE source_id = ? ORDER BY id DESC LIMIT ?",
+        (source_id, _STREAK_WINDOW),
+    ).fetchall()
+
+
+def _consecutive_failures(runs: list[sqlite3.Row]) -> int:
+    """Leading failures only: one success resets the streak."""
+
+    streak = 0
+    for run in runs:
+        if run["error"] is None:
+            break
+        streak += 1
+    return streak
+
+
 def source_runs(
     db: sqlite3.Connection,
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
-    """Last recorded run per enabled source. ``last_run_at`` is all the DB keeps."""
+    """Last recorded run per enabled source, with what that run actually did.
+
+    ``last_run_at`` on its own could not distinguish a source that ingested
+    forty offers from one that raised on every request, because a failing source
+    kept a fresh timestamp either way. The history in source_runs can, so it is
+    preferred here; sources.last_run_at remains the fallback for the runs that
+    predate the table.
+    """
 
     rows = {
-        row["name"]: row["last_run_at"]
-        for row in db.execute("SELECT name, last_run_at FROM sources").fetchall()
+        row["name"]: row
+        for row in db.execute("SELECT id, name, last_run_at FROM sources").fetchall()
     }
-    return [
-        {"name": name, "last_run_at": rows.get(name)}
-        for name in enabled_sources(settings)
-    ]
+    report: list[dict[str, Any]] = []
+    for name in enabled_sources(settings):
+        row = rows.get(name)
+        if row is None:
+            report.append(
+                {
+                    "name": name,
+                    "last_run_at": None,
+                    "last_run": None,
+                    "consecutive_failures": 0,
+                    "dead": False,
+                }
+            )
+            continue
+        runs = _last_runs(db, row["id"])
+        latest = runs[0] if runs else None
+        failures = _consecutive_failures(runs)
+        report.append(
+            {
+                "name": name,
+                "last_run_at": (latest["started_at"] if latest else row["last_run_at"]),
+                "last_run": dict(latest) if latest else None,
+                "consecutive_failures": failures,
+                "dead": failures >= DEAD_AFTER_FAILURES,
+            }
+        )
+    return report
 
 
 def scheduler_status(
@@ -156,6 +215,7 @@ def scheduler_status(
     return {
         "sources": source_runs(db, settings),
         "daemon": daemon_status(settings).as_dict(),
+        "dead_after_failures": DEAD_AFTER_FAILURES,
     }
 
 

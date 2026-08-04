@@ -41,6 +41,44 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+#: An error message is for a human reading one table cell, not for forensics —
+#: the traceback is already in logs/. Truncated so one exploded HTTP body cannot
+#: make the Planification table unreadable.
+_ERROR_EXCERPT = 240
+
+
+def record_run(
+    db: sqlite3.Connection,
+    sid: int,
+    *,
+    started_at: str,
+    result: IngestResult | None,
+    error: str | None = None,
+) -> None:
+    """Append one row to source_runs. Does not commit; the caller owns that.
+
+    A failed run keeps its ``fetched`` count — the API really did return that
+    many records — and zeroes the rest, because the caller rolls the transaction
+    back before this is written, so nothing it inserted survived.
+    """
+
+    db.execute(
+        "INSERT INTO source_runs "
+        "(source_id, started_at, finished_at, fetched, inserted, duplicates, "
+        " companies_created, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            sid,
+            started_at,
+            _utc_now(),
+            result.fetched if result else 0,
+            result.inserted if error is None and result else 0,
+            result.duplicates if error is None and result else 0,
+            result.companies_created if error is None and result else 0,
+            error[:_ERROR_EXCERPT] if error else None,
+        ),
+    )
+
+
 def _backfill_company_source(
     db: sqlite3.Connection, company_id: int, source: str | None
 ) -> None:
@@ -117,34 +155,62 @@ def _insert_offer(
 
 
 def ingest_source(db: sqlite3.Connection, src: Source) -> IngestResult:
-    """Run one source end to end. Commits once at the end for atomicity."""
+    """Run one source end to end. Commits once at the end for atomicity.
+
+    Every outcome is recorded in source_runs, success or failure, because this
+    is the only place that knows both. A source that has stopped returning
+    anything keeps ticking sources.last_run_at forward and looks healthy from
+    the outside — WTTJ did that for a week — so the failure path commits its
+    own row rather than re-raising into silence.
+
+    One caution on the transaction: it opens at the first insert and closes at
+    the commit below, which means it is held across ``fetch_offers``, and that
+    is a paginated HTTP walk with rate limiting in it. Under WAL a reader is
+    never blocked by it, but a second writer — the dashboard generating an
+    application while the daemon ingests — waits on it for as long as the walk
+    takes, and gives up after db.BUSY_TIMEOUT_MS.
+    """
     sid = source_id(db, src.name)
+    started_at = _utc_now()
     result = IngestResult(source=src.name)
     company_cache: dict[str, int] = {}
 
-    # Companies-likely-to-hire (used by later cold-mail phase) go in first.
-    for company in src.fetch_companies():
-        _, created = get_or_create_company(db, company, company_cache)
-        if created:
-            result.companies_created += 1
-
-    for offer in src.fetch_offers():
-        result.fetched += 1
-        company_id: int | None = None
-        if offer.company_name:
-            company_id, created = get_or_create_company(
-                db, CompanyRecord(name=offer.company_name), company_cache
-            )
+    try:
+        # Companies-likely-to-hire (used by later cold-mail phase) go in first.
+        for company in src.fetch_companies():
+            _, created = get_or_create_company(db, company, company_cache)
             if created:
                 result.companies_created += 1
-        if _insert_offer(db, sid, company_id, offer):
-            result.inserted += 1
-        else:
-            result.duplicates += 1
 
-    db.execute(
-        "UPDATE sources SET last_run_at = ? WHERE id = ?", (_utc_now(), sid)
-    )
-    db.commit()
+        for offer in src.fetch_offers():
+            result.fetched += 1
+            company_id: int | None = None
+            if offer.company_name:
+                company_id, created = get_or_create_company(
+                    db, CompanyRecord(name=offer.company_name), company_cache
+                )
+                if created:
+                    result.companies_created += 1
+            if _insert_offer(db, sid, company_id, offer):
+                result.inserted += 1
+            else:
+                result.duplicates += 1
+
+        db.execute(
+            "UPDATE sources SET last_run_at = ? WHERE id = ?", (_utc_now(), sid)
+        )
+        record_run(db, sid, started_at=started_at, result=result)
+        db.commit()
+    except Exception as exc:
+        # Roll the partial ingest back first, so the row written next is the
+        # only thing this run leaves behind — and so its zeros are true.
+        db.rollback()
+        record_run(
+            db, sid, started_at=started_at, result=result, error=f"{type(exc).__name__}: {exc}"
+        )
+        db.commit()
+        log.exception("ingest %s failed after %d fetched", src.name, result.fetched)
+        raise
+
     log.info("ingest %s: %s", src.name, result.as_dict())
     return result

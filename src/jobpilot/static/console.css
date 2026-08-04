@@ -326,6 +326,10 @@ td.title { min-width: 240px; white-space: normal; }
 td .num, .score, td time { font-family: var(--face-data); font-variant-numeric: tabular-nums; }
 .score { color: var(--amber); font-weight: 650; }
 
+/* Planification: a source that has stopped answering must not read as healthy. */
+.run-failed { color: var(--amber); }
+.run-dead { color: var(--alert); font-weight: 650; }
+
 table.dense th, table.dense td { padding: var(--s2) var(--s3); font-size: var(--t-small); }
 table.dense td.row-actions { display: flex; gap: var(--s2); white-space: nowrap; }
 table.dense td.row-actions button { padding: var(--s1) var(--s2); font-size: var(--t-micro); }

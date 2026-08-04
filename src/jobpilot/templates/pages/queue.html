@@ -71,7 +71,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Source</th><th>Dernier lancement</th><th>Résultat</th></tr>
+          <tr><th>Source</th><th>Dernier lancement</th><th>Résultat</th><th>État</th></tr>
         </thead>
         <tbody>
           {% for source in scheduler.sources %}
@@ -80,15 +80,39 @@
               <td {% if source.last_run_at %}title="{{ source.last_run_at }}"{% endif %}>
                 {{ source.last_run_at or "jamais" }}
               </td>
-              <td class="muted">inconnu (non enregistré)</td>
+              {% if source.last_run is none %}
+                <td class="muted">inconnu (aucun cycle enregistré)</td>
+              {% elif source.last_run.error %}
+                <td class="run-failed" title="{{ source.last_run.error }}">
+                  échec — {{ source.last_run.error }}
+                </td>
+              {% else %}
+                <td>
+                  <span class="num">{{ source.last_run.fetched }}</span> reçues,
+                  <span class="num">{{ source.last_run.inserted }}</span> nouvelles,
+                  <span class="num">{{ source.last_run.duplicates }}</span> déjà connues
+                </td>
+              {% endif %}
+              {% if source.dead %}
+                <td class="run-dead" title="{{ source.consecutive_failures }} échecs consécutifs">
+                  ● muette
+                </td>
+              {% elif source.consecutive_failures %}
+                <td class="run-failed">● {{ source.consecutive_failures }} échec(s) de suite</td>
+              {% elif source.last_run %}
+                <td class="muted">● ok</td>
+              {% else %}
+                <td class="muted">—</td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     <p class="muted">
-      Seule la date du dernier lancement est stockée : le détail d'un cycle
-      passé n'est pas conservé. Les résultats d'une actualisation lancée
-      depuis cette page apparaissent ci-dessus.
+      « Muette » : la source a échoué sur ses {{ scheduler.dead_after_failures }}
+      derniers cycles. Un compte de zéro nouvelle offre n'est pas un échec — une
+      source peut légitimement n'avoir rien de neuf à renvoyer. Les résultats
+      d'une actualisation lancée depuis cette page apparaissent ci-dessus.
     </p>
   </section>
