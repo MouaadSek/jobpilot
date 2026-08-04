@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "JobPilot — capture d'annonce",
+  "version": "1.0.0",
+  "description": "Envoie la description de l'annonce affichée au JobPilot local. Ne navigue jamais, ne récupère jamais une page que vous n'avez pas ouverte.",
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "https://*.indeed.fr/*",
+    "https://*.welcometothejungle.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.linkedin.com/jobs/*",
+        "https://*.indeed.fr/*",
+        "https://*.welcometothejungle.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

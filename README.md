@@ -658,6 +658,62 @@ details and lets you approve or skip through the same state-machine paths as the
 CLI. Approval generates the CV, motivation letter, and tracker row synchronously
 for local review. The server always binds to loopback only.
 
+### Importer une annonce (extension navigateur)
+
+LinkedIn and Indeed arrive as alert emails carrying ~113 characters of
+description — a card, not a posting. Every application sent so far came from
+that source, so every CV that reached an employer was tailored against almost
+nothing. France Travail, LBA and WTTJ average ~1900 characters and tailor
+properly.
+
+The text exists: it is on the page. `POST /offer/import` accepts it.
+
+**Install (unpacked, developer mode).** Not published and not submitted
+anywhere:
+
+1. open `chrome://extensions`
+2. turn on **Developer mode** (top right)
+3. **Load unpacked** → select `~/jobpilot/extension`
+
+Then open a posting on LinkedIn, Indeed or Welcome to the Jungle as you
+normally would. If JobPilot is running, a small toast confirms the capture and
+the offer is re-scored against the real text. If it is not running, nothing
+happens at all — no toast, no error, no output. That is deliberate: the machine
+runs the dashboard some of the time and browsing job sites should be unaffected
+the rest of it.
+
+**It has no autonomy.** No background service worker, no scheduled work. It
+never navigates, never opens a tab, never fetches a page — including the one it
+is on — and never acts on anything but the posting in front of you. It reads
+text you are already looking at and passes it to a program on your own machine.
+See CLAUDE.md, "Scope of rule 11", for why that is not scraping.
+
+**The selectors will rot.** All three sites ship generated class names and
+change them without notice. They live in one table at the top of
+`extension/content.js`, and a miss falls through to a site-agnostic
+largest-text-block heuristic rather than failing, so a rename degrades one
+site's capture instead of breaking the extension.
+
+**Origins.** CORS is enabled for `/offer/import` and no other path. The
+allowlist is the three job sites plus loopback — *not* loopback alone, despite
+that being the obvious reading of "localhost only": an MV3 content script runs
+in the page's origin, so the extension's request carries
+`Origin: https://www.linkedin.com`. Loopback-only would reject every request the
+extension can make, and the only way around it is a background service worker,
+which is exactly the autonomy this design refuses. The network restriction is
+untouched and is the stronger one — uvicorn binds `127.0.0.1`, so nothing off
+this machine can open the socket. `IMPORT_ALLOWED_ORIGIN_HOSTS` in
+`dashboard.py` and `host_permissions` in `extension/manifest.json` name the same
+three sites and a test fails if they drift apart.
+
+**Pasting is a first-class alternative.** Every application detail page carries
+a « Coller la description de l'offre » box, always visible. Some pages will
+never parse cleanly, and the extension is the automatic route rather than the
+correct one. Both hit the same endpoint and trigger the same re-score.
+
+**An imported description is never overwritten.** `offers.imported_at` marks
+it, and the description backfill skips any offer carrying it.
+
 ### Recency comes first
 
 Every list — the review queue, `jobpilot queue`, the skim list and the tracker —
