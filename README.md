@@ -748,12 +748,34 @@ from this button at all. The route actually taken is recorded in
 No Python is bundled. The dashboard already runs; these just make it always up
 and reachable by double-click.
 
-**macOS — LaunchAgent.** `scripts/install_agent.sh [port]` writes
-`~/Library/LaunchAgents/com.jobpilot.dashboard.plist` with the venv interpreter
-resolved at install time, `RunAtLoad` and `KeepAlive` set, and stdout/stderr in
-`~/Library/Logs/jobpilot/`. Re-running it is safe: it unloads before loading, so
-a changed venv path or port is picked up, and two runs leave one agent.
-`scripts/uninstall_agent.sh` removes it and tolerates being run twice.
+**macOS — LaunchAgents.** `scripts/install_agent.sh [port] [interval_hours]`
+writes **two** plists into `~/Library/LaunchAgents/`, both with the venv
+interpreter resolved at install time, `RunAtLoad` and `KeepAlive` set, and
+stdout/stderr in `~/Library/Logs/jobpilot/`:
+
+| Label | Runs | Logs |
+| --- | --- | --- |
+| `com.jobpilot.dashboard` | `jobpilot dashboard --port PORT` | `dashboard.{out,err}.log` |
+| `com.jobpilot.scheduler` | `jobpilot daemon --interval-hours N` | `scheduler.{out,err}.log` |
+
+Two agents rather than one job doing two things: launchd supervises each label
+separately, so the daemon crashing on a bad source leaves the dashboard serving
+the page, and a dashboard restart never interrupts a cycle mid-ingest. They
+share only the database file, which is why `db.connect` opens it in WAL mode
+with a busy timeout (see **Two processes, one database** below).
+
+Both carry a `ThrottleInterval` — `KeepAlive` restarts a job whatever its exit
+status, so one that dies at startup would otherwise be a hot loop. The daemon's
+is longer (60 s against 10 s): a cycle is hours long and starts with one on
+load, so a daemon that cannot start is worth backing off from harder than a web
+server is.
+
+Re-running is safe: each agent is unloaded before being loaded again, so a
+changed venv path, port or interval is picked up, and two runs leave one of
+each. `scripts/uninstall_agent.sh` removes both and tolerates being run twice;
+pass a label to remove just one, e.g.
+`scripts/uninstall_agent.sh com.jobpilot.scheduler` to stop ingestion without
+taking the dashboard down.
 
 A port already in use is **not** an error. `jobpilot dashboard` prints
 « JobPilot tourne déjà sur http://127.0.0.1:8787 » and exits `0`, because under
@@ -772,10 +794,52 @@ never imported at module level; the package imports cleanly with it absent and a
 test verifies that rather than assuming it.
 
 **Windows startup.** Run `scripts\jobpilot-dashboard.bat` to launch the
-dashboard and open the browser. To start it at login: press `Win+R`, enter
-`shell:startup`, and drop a shortcut to that `.bat` in the folder that opens.
-Documented rather than automated — a script that installs itself into someone's
-login is harder to remove than to add.
+dashboard and open the browser, and `scripts\jobpilot-daemon.bat [interval]` for
+the ingestion daemon — the two macOS agents, one `.bat` each. To start either at
+login: press `Win+R`, enter `shell:startup`, and drop a shortcut to the `.bat`
+in the folder that opens. Documented rather than automated — a script that
+installs itself into someone's login is harder to remove than to add.
+
+### Updating after a merge
+
+`scripts/update.sh [port] [interval_hours]` is the whole post-merge routine:
+
+1. refuses to run on a dirty tree, printing what is dirty;
+2. backs the database up into `backups/` using sqlite3's backup API — not `cp`,
+   because the database is in WAL mode and the daemon may be mid-cycle, so a
+   file copy can miss committed rows still living in the `-wal` file;
+3. `git pull --ff-only`;
+4. `pip install -e .` **only** if `pyproject.toml` changed in that pull;
+5. `jobpilot init-db` **only** if `migrations/` changed in that pull;
+6. reinstalls and restarts both agents;
+7. requests `http://127.0.0.1:PORT/` and fails loudly if it never answers —
+   a bound port is not proof, since a dashboard that dies on an import error
+   binds nothing while launchd still reports the job as started.
+
+Steps 4 and 5 are conditional because they are the slow ones. The agents are
+stopped for the duration and restored by a trap, so an update that fails half
+way leaves them running rather than leaving the machine with neither.
+
+### Two processes, one database
+
+The daemon and the dashboard write the same SQLite file. `db.connect` therefore
+sets `journal_mode = WAL` and `busy_timeout = 30000` on every connection. WAL is
+what makes this workable at all: under the default rollback journal a single
+dashboard read blocks the daemon's writes and vice versa, whereas under WAL
+readers never block the writer and the writer never blocks readers. It is a
+property of the file, so the first connection converts it and the rest inherit
+it; a filesystem that refuses the conversion (a network share) is logged as a
+warning, because two writers there are not safe.
+
+That covers readers. It does **not** fully cover the second writer — see
+`ingest_source`'s docstring: its transaction opens at the first insert and
+closes at the final commit, which means it is held across `fetch_offers`, a
+paginated HTTP walk with per-domain rate limiting in it. A dashboard generation
+that needs to write during a long ingest waits on that lock and gives up after
+`db.BUSY_TIMEOUT_MS`. The fix is to stop holding a write transaction across the
+network — commit per page, or drain the source into memory before opening the
+transaction — but that trades the current all-or-nothing ingest for a partial
+one, so it is a call to make deliberately rather than a change to slip in here.
 
 ### Form learning (an unknown form costs effort once)
 
@@ -827,13 +891,26 @@ claims, projects, education, certifications, languages, skills with their
 verified flags, and the locked identity block. Editing stays in
 `config/fact_bank.yaml`; the page submits nothing.
 
-The queue page also carries a **Planification** panel: the last run time
-recorded in `sources.last_run_at` for every enabled source, and the daemon's
-state. Only the run time is stored, so the per-cycle result is reported as
-`inconnu (non enregistré)` rather than invented. Each completed daemon cycle
-writes `logs/scheduler.heartbeat`; the panel reports `actif` while beats are
-within two cycle intervals, `inactif` once they are older, and `inconnu` when no
-readable heartbeat exists at all.
+The queue page also carries a **Planification** panel: for every enabled source,
+its last run, what that run did, and whether it is still answering. Each
+completed daemon cycle writes `logs/scheduler.heartbeat`; the panel reports
+`actif` while beats are within two cycle intervals, `inactif` once they are
+older, and `inconnu` when no readable heartbeat exists at all.
+
+`migration 009` keeps one row per source per run in `source_runs`
+(`fetched` / `inserted` / `duplicates` / `companies_created` / `error`), so the
+**Résultat** column reports the real outcome instead of `inconnu`. A source
+whose last `DEAD_AFTER_FAILURES` (3) runs all raised is marked **muette** in
+red. `sources.last_run_at` alone could not show this: it ticks forward on every
+cycle whatever the cycle did, which is how WTTJ returning nothing for a week
+looked exactly like WTTJ working. A run that fetched zero offers is *not* a
+failure — a source can legitimately have nothing new — and one success resets
+the streak.
+
+`ingest_source` writes that row on both paths. On failure it rolls the partial
+ingest back first, so the row keeps its `fetched` count (the API really did
+return those records) and zeroes the rest, and `sources.last_run_at` does not
+move.
 
 ### Tailoring mode and web approval
 
@@ -938,8 +1015,12 @@ back to opening the offer URL for manual completion.
 
 ## Background scheduling
 
-On macOS, edit the paths in `deploy/com.jobpilot.daemon.plist`, copy it to
-`~/Library/LaunchAgents/`, then run `launchctl load` on the copied plist.
+On macOS, `scripts/install_agent.sh` writes and loads
+`com.jobpilot.scheduler` for you alongside the dashboard agent — see
+**Always up, without a terminal**. The hand-edited
+`deploy/com.jobpilot.daemon.plist` remains for anyone wanting a plist that is
+not managed by the script: edit its paths, copy it to `~/Library/LaunchAgents/`,
+then run `launchctl load` on the copy.
 
 On Windows, register the current-user scheduled task from PowerShell:
 
@@ -985,3 +1066,8 @@ GitHub Actions runs the lightweight test suite and Ruff on Python 3.11 for
 Ubuntu and Windows. CI installs only the explicit non-ML dependencies, guards
 the frozen matcher on pull requests, and runs an advisory dependency audit on
 Ubuntu.
+
+The push trigger is `branches: ['**']`, not just `main`. A branch that only
+gets CI once it is opened as a pull request gets its first honest signal after
+the work is done; the `.venv` break sat green locally for four commits for
+exactly that reason. The cost is that a branch with an open PR runs twice.
