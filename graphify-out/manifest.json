@@ -150,17 +150,17 @@
     "semantic_hash": ""
   },
   "src/jobpilot/dashboard.py": {
-    "mtime": 1785852207.6111338,
+    "mtime": 1785853554.4235132,
     "ast_hash": "acfefa9eec5726b6521bd059017f7942",
     "semantic_hash": ""
   },
   "src/jobpilot/db.py": {
-    "mtime": 1785826896.384468,
+    "mtime": 1785853554.4239242,
     "ast_hash": "f17c369d608cce2c0d83f344d9ff304b",
     "semantic_hash": ""
   },
   "src/jobpilot/descriptions.py": {
-    "mtime": 1785852646.5418408,
+    "mtime": 1785853554.4244258,
     "ast_hash": "5c0ac20f4134e2829a3f0b3ec57b188e",
     "semantic_hash": ""
   },
@@ -225,7 +225,7 @@
     "semantic_hash": ""
   },
   "src/jobpilot/review.py": {
-    "mtime": 1785852246.8659043,
+    "mtime": 1785853554.4262378,
     "ast_hash": "46521d60c08c443989f31470e4e25171",
     "semantic_hash": ""
   },
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/jobpilot/tailoring.py": {
-    "mtime": 1785826403.4107056,
-    "ast_hash": "b0d73fcb048bed48d954af9c768924fd",
+    "mtime": 1785878288.8791752,
+    "ast_hash": "9c4f49680740d3afc53dc71086077bf4",
     "semantic_hash": ""
   },
   "src/jobpilot/variant_catalogue.py": {
@@ -600,7 +600,7 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1785852789.277808,
+    "mtime": 1785853554.3557992,
     "ast_hash": "869c855d899315996f8c5ffa3ec26c45",
     "semantic_hash": ""
   },
@@ -610,7 +610,7 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785852846.995564,
+    "mtime": 1785853554.356803,
     "ast_hash": "4246fdbc5ea5d632c066d3e143280ac9",
     "semantic_hash": ""
   },
@@ -910,7 +910,7 @@
     "semantic_hash": ""
   },
   "src/jobpilot/templates/pages/detail.html": {
-    "mtime": 1785852275.4467268,
+    "mtime": 1785853554.4273756,
     "ast_hash": "31573e9316694d457c53a6c07ab284ce",
     "semantic_hash": ""
   },
@@ -1024,11 +1024,6 @@
     "ast_hash": "c3638d8edb8aa5eede48f606d81ef555",
     "semantic_hash": ""
   },
-  "tests/test_stage_contract_fallback.py": {
-    "mtime": 1785809534.9777043,
-    "ast_hash": "9683b4dc52329db3987b1d1cd58a54d3",
-    "semantic_hash": ""
-  },
   "tests/test_bullet_ceiling.py": {
     "mtime": 1785809534.9756162,
     "ast_hash": "dda424104f3365d41c3f30d5916966cf",
@@ -1060,7 +1055,7 @@
     "semantic_hash": ""
   },
   "src/jobpilot/freshness.py": {
-    "mtime": 1785852174.825453,
+    "mtime": 1785853554.4250333,
     "ast_hash": "793a4ebeacdd2d53dc00f445cade6154",
     "semantic_hash": ""
   },
@@ -1085,53 +1080,68 @@
     "semantic_hash": ""
   },
   "migrations/010_offers_imported.sql": {
-    "mtime": 1785826891.9640422,
+    "mtime": 1785853554.4228134,
     "ast_hash": "3250cf25ea9507ed31ed41fd3e6efc95",
     "semantic_hash": ""
   },
   "src/jobpilot/offer_import.py": {
-    "mtime": 1785826983.419627,
+    "mtime": 1785853554.425481,
     "ast_hash": "0704b2db9f021989e8b57dd7bc602120",
     "semantic_hash": ""
   },
   "tests/test_offer_import.py": {
-    "mtime": 1785850479.5369303,
+    "mtime": 1785853554.428766,
     "ast_hash": "90d670c671cb7a0ebad0ef8f57373b94",
     "semantic_hash": ""
   },
   "extension/content.js": {
-    "mtime": 1785850943.0107303,
+    "mtime": 1785853554.3573227,
     "ast_hash": "511efd1bc5ea3f7015e3dcb2c89c6c98",
     "semantic_hash": ""
   },
   "extension/manifest.json": {
-    "mtime": 1785850517.665148,
+    "mtime": 1785853554.3576088,
     "ast_hash": "2b181e3d55969a8637621ae07e8d08e7",
     "semantic_hash": ""
   },
   "tests/extension_harness.js": {
-    "mtime": 1785850631.6267023,
+    "mtime": 1785853554.4277256,
     "ast_hash": "2779116601ec5215af903dcffe40e95c",
     "semantic_hash": ""
   },
   "tests/test_extension.py": {
-    "mtime": 1785850670.8964782,
+    "mtime": 1785853554.4280188,
     "ast_hash": "50acd91dfb90dc79f06b916af1fcfb57",
     "semantic_hash": ""
   },
   "tests/test_paste_box.py": {
-    "mtime": 1785851329.0877311,
+    "mtime": 1785853554.4291015,
     "ast_hash": "8211fcee44dbfa46f65c4ab3d12a8cb6",
     "semantic_hash": ""
   },
   "tests/test_regenerate_after_import.py": {
-    "mtime": 1785852337.4463475,
+    "mtime": 1785853554.4294112,
     "ast_hash": "c8211dcbff37caecf2a8c8d41e16256a",
     "semantic_hash": ""
   },
   "tests/test_imported_never_overwritten.py": {
-    "mtime": 1785852615.2679217,
+    "mtime": 1785853554.4283912,
     "ast_hash": "c5f90c780bd15a3d570c132054ba8780",
+    "semantic_hash": ""
+  },
+  "tests/test_placeholder_guard.py": {
+    "mtime": 1785869826.4391248,
+    "ast_hash": "ee10bd11c93b22bf339e332b4d3cfc0d",
+    "semantic_hash": ""
+  },
+  "tests/test_stage_contract_phrase.py": {
+    "mtime": 1785869800.2044876,
+    "ast_hash": "6d53a61ee7be2b305d4c64490abe9878",
+    "semantic_hash": ""
+  },
+  "tests/test_cv_title_budget.py": {
+    "mtime": 1785870547.9322455,
+    "ast_hash": "acc457af4c16d7da2d68ce45c27bf7bc",
     "semantic_hash": ""
   }
 }
